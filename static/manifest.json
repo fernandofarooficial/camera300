@@ -1,0 +1,37 @@
+{
+  "name": "Facial Recognition - FaceTest",
+  "short_name": "FaceTest",
+  "description": "Sistema de reconhecimento facial e controle de presença",
+  "start_url": "/camera300/",
+  "scope": "/camera300/",
+  "display": "standalone",
+  "background_color": "#0f1117",
+  "theme_color": "#1a1d27",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/static/icons/icon-144.png",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icons/icon-180.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/static/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

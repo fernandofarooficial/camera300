@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tracks — Tabuleiro</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #1a1d27;
+      border-bottom: 1px solid #2d3148;
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    header h1 { font-size: 1.2rem; font-weight: 600; color: #7c86ff; }
+
+    .nav { display: flex; gap: 0.6rem; }
+    .nav a {
+      color: #7c86ff;
+      text-decoration: none;
+      font-size: 0.82rem;
+      border: 1px solid #7c86ff44;
+      padding: 0.3rem 0.8rem;
+      border-radius: 6px;
+      transition: background 0.2s;
+    }
+    .nav a:hover { background: #7c86ff22; }
+
+    main { max-width: 1400px; margin: 0 auto; padding: 1.5rem; }
+
+    .empty-state { text-align: center; padding: 4rem 2rem; color: #475569; }
+
+    /* ---- Grid ---- */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 1rem;
+    }
+
+    .card {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 10px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      transition: border-color 0.2s, transform 0.2s;
+      cursor: default;
+    }
+    .card:hover {
+      border-color: #7c86ff55;
+      transform: translateY(-2px);
+    }
+
+    .card-photo {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      object-fit: cover;
+      display: block;
+      background: #0f1117;
+    }
+
+    .card-placeholder {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #0f1117;
+      color: #334155;
+      font-size: 0.65rem;
+    }
+
+    .card-body {
+      width: 100%;
+      padding: 0.5rem 0.6rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .card-id {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: #7c86ff;
+    }
+
+    .card-nome {
+      font-size: 0.75rem;
+      color: #e2e8f0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .chip-flag {
+      font-size: 0.65rem;
+      font-weight: 600;
+      padding: 0.15rem 0.45rem;
+      border-radius: 999px;
+      background: #f59e0b22;
+      color: #f59e0b;
+      border: 1px solid #f59e0b44;
+      align-self: flex-start;
+    }
+
+    /* ---- Edit button ---- */
+    .card-actions {
+      display: flex;
+      gap: 0.25rem;
+      margin-top: 0.35rem;
+    }
+
+    .btn-edit, .btn-delete {
+      flex: 1;
+      border-radius: 6px;
+      padding: 0.28rem 0;
+      font-size: 0.65rem;
+      cursor: pointer;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+    .btn-edit {
+      background: #7c86ff22;
+      border: 1px solid #7c86ff44;
+      color: #7c86ff;
+    }
+    .btn-edit:hover { background: #7c86ff33; }
+    .btn-delete {
+      background: #ef444422;
+      border: 1px solid #ef444444;
+      color: #ef4444;
+    }
+    .btn-delete:hover { background: #ef444433; }
+
+    /* ---- Modal ---- */
+    #modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: #00000099;
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+    }
+    #modal-overlay.open { display: flex; }
+
+    #modal {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 14px;
+      padding: 1.75rem;
+      width: 100%;
+      max-width: 480px;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 24px 64px #00000088;
+    }
+
+    #modal h2 {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #7c86ff;
+      margin-bottom: 1.25rem;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.85rem;
+    }
+    .form-grid .full { grid-column: 1 / -1; }
+
+    .form-field { display: flex; flex-direction: column; gap: 0.35rem; }
+
+    .form-field label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #64748b;
+    }
+
+    .form-field textarea {
+      background: #0f1117;
+      border: 1px solid #2d3148;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.88rem;
+      padding: 0.5rem 0.65rem;
+      outline: none;
+      transition: border-color 0.2s;
+      width: 100%;
+      resize: vertical;
+      font-family: inherit;
+    }
+    .form-field textarea:focus { border-color: #7c86ff88; }
+
+    .form-field input, .form-field select {
+      background: #0f1117;
+      border: 1px solid #2d3148;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.88rem;
+      padding: 0.5rem 0.65rem;
+      outline: none;
+      transition: border-color 0.2s;
+      width: 100%;
+    }
+    .form-field input:focus, .form-field select:focus { border-color: #7c86ff88; }
+    .form-field select option { background: #1a1d27; }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.75rem;
+      margin-top: 1.5rem;
+    }
+
+    .btn-cancel {
+      background: transparent;
+      border: 1px solid #2d3148;
+      color: #94a3b8;
+      border-radius: 6px;
+      padding: 0.45rem 1.1rem;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-cancel:hover { background: #ffffff11; }
+
+    .btn-save {
+      background: #7c86ff33;
+      border: 1px solid #7c86ff66;
+      color: #7c86ff;
+      border-radius: 6px;
+      padding: 0.45rem 1.1rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-save:hover { background: #7c86ff44; }
+    .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    #modal-error {
+      font-size: 0.8rem;
+      color: #ef4444;
+      margin-top: 0.75rem;
+      display: none;
+    }
+
+    /* ---- Pagination ---- */
+    .pagination {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 1.5rem 0 2rem;
+    }
+    .pagination a, .pagination span {
+      font-size: 0.82rem;
+      padding: 0.35rem 0.85rem;
+      border-radius: 6px;
+      border: 1px solid #2d3148;
+      text-decoration: none;
+      color: #7c86ff;
+      transition: background 0.2s;
+    }
+    .pagination a:hover { background: #7c86ff22; }
+    .pagination span.current {
+      background: #7c86ff22;
+      border-color: #7c86ff55;
+      color: #e2e8f0;
+      font-weight: 700;
+    }
+    .pagination span.disabled { color: #334155; cursor: default; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Tracks — Tabuleiro</h1>
+  <nav class="nav">
+    <a href="/camera300/tracks/tabuleiro">&#8635; Atualizar</a>
+    <a href="/camera300/tracks/lista">Lista</a>
+    <a href="/camera300/tracks/permanencia">Permanência</a>
+    <a href="/camera300/">&#8592; Checkin</a>
+  </nav>
+</header>
+
+<main>
+
+  {% if not pessoas %}
+    <div class="empty-state">Nenhuma pessoa cadastrada.</div>
+  {% else %}
+
+    <div class="grid">
+      {% for p in pessoas %}
+        <div class="card">
+          {% if p.foto %}
+            <img class="card-photo" src="{{ p.foto }}"
+                 onerror="this.outerHTML='<div class=card-placeholder>sem foto</div>'"
+                 alt="ID {{ p.id_unico }}" />
+          {% else %}
+            <div class="card-placeholder">sem foto</div>
+          {% endif %}
+
+          <div class="card-body">
+            <span class="card-id">ID {{ p.id_unico }}</span>
+            <span class="card-nome" title="{{ p.nome or '' }}">{{ p.nome or '—' }}</span>
+            {% if p.flag %}
+              {% set flag_map = {'C': 'Cliente', 'A': 'Anônimo', 'F': 'Franqueado', 'E': 'Empregado'} %}
+              <span class="chip-flag">{{ flag_map.get(p.flag, p.flag) }}</span>
+            {% endif %}
+            <div class="card-actions">
+              <button class="btn-edit"
+                data-id="{{ p.id_unico }}"
+                data-nome="{{ p.nome or '' }}"
+                data-apelido="{{ p.apelido or '' }}"
+                data-doc="{{ p.doc or '' }}"
+                data-idade="{{ p.idade or '' }}"
+                data-genero="{{ p.genero or '' }}"
+                data-flag="{{ p.flag or '' }}"
+                data-notas="{{ p.notas or '' }}"
+                onclick="abrirModal(this)">&#9998; Editar</button>
+              <button class="btn-delete"
+                data-id="{{ p.id_unico }}"
+                data-nome="{{ p.nome or 'ID ' ~ p.id_unico }}"
+                onclick="confirmarExclusao(this)">&#128465; Excluir</button>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+    {% if total_pages > 1 %}
+      <div class="pagination">
+        {% if page > 1 %}
+          <a href="?page={{ page - 1 }}">&laquo; Anterior</a>
+        {% else %}
+          <span class="disabled">&laquo; Anterior</span>
+        {% endif %}
+
+        <span class="current">{{ page }} / {{ total_pages }}</span>
+
+        {% if page < total_pages %}
+          <a href="?page={{ page + 1 }}">Próxima &raquo;</a>
+        {% else %}
+          <span class="disabled">Próxima &raquo;</span>
+        {% endif %}
+      </div>
+    {% endif %}
+
+  {% endif %}
+
+</main>
+
+<!-- Modal de edição -->
+<div id="modal-overlay">
+  <div id="modal">
+    <h2 id="modal-title">Editar Pessoa</h2>
+    <form id="modal-form" onsubmit="salvarPessoa(event)">
+      <input type="hidden" id="f-id" />
+      <div class="form-grid">
+        <div class="form-field full">
+          <label>Nome</label>
+          <input type="text" id="f-nome" maxlength="120" />
+        </div>
+        <div class="form-field">
+          <label>Apelido</label>
+          <input type="text" id="f-apelido" maxlength="40" />
+        </div>
+        <div class="form-field">
+          <label>Idade</label>
+          <input type="number" id="f-idade" min="0" max="130" />
+        </div>
+        <div class="form-field full">
+          <label>Doc (CPF / CNPJ)</label>
+          <input type="text" id="f-doc" maxlength="20" placeholder="000.000.000-00" />
+        </div>
+        <div class="form-field">
+          <label>G&ecirc;nero</label>
+          <select id="f-genero">
+            <option value="">— selecionar —</option>
+            <option value="M">Masculino</option>
+            <option value="F">Feminino</option>
+            <option value="A">An&ocirc;nimo</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label>Flag</label>
+          <select id="f-flag">
+            <option value="">— selecionar —</option>
+            <option value="C">Cliente</option>
+            <option value="A">An&ocirc;nimo</option>
+            <option value="F">Franqueado</option>
+            <option value="E">Empregado</option>
+          </select>
+        </div>
+        <div class="form-field full">
+          <label>Notas</label>
+          <textarea id="f-notas" maxlength="255" rows="3" placeholder="Observações sobre a pessoa…"></textarea>
+        </div>
+      </div>
+      <div id="modal-error"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn-cancel" onclick="fecharModal()">Cancelar</button>
+        <button type="submit" class="btn-save" id="btn-save">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  function abrirModal(btn) {
+    document.getElementById('f-id').value      = btn.dataset.id;
+    document.getElementById('f-nome').value    = btn.dataset.nome;
+    document.getElementById('f-apelido').value = btn.dataset.apelido;
+    document.getElementById('f-doc').value     = btn.dataset.doc;
+    document.getElementById('f-idade').value   = btn.dataset.idade;
+    document.getElementById('f-genero').value  = btn.dataset.genero;
+    document.getElementById('f-flag').value    = btn.dataset.flag;
+    document.getElementById('f-notas').value   = btn.dataset.notas;
+    document.getElementById('modal-title').textContent =
+      'Editar — ' + (btn.dataset.nome || 'ID ' + btn.dataset.id);
+    document.getElementById('modal-error').style.display = 'none';
+    document.getElementById('modal-overlay').classList.add('open');
+    document.getElementById('f-nome').focus();
+  }
+
+  function fecharModal() {
+    document.getElementById('modal-overlay').classList.remove('open');
+  }
+
+  async function confirmarExclusao(btn) {
+    const id   = btn.dataset.id;
+    const nome = btn.dataset.nome;
+    if (!confirm(`Excluir "${nome}" (ID ${id})?\n\nIsso removerá a pessoa e todos os registros associados. Esta ação não pode ser desfeita.`)) return;
+    btn.disabled = true;
+    try {
+      const resp = await fetch(`/camera300/tracks/api/pessoa/${id}`, { method: 'DELETE' });
+      const data = await resp.json();
+      if (data.success) {
+        btn.closest('.card').remove();
+      } else {
+        alert('Erro ao excluir: ' + (data.error || 'desconhecido'));
+        btn.disabled = false;
+      }
+    } catch (err) {
+      alert('Falha na requisição.');
+      btn.disabled = false;
+    }
+  }
+
+  document.getElementById('modal-overlay').addEventListener('click', function(e) {
+    if (e.target === this) fecharModal();
+  });
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') fecharModal();
+  });
+
+  async function salvarPessoa(e) {
+    e.preventDefault();
+    const id = document.getElementById('f-id').value;
+    const payload = {
+      nome:    document.getElementById('f-nome').value.trim(),
+      apelido: document.getElementById('f-apelido').value.trim(),
+      doc:     document.getElementById('f-doc').value.trim(),
+      idade:   document.getElementById('f-idade').value !== ''
+               ? parseInt(document.getElementById('f-idade').value) : '',
+      genero:  document.getElementById('f-genero').value,
+      flag:    document.getElementById('f-flag').value,
+      notas:   document.getElementById('f-notas').value.trim(),
+    };
+
+    const errEl = document.getElementById('modal-error');
+    const btnSave = document.getElementById('btn-save');
+    errEl.style.display = 'none';
+    btnSave.disabled = true;
+
+    try {
+      const resp = await fetch(`/camera300/tracks/api/pessoa/${id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await resp.json();
+      if (data.success) {
+        fecharModal();
+        location.reload();
+      } else {
+        errEl.textContent = data.error || 'Erro ao salvar.';
+        errEl.style.display = 'block';
+      }
+    } catch (err) {
+      errEl.textContent = 'Falha na requisição.';
+      errEl.style.display = 'block';
+    } finally {
+      btnSave.disabled = false;
+    }
+  }
+</script>
+
+</body>
+</html>

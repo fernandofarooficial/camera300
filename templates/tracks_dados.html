@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tracks — Dados das Câmeras</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #1a1d27;
+      border-bottom: 1px solid #2d3148;
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    header h1 { font-size: 1.2rem; font-weight: 600; color: #7c86ff; }
+
+    .nav { display: flex; gap: 0.6rem; }
+    .nav a {
+      color: #7c86ff;
+      text-decoration: none;
+      font-size: 0.82rem;
+      border: 1px solid #7c86ff44;
+      padding: 0.3rem 0.8rem;
+      border-radius: 6px;
+      transition: background 0.2s;
+    }
+    .nav a:hover { background: #7c86ff22; }
+
+    main { max-width: 1200px; margin: 0 auto; padding: 1.5rem; display: flex; flex-direction: column; gap: 1.5rem; }
+
+    .empty-state { text-align: center; padding: 4rem 2rem; color: #475569; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.84rem;
+    }
+
+    thead th {
+      background: #1e2130;
+      color: #7c86ff;
+      font-weight: 600;
+      text-align: left;
+      padding: 0.65rem 0.9rem;
+      border-bottom: 2px solid #2d3148;
+      white-space: nowrap;
+    }
+
+    tbody tr {
+      border-bottom: 1px solid #1e2130;
+      transition: background 0.15s;
+      cursor: pointer;
+    }
+    tbody tr:hover { background: #1a1d2788; }
+    tbody tr.selected { background: #7c86ff18; outline: 1px solid #7c86ff44; }
+
+    tbody td {
+      padding: 0.6rem 0.9rem;
+      vertical-align: middle;
+      color: #cbd5e1;
+    }
+
+    .chip {
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 0.2rem 0.6rem;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+    .chip-id     { background: #7c86ff22; color: #7c86ff;  border: 1px solid #7c86ff44; }
+    .chip-tipo   { background: #60a5fa22; color: #60a5fa;  border: 1px solid #60a5fa44; }
+    .chip-grupo  { background: #f59e0b22; color: #f59e0b;  border: 1px solid #f59e0b44; }
+    .chip-empty  { color: #475569; font-style: italic; }
+
+    .rstp-cell {
+      font-family: monospace;
+      font-size: 0.75rem;
+      color: #94a3b8;
+      word-break: break-all;
+      max-width: 260px;
+    }
+
+    /* ---- Viewer panel ---- */
+    #viewer {
+      display: none;
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    #viewer.active { display: block; }
+
+    .viewer-header {
+      background: #1e2130;
+      border-bottom: 1px solid #2d3148;
+      padding: 0.75rem 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+    .viewer-title { font-size: 0.9rem; font-weight: 600; color: #e2e8f0; }
+    .viewer-meta  { font-size: 0.78rem; color: #64748b; }
+
+    .viewer-close {
+      background: none;
+      border: 1px solid #2d3148;
+      color: #94a3b8;
+      border-radius: 6px;
+      padding: 0.25rem 0.7rem;
+      cursor: pointer;
+      font-size: 0.8rem;
+      transition: background 0.2s;
+    }
+    .viewer-close:hover { background: #2d3148; }
+
+    .viewer-body {
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    #snapshot-img {
+      width: 100%;
+      max-width: 860px;
+      border-radius: 8px;
+      border: 1px solid #2d3148;
+      background: #0f1117;
+      display: block;
+    }
+
+    .viewer-status {
+      font-size: 0.78rem;
+      color: #64748b;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #64748b;
+      flex-shrink: 0;
+    }
+    .status-dot.live  { background: #22c55e; animation: pulse 1.4s infinite; }
+    .status-dot.error { background: #ef4444; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.4; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Tracks &mdash; Dados das Câmeras</h1>
+  <nav class="nav">
+    <a href="/camera300/">&#8592; Checkin</a>
+  </nav>
+</header>
+
+<main>
+
+  <!-- Viewer -->
+  <div id="viewer">
+    <div class="viewer-header">
+      <div>
+        <div class="viewer-title" id="viewer-title">—</div>
+        <div class="viewer-meta" id="viewer-meta"></div>
+      </div>
+      <button class="viewer-close" onclick="stopViewer()">&#x2715; Fechar</button>
+    </div>
+    <div class="viewer-body">
+      <img id="snapshot-img" src="" alt="Snapshot da câmera" />
+      <div class="viewer-status">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status-text">Aguardando…</span>
+      </div>
+    </div>
+  </div>
+
+  {% if not cameras %}
+    <div class="empty-state">Nenhuma câmera encontrada.</div>
+  {% else %}
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Câmera</th>
+        <th>Tipo</th>
+        <th>RTSP</th>
+        <th>CEP</th>
+        <th>Número</th>
+        <th>Complemento</th>
+        <th>Empresa</th>
+        <th>Grupo</th>
+        <th>Tipo Empresa</th>
+        <th>Dono</th>
+        <th>Criada em</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for cam in cameras %}
+      <tr data-id="{{ cam.id_camera }}" data-name="{{ cam.camera or 'Câmera ' ~ cam.id_camera }}" data-rstp="{{ cam.rstp or '' }}" onclick="selectCamera(this)">
+        <td><span class="chip chip-id">{{ cam.id_camera }}</span></td>
+        <td>{{ cam.camera or '<span class="chip-empty">—</span>' }}</td>
+        <td>
+          {% if cam.tipo_camera %}
+            <span class="chip chip-tipo">{{ cam.tipo_camera }}</span>
+          {% else %}
+            <span class="chip-empty">—</span>
+          {% endif %}
+        </td>
+        <td class="rstp-cell" title="{{ cam.rstp or '' }}">{{ cam.rstp[:10] ~ '…' if cam.rstp else '<span class="chip-empty">—</span>' }}</td>
+        <td>{{ cam.cep or '<span class="chip-empty">—</span>' }}</td>
+        <td>{{ cam.numero or '<span class="chip-empty">—</span>' }}</td>
+        <td>{{ cam.complemento or '<span class="chip-empty">—</span>' }}</td>
+        <td>{{ cam.empresa or '<span class="chip-empty">—</span>' }}</td>
+        <td>
+          {% if cam.grupo %}
+            <span class="chip chip-grupo">{{ cam.grupo }}</span>
+          {% else %}
+            <span class="chip-empty">—</span>
+          {% endif %}
+        </td>
+        <td>{{ cam.tipo_empresa or '<span class="chip-empty">—</span>' }}</td>
+        <td>{{ cam.dono or '<span class="chip-empty">—</span>' }}</td>
+        <td style="white-space:nowrap; color:#64748b; font-size:0.78rem;">
+          {{ cam.camera_criada_em.strftime('%d/%m/%Y %H:%M') if cam.camera_criada_em else '—' }}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+</main>
+
+<script>
+  let _intervalId  = null;
+  let _cameraId    = null;
+  let _snapshotSeq = 0;
+
+  function selectCamera(row) {
+    const id   = row.dataset.id;
+    const name = row.dataset.name;
+    const rstp = row.dataset.rstp;
+
+    // highlight
+    document.querySelectorAll('tbody tr.selected').forEach(r => r.classList.remove('selected'));
+    row.classList.add('selected');
+
+    if (!rstp) {
+      setStatus('error', 'Esta câmera não possui URL RTSP cadastrada.');
+      openViewer(name, '');
+      return;
+    }
+
+    if (_cameraId === id) return;   // já exibindo esta câmera
+    stopInterval();
+    _cameraId = id;
+
+    openViewer(name, rstp);
+    loadSnapshot();
+    _intervalId = setInterval(loadSnapshot, 30000);
+  }
+
+  function openViewer(name, rstp) {
+    document.getElementById('viewer-title').textContent = name;
+    document.getElementById('viewer-meta').textContent  = rstp || '';
+    document.getElementById('viewer').classList.add('active');
+    document.getElementById('viewer').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function loadSnapshot() {
+    if (!_cameraId) return;
+    const seq = ++_snapshotSeq;
+    setStatus('live', 'Carregando…');
+
+    const url  = `/camera300/tracks/snapshot/${_cameraId}?t=${Date.now()}`;
+    const img  = new Image();
+
+    img.onload = () => {
+      if (seq !== _snapshotSeq) return;   // resposta antiga, descarta
+      document.getElementById('snapshot-img').src = img.src;
+      const now = new Date().toLocaleTimeString('pt-BR');
+      setStatus('live', `Atualizado às ${now} · próximo em 30s`);
+    };
+
+    img.onerror = () => {
+      if (seq !== _snapshotSeq) return;
+      setStatus('error', 'Falha ao capturar frame. Tentando novamente em 5s…');
+    };
+
+    img.src = url;
+  }
+
+  function setStatus(type, msg) {
+    const dot  = document.getElementById('status-dot');
+    const text = document.getElementById('status-text');
+    dot.className  = 'status-dot' + (type ? ' ' + type : '');
+    text.textContent = msg;
+  }
+
+  function stopInterval() {
+    if (_intervalId) { clearInterval(_intervalId); _intervalId = null; }
+  }
+
+  function stopViewer() {
+    stopInterval();
+    _cameraId = null;
+    _snapshotSeq++;
+    document.getElementById('viewer').classList.remove('active');
+    document.getElementById('snapshot-img').src = '';
+    document.querySelectorAll('tbody tr.selected').forEach(r => r.classList.remove('selected'));
+    setStatus('', 'Aguardando…');
+  }
+</script>
+
+</body>
+</html>

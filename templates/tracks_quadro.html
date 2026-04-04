@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quadro — Gráficos</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #1a1d27;
+      border-bottom: 1px solid #2d3148;
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    header h1 { font-size: 1.2rem; font-weight: 600; color: #7c86ff; }
+
+    .nav { display: flex; gap: 0.6rem; }
+    .nav a {
+      color: #7c86ff;
+      text-decoration: none;
+      font-size: 0.82rem;
+      border: 1px solid #7c86ff44;
+      padding: 0.3rem 0.8rem;
+      border-radius: 6px;
+      transition: background 0.2s;
+    }
+    .nav a:hover { background: #7c86ff22; }
+
+    main {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 2rem;
+    }
+
+    .chart-card {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 12px;
+      padding: 1.5rem;
+    }
+
+    .chart-card h2 {
+      font-size: 0.85rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #7c86ff;
+      margin-bottom: 1.25rem;
+    }
+
+    .chart-wrap {
+      position: relative;
+      height: 320px;
+    }
+
+    .date-filter {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 1.25rem;
+      flex-wrap: wrap;
+    }
+    .date-filter label {
+      font-size: 0.78rem;
+      color: #64748b;
+      white-space: nowrap;
+    }
+    .date-filter input[type="date"] {
+      background: #0f1117;
+      border: 1px solid #2d3148;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.82rem;
+      padding: 0.3rem 0.6rem;
+      cursor: pointer;
+    }
+    .date-filter input[type="date"]:focus {
+      outline: none;
+      border-color: #7c86ff;
+    }
+    .date-filter button {
+      background: #7c86ff22;
+      border: 1px solid #7c86ff44;
+      border-radius: 6px;
+      color: #7c86ff;
+      font-size: 0.8rem;
+      padding: 0.3rem 0.8rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .date-filter button:hover { background: #7c86ff44; }
+
+    /* ---- Mobile (≤ 600px) ---- */
+    @media (max-width: 600px) {
+      header { padding: 0.75rem 1rem; }
+      header h1 { font-size: 1rem; }
+      .nav { flex-wrap: wrap; gap: 0.4rem; }
+      .nav a { font-size: 0.72rem; padding: 0.25rem 0.55rem; }
+
+      main { padding: 1rem 0.75rem; gap: 1.25rem; }
+
+      .chart-card { padding: 1rem 0.85rem; }
+      .chart-card h2 { font-size: 0.78rem; margin-bottom: 0.75rem; }
+
+      .chart-wrap { height: 220px; }
+
+      .date-filter { gap: 0.4rem; margin-bottom: 0.75rem; }
+      .date-filter label { font-size: 0.7rem; }
+      .date-filter input[type="date"] { font-size: 0.75rem; padding: 0.2rem 0.35rem; }
+      .date-filter button { font-size: 0.72rem; padding: 0.2rem 0.55rem; }
+    }
+
+    /* ---- PWA standalone: safe area ---- */
+    @media (display-mode: standalone) {
+      header {
+        padding-top: max(0.75rem, env(safe-area-inset-top));
+        padding-left: max(1rem, env(safe-area-inset-left));
+        padding-right: max(1rem, env(safe-area-inset-right));
+      }
+      main { padding-bottom: max(1.5rem, env(safe-area-inset-bottom)); }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Quadro — Gráficos</h1>
+  <nav class="nav">
+    <a href="/camera300/tracks/tabuleiro">Tabuleiro</a>
+    <a href="/camera300/tracks/lista">Lista</a>
+    <a href="/camera300/">&#8592; Checkin</a>
+  </nav>
+</header>
+
+<main>
+
+  <div class="chart-card">
+    <h2>Ocorrência por dia (clientes)</h2>
+    <form id="form-dia" class="date-filter" method="get" action="">
+      <input type="hidden" id="hd-h_ini" name="h_ini" value="{{ h_ini }}">
+      <input type="hidden" id="hd-h_fim" name="h_fim" value="{{ h_fim }}">
+      <input type="hidden" id="hd-p_ini" name="p_ini" value="{{ p_ini }}">
+      <input type="hidden" id="hd-p_fim" name="p_fim" value="{{ p_fim }}">
+      <input type="hidden" id="hd-e_ini" name="e_ini" value="{{ e_ini }}">
+      <input type="hidden" id="hd-e_fim" name="e_fim" value="{{ e_fim }}">
+      <input type="hidden" id="hd-perm_ini" name="perm_ini" value="{{ perm_ini }}">
+      <input type="hidden" id="hd-perm_fim" name="perm_fim" value="{{ perm_fim }}">
+      <input type="hidden" id="hd-gd_ini" name="gd_ini" value="{{ gd_ini }}">
+      <input type="hidden" id="hd-gd_fim" name="gd_fim" value="{{ gd_fim }}">
+      <label for="d_ini">De</label>
+      <input type="date" id="d_ini" name="d_ini" value="{{ d_ini }}">
+      <label for="d_fim">até</label>
+      <input type="date" id="d_fim" name="d_fim" value="{{ d_fim }}">
+      <button type="submit">Aplicar</button>
+    </form>
+    <div class="chart-wrap">
+      <canvas id="chartOcorrencias"></canvas>
+    </div>
+  </div>
+
+  <div class="chart-card">
+    <h2>Ocorrências por Horário</h2>
+    <form id="form-hora" class="date-filter" method="get" action="">
+      <input type="hidden" id="hd-d_ini" name="d_ini" value="{{ d_ini }}">
+      <input type="hidden" id="hd-d_fim" name="d_fim" value="{{ d_fim }}">
+      <input type="hidden" id="hd2-p_ini" name="p_ini" value="{{ p_ini }}">
+      <input type="hidden" id="hd2-p_fim" name="p_fim" value="{{ p_fim }}">
+      <input type="hidden" id="hd2-e_ini" name="e_ini" value="{{ e_ini }}">
+      <input type="hidden" id="hd2-e_fim" name="e_fim" value="{{ e_fim }}">
+      <input type="hidden" id="hd2-perm_ini" name="perm_ini" value="{{ perm_ini }}">
+      <input type="hidden" id="hd2-perm_fim" name="perm_fim" value="{{ perm_fim }}">
+      <input type="hidden" id="hd2-gd_ini" name="gd_ini" value="{{ gd_ini }}">
+      <input type="hidden" id="hd2-gd_fim" name="gd_fim" value="{{ gd_fim }}">
+      <label for="h_ini">De</label>
+      <input type="date" id="h_ini" name="h_ini" value="{{ h_ini }}">
+      <label for="h_fim">até</label>
+      <input type="date" id="h_fim" name="h_fim" value="{{ h_fim }}">
+      <button type="submit">Aplicar</button>
+    </form>
+    <div class="chart-wrap">
+      <canvas id="chartHorario"></canvas>
+    </div>
+  </div>
+
+  <div class="chart-card">
+    <h2>Ocorrências por Pessoa (mín. 3)</h2>
+    <form id="form-pessoa" class="date-filter" method="get" action="">
+      <input type="hidden" id="hd3-d_ini" name="d_ini" value="{{ d_ini }}">
+      <input type="hidden" id="hd3-d_fim" name="d_fim" value="{{ d_fim }}">
+      <input type="hidden" id="hd3-h_ini" name="h_ini" value="{{ h_ini }}">
+      <input type="hidden" id="hd3-h_fim" name="h_fim" value="{{ h_fim }}">
+      <input type="hidden" id="hd3-e_ini" name="e_ini" value="{{ e_ini }}">
+      <input type="hidden" id="hd3-e_fim" name="e_fim" value="{{ e_fim }}">
+      <input type="hidden" id="hd3-perm_ini" name="perm_ini" value="{{ perm_ini }}">
+      <input type="hidden" id="hd3-perm_fim" name="perm_fim" value="{{ perm_fim }}">
+      <input type="hidden" id="hd3-gd_ini" name="gd_ini" value="{{ gd_ini }}">
+      <input type="hidden" id="hd3-gd_fim" name="gd_fim" value="{{ gd_fim }}">
+      <label for="p_ini">De</label>
+      <input type="date" id="p_ini" name="p_ini" value="{{ p_ini }}">
+      <label for="p_fim">até</label>
+      <input type="date" id="p_fim" name="p_fim" value="{{ p_fim }}">
+      <button type="submit">Aplicar</button>
+    </form>
+    <div class="chart-wrap">
+      <canvas id="chartPessoa"></canvas>
+    </div>
+  </div>
+
+  <div class="chart-card">
+    <h2>Ocorrências por Faixa Etária — Clientes</h2>
+    <form id="form-etaria" class="date-filter" method="get" action="">
+      <input type="hidden" id="hd4-d_ini" name="d_ini" value="{{ d_ini }}">
+      <input type="hidden" id="hd4-d_fim" name="d_fim" value="{{ d_fim }}">
+      <input type="hidden" id="hd4-h_ini" name="h_ini" value="{{ h_ini }}">
+      <input type="hidden" id="hd4-h_fim" name="h_fim" value="{{ h_fim }}">
+      <input type="hidden" id="hd4-p_ini" name="p_ini" value="{{ p_ini }}">
+      <input type="hidden" id="hd4-p_fim" name="p_fim" value="{{ p_fim }}">
+      <input type="hidden" id="hd4-perm_ini" name="perm_ini" value="{{ perm_ini }}">
+      <input type="hidden" id="hd4-perm_fim" name="perm_fim" value="{{ perm_fim }}">
+      <input type="hidden" id="hd4-gd_ini" name="gd_ini" value="{{ gd_ini }}">
+      <input type="hidden" id="hd4-gd_fim" name="gd_fim" value="{{ gd_fim }}">
+      <label for="e_ini">De</label>
+      <input type="date" id="e_ini" name="e_ini" value="{{ e_ini }}">
+      <label for="e_fim">até</label>
+      <input type="date" id="e_fim" name="e_fim" value="{{ e_fim }}">
+      <button type="submit">Aplicar</button>
+    </form>
+    <div class="chart-wrap">
+      <canvas id="chartEtaria"></canvas>
+    </div>
+  </div>
+
+  <div class="chart-card">
+    <h2>Clientes por Gênero — Por Dia</h2>
+    <form id="form-gd" class="date-filter" method="get" action="">
+      <input type="hidden" id="hd6-d_ini" name="d_ini" value="{{ d_ini }}">
+      <input type="hidden" id="hd6-d_fim" name="d_fim" value="{{ d_fim }}">
+      <input type="hidden" id="hd6-h_ini" name="h_ini" value="{{ h_ini }}">
+      <input type="hidden" id="hd6-h_fim" name="h_fim" value="{{ h_fim }}">
+      <input type="hidden" id="hd6-p_ini" name="p_ini" value="{{ p_ini }}">
+      <input type="hidden" id="hd6-p_fim" name="p_fim" value="{{ p_fim }}">
+      <input type="hidden" id="hd6-e_ini" name="e_ini" value="{{ e_ini }}">
+      <input type="hidden" id="hd6-e_fim" name="e_fim" value="{{ e_fim }}">
+      <input type="hidden" id="hd6-perm_ini" name="perm_ini" value="{{ perm_ini }}">
+      <input type="hidden" id="hd6-perm_fim" name="perm_fim" value="{{ perm_fim }}">
+      <label for="gd_ini">De</label>
+      <input type="date" id="gd_ini" name="gd_ini" value="{{ gd_ini }}">
+      <label for="gd_fim">até</label>
+      <input type="date" id="gd_fim" name="gd_fim" value="{{ gd_fim }}">
+      <button type="submit">Aplicar</button>
+    </form>
+    <div class="chart-wrap">
+      <canvas id="chartGeneroDia"></canvas>
+    </div>
+  </div>
+
+  <div class="chart-card">
+    <h2>Tempo Médio de Permanência</h2>
+    <form id="form-perm" class="date-filter" method="get" action="">
+      <input type="hidden" id="hd5-d_ini" name="d_ini" value="{{ d_ini }}">
+      <input type="hidden" id="hd5-d_fim" name="d_fim" value="{{ d_fim }}">
+      <input type="hidden" id="hd5-h_ini" name="h_ini" value="{{ h_ini }}">
+      <input type="hidden" id="hd5-h_fim" name="h_fim" value="{{ h_fim }}">
+      <input type="hidden" id="hd5-p_ini" name="p_ini" value="{{ p_ini }}">
+      <input type="hidden" id="hd5-p_fim" name="p_fim" value="{{ p_fim }}">
+      <input type="hidden" id="hd5-e_ini" name="e_ini" value="{{ e_ini }}">
+      <input type="hidden" id="hd5-e_fim" name="e_fim" value="{{ e_fim }}">
+      <input type="hidden" id="hd5-gd_ini" name="gd_ini" value="{{ gd_ini }}">
+      <input type="hidden" id="hd5-gd_fim" name="gd_fim" value="{{ gd_fim }}">
+      <label for="perm_ini">De</label>
+      <input type="date" id="perm_ini" name="perm_ini" value="{{ perm_ini }}">
+      <label for="perm_fim">até</label>
+      <input type="date" id="perm_fim" name="perm_fim" value="{{ perm_fim }}">
+      <button type="submit">Aplicar</button>
+    </form>
+    <div class="chart-wrap">
+      <canvas id="chartPermanencia"></canvas>
+    </div>
+  </div>
+
+</main>
+
+<script>
+  const dados = {{ ocorrencias_por_dia | tojson }};
+
+  const labels = dados.map(d => {
+    const [ano, mes, dia] = d.dia.split('-');
+    return `${dia}/${mes}`;
+  });
+  const valores = dados.map(d => d.total);
+
+  const isMobile = window.innerWidth <= 600;
+  // Configurações de eixo X adaptadas ao tamanho da tela
+  const xTicks = (size) => ({
+    color: '#64748b',
+    font: { size: isMobile ? 9 : size },
+    maxRotation: isMobile ? 75 : 0,
+    autoSkipPadding: 8,
+  });
+
+  Chart.register(ChartDataLabels);
+
+  new Chart(document.getElementById('chartOcorrencias'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Ocorrências',
+        data: valores,
+        backgroundColor: '#7c86ff33',
+        borderColor: '#7c86ff',
+        borderWidth: 2,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        datalabels: {
+          anchor: 'start',
+          align: 'end',
+          display: !isMobile,
+          color: '#94a3b8',
+          font: { size: 11, weight: '600' },
+          formatter: (value) => value,
+        },
+        tooltip: {
+          callbacks: {
+            title: (items) => {
+              const idx = items[0].dataIndex;
+              return dados[idx].dia;
+            },
+            label: (item) => ` ${item.raw} ocorrência${item.raw !== 1 ? 's' : ''}`,
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: xTicks(11),
+          grid: { color: '#1e2130' },
+        },
+        y: {
+          beginAtZero: true,
+          ticks: { color: '#64748b', precision: 0, font: { size: 11 } },
+          grid: { color: '#2d3148' },
+        }
+      }
+    }
+  });
+  const dadosHora = {{ ocorrencias_por_hora | tojson }};
+  const dadosPessoa = {{ ocorrencias_por_pessoa | tojson }};
+
+  new Chart(document.getElementById('chartHorario'), {
+    type: 'bar',
+    data: {
+      labels: dadosHora.map(d => d.faixa),
+      datasets: [{
+        label: 'Ocorrências',
+        data: dadosHora.map(d => d.total),
+        backgroundColor: '#22c55e33',
+        borderColor: '#22c55e',
+        borderWidth: 2,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        datalabels: {
+          anchor: 'start',
+          align: 'end',
+          display: !isMobile,
+          color: '#94a3b8',
+          font: { size: 11, weight: '600' },
+          formatter: (value) => value || '',
+        },
+        tooltip: {
+          callbacks: {
+            label: (item) => ` ${item.raw} ocorrência${item.raw !== 1 ? 's' : ''}`,
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: xTicks(11),
+          grid: { color: '#1e2130' },
+        },
+        y: {
+          beginAtZero: true,
+          ticks: { color: '#64748b', precision: 0, font: { size: 11 } },
+          grid: { color: '#2d3148' },
+        }
+      }
+    }
+  });
+</script>
+
+<script>
+  // Gráfico por Pessoa
+  new Chart(document.getElementById('chartPessoa'), {
+    type: 'bar',
+    data: {
+      labels: dadosPessoa.map(d => d.apelido),
+      datasets: [{
+        label: 'Ocorrências',
+        data: dadosPessoa.map(d => d.total),
+        backgroundColor: '#f59e0b33',
+        borderColor: '#f59e0b',
+        borderWidth: 2,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        datalabels: {
+          anchor: 'start',
+          align: 'end',
+          display: !isMobile,
+          color: '#94a3b8',
+          font: { size: 11, weight: '600' },
+          formatter: (value) => value,
+        },
+        tooltip: {
+          callbacks: {
+            label: (item) => ` ${item.raw} ocorrência${item.raw !== 1 ? 's' : ''}`,
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: xTicks(11),
+          grid: { color: '#1e2130' },
+        },
+        y: {
+          beginAtZero: true,
+          ticks: { color: '#64748b', precision: 0, font: { size: 11 } },
+          grid: { color: '#2d3148' },
+        }
+      }
+    }
+  });
+
+  // Gráfico por Faixa Etária
+  const dadosEtaria = {{ ocorrencias_por_faixa_etaria | tojson }};
+  new Chart(document.getElementById('chartEtaria'), {
+    type: 'bar',
+    data: {
+      labels: dadosEtaria.map(d => d.faixa),
+      datasets: [{
+        label: 'Ocorrências',
+        data: dadosEtaria.map(d => d.total),
+        backgroundColor: '#a78bfa33',
+        borderColor: '#a78bfa',
+        borderWidth: 2,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        datalabels: {
+          anchor: 'start',
+          align: 'end',
+          display: !isMobile,
+          color: '#94a3b8',
+          font: { size: 11, weight: '600' },
+          formatter: (value) => value || '',
+        },
+        tooltip: {
+          callbacks: {
+            label: (item) => ` ${item.raw} ocorrência${item.raw !== 1 ? 's' : ''}`,
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: xTicks(12),
+          grid: { color: '#1e2130' },
+        },
+        y: {
+          beginAtZero: true,
+          ticks: { color: '#64748b', precision: 0, font: { size: 11 } },
+          grid: { color: '#2d3148' },
+        }
+      }
+    }
+  });
+
+  // Gráfico clientes por gênero por dia
+  const dadosGeneroDia = {{ genero_por_dia | tojson }};
+  new Chart(document.getElementById('chartGeneroDia'), {
+    type: 'bar',
+    data: {
+      labels: dadosGeneroDia.map(d => {
+        const [ano, mes, dia] = d.dia.split('-');
+        return `${dia}/${mes}`;
+      }),
+      datasets: [
+        {
+          label: 'Masculino',
+          data: dadosGeneroDia.map(d => d.M),
+          backgroundColor: '#60a5fa33',
+          borderColor: '#60a5fa',
+          borderWidth: 2,
+          borderRadius: 4,
+        },
+        {
+          label: 'Feminino',
+          data: dadosGeneroDia.map(d => d.F),
+          backgroundColor: '#f472b633',
+          borderColor: '#f472b6',
+          borderWidth: 2,
+          borderRadius: 4,
+        },
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: true, labels: { color: '#94a3b8', font: { size: 11 } } },
+        datalabels: {
+          anchor: 'start',
+          align: 'end',
+          display: !isMobile,
+          color: '#94a3b8',
+          font: { size: 11, weight: '600' },
+          formatter: (value) => value || '',
+        },
+        tooltip: {
+          callbacks: {
+            title: (items) => dadosGeneroDia[items[0].dataIndex].dia,
+            label: (item) => ` ${item.dataset.label}: ${item.raw}`,
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: xTicks(11),
+          grid: { color: '#1e2130' },
+        },
+        y: {
+          beginAtZero: true,
+          ticks: { color: '#64748b', precision: 0, font: { size: 11 } },
+          grid: { color: '#2d3148' },
+        }
+      }
+    }
+  });
+
+  // Gráfico tempo médio de permanência
+  const dadosPerm = {{ permanencia_media | tojson }};
+  new Chart(document.getElementById('chartPermanencia'), {
+    type: 'bar',
+    data: {
+      labels: dadosPerm.map(d => d.label),
+      datasets: [{
+        label: 'Tempo médio',
+        data: dadosPerm.map(d => d.minutos),
+        backgroundColor: ['#7c86ff33', '#60a5fa33', '#f472b633'],
+        borderColor:     ['#7c86ff',   '#60a5fa',   '#f472b6'],
+        borderWidth: 2,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        datalabels: {
+          anchor: 'start',
+          align: 'end',
+          display: !isMobile,
+          color: '#94a3b8',
+          font: { size: 12, weight: '600' },
+          formatter: (value, ctx) => dadosPerm[ctx.dataIndex].fmt,
+        },
+        tooltip: {
+          callbacks: {
+            label: (item) => ` ${dadosPerm[item.dataIndex].fmt}`,
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: xTicks(12),
+          grid: { color: '#1e2130' },
+        },
+        y: {
+          beginAtZero: true,
+          ticks: {
+            color: '#64748b',
+            font: { size: 11 },
+            callback: (v) => {
+              const h = Math.floor(v / 60), m = Math.floor(v % 60);
+              return h > 0 ? `${h}h ${String(m).padStart(2,'0')}min` : `${m}min`;
+            }
+          },
+          grid: { color: '#2d3148' },
+        }
+      }
+    }
+  });
+
+  // Sincronização dos filtros de data entre os seis gráficos
+  document.getElementById('form-dia').addEventListener('submit', function () {
+    document.getElementById('hd-h_ini').value = document.getElementById('h_ini').value;
+    document.getElementById('hd-h_fim').value = document.getElementById('h_fim').value;
+    document.getElementById('hd-p_ini').value = document.getElementById('p_ini').value;
+    document.getElementById('hd-p_fim').value = document.getElementById('p_fim').value;
+    document.getElementById('hd-e_ini').value = document.getElementById('e_ini').value;
+    document.getElementById('hd-e_fim').value = document.getElementById('e_fim').value;
+    document.getElementById('hd-perm_ini').value = document.getElementById('perm_ini').value;
+    document.getElementById('hd-perm_fim').value = document.getElementById('perm_fim').value;
+    document.getElementById('hd-gd_ini').value = document.getElementById('gd_ini').value;
+    document.getElementById('hd-gd_fim').value = document.getElementById('gd_fim').value;
+  });
+  document.getElementById('form-hora').addEventListener('submit', function () {
+    document.getElementById('hd-d_ini').value = document.getElementById('d_ini').value;
+    document.getElementById('hd-d_fim').value = document.getElementById('d_fim').value;
+    document.getElementById('hd2-p_ini').value = document.getElementById('p_ini').value;
+    document.getElementById('hd2-p_fim').value = document.getElementById('p_fim').value;
+    document.getElementById('hd2-e_ini').value = document.getElementById('e_ini').value;
+    document.getElementById('hd2-e_fim').value = document.getElementById('e_fim').value;
+    document.getElementById('hd2-perm_ini').value = document.getElementById('perm_ini').value;
+    document.getElementById('hd2-perm_fim').value = document.getElementById('perm_fim').value;
+    document.getElementById('hd2-gd_ini').value = document.getElementById('gd_ini').value;
+    document.getElementById('hd2-gd_fim').value = document.getElementById('gd_fim').value;
+  });
+  document.getElementById('form-pessoa').addEventListener('submit', function () {
+    document.getElementById('hd3-d_ini').value = document.getElementById('d_ini').value;
+    document.getElementById('hd3-d_fim').value = document.getElementById('d_fim').value;
+    document.getElementById('hd3-h_ini').value = document.getElementById('h_ini').value;
+    document.getElementById('hd3-h_fim').value = document.getElementById('h_fim').value;
+    document.getElementById('hd3-e_ini').value = document.getElementById('e_ini').value;
+    document.getElementById('hd3-e_fim').value = document.getElementById('e_fim').value;
+    document.getElementById('hd3-perm_ini').value = document.getElementById('perm_ini').value;
+    document.getElementById('hd3-perm_fim').value = document.getElementById('perm_fim').value;
+    document.getElementById('hd3-gd_ini').value = document.getElementById('gd_ini').value;
+    document.getElementById('hd3-gd_fim').value = document.getElementById('gd_fim').value;
+  });
+  document.getElementById('form-etaria').addEventListener('submit', function () {
+    document.getElementById('hd4-d_ini').value = document.getElementById('d_ini').value;
+    document.getElementById('hd4-d_fim').value = document.getElementById('d_fim').value;
+    document.getElementById('hd4-h_ini').value = document.getElementById('h_ini').value;
+    document.getElementById('hd4-h_fim').value = document.getElementById('h_fim').value;
+    document.getElementById('hd4-p_ini').value = document.getElementById('p_ini').value;
+    document.getElementById('hd4-p_fim').value = document.getElementById('p_fim').value;
+    document.getElementById('hd4-perm_ini').value = document.getElementById('perm_ini').value;
+    document.getElementById('hd4-perm_fim').value = document.getElementById('perm_fim').value;
+    document.getElementById('hd4-gd_ini').value = document.getElementById('gd_ini').value;
+    document.getElementById('hd4-gd_fim').value = document.getElementById('gd_fim').value;
+  });
+  document.getElementById('form-perm').addEventListener('submit', function () {
+    document.getElementById('hd5-d_ini').value = document.getElementById('d_ini').value;
+    document.getElementById('hd5-d_fim').value = document.getElementById('d_fim').value;
+    document.getElementById('hd5-h_ini').value = document.getElementById('h_ini').value;
+    document.getElementById('hd5-h_fim').value = document.getElementById('h_fim').value;
+    document.getElementById('hd5-p_ini').value = document.getElementById('p_ini').value;
+    document.getElementById('hd5-p_fim').value = document.getElementById('p_fim').value;
+    document.getElementById('hd5-e_ini').value = document.getElementById('e_ini').value;
+    document.getElementById('hd5-e_fim').value = document.getElementById('e_fim').value;
+    document.getElementById('hd5-gd_ini').value = document.getElementById('gd_ini').value;
+    document.getElementById('hd5-gd_fim').value = document.getElementById('gd_fim').value;
+  });
+  document.getElementById('form-gd').addEventListener('submit', function () {
+    document.getElementById('hd6-d_ini').value = document.getElementById('d_ini').value;
+    document.getElementById('hd6-d_fim').value = document.getElementById('d_fim').value;
+    document.getElementById('hd6-h_ini').value = document.getElementById('h_ini').value;
+    document.getElementById('hd6-h_fim').value = document.getElementById('h_fim').value;
+    document.getElementById('hd6-p_ini').value = document.getElementById('p_ini').value;
+    document.getElementById('hd6-p_fim').value = document.getElementById('p_fim').value;
+    document.getElementById('hd6-e_ini').value = document.getElementById('e_ini').value;
+    document.getElementById('hd6-e_fim').value = document.getElementById('e_fim').value;
+    document.getElementById('hd6-perm_ini').value = document.getElementById('perm_ini').value;
+    document.getElementById('hd6-perm_fim').value = document.getElementById('perm_fim').value;
+  });
+</script>
+
+</body>
+</html>

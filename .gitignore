@@ -1,0 +1,27 @@
+# Ambiente virtual
+venv/
+.venv/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.py[cod]
+
+# Logs
+*.log
+*.log.*
+
+# IDE
+.idea/
+.vscode/
+
+# Claude Code
+.claude/
+
+# Arquivos locais
+doc_fonte/
+
+# Ambiente
+.env

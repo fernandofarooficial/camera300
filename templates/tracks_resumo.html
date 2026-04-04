@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tracks — Resumo</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #1a1d27;
+      border-bottom: 1px solid #2d3148;
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    header h1 { font-size: 1.2rem; font-weight: 600; color: #7c86ff; }
+
+    .nav { display: flex; gap: 0.6rem; }
+    .nav a {
+      color: #7c86ff;
+      text-decoration: none;
+      font-size: 0.82rem;
+      border: 1px solid #7c86ff44;
+      padding: 0.3rem 0.8rem;
+      border-radius: 6px;
+      transition: background 0.2s;
+    }
+    .nav a:hover { background: #7c86ff22; }
+
+    main { max-width: 1400px; margin: 0 auto; padding: 1.5rem; }
+
+    .track-block { margin-bottom: 2.5rem; }
+
+    .track-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #64748b;
+      margin-bottom: 0.6rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+    .track-label .tid {
+      font-family: 'Courier New', monospace;
+      color: #7c86ff;
+      font-size: 0.82rem;
+      font-weight: 600;
+      text-transform: none;
+    }
+    .count-badge {
+      background: #7c86ff22;
+      border: 1px solid #7c86ff44;
+      color: #7c86ff;
+      border-radius: 999px;
+      padding: 0.15rem 0.6rem;
+      font-size: 0.7rem;
+    }
+    .badge-error {
+      background: #ef444422; color: #ef4444;
+      border: 1px solid #ef444444;
+      border-radius: 999px; padding: 0.15rem 0.6rem; font-size: 0.7rem;
+    }
+    .badge-empty {
+      background: #f59e0b22; color: #f59e0b;
+      border: 1px solid #f59e0b44;
+      border-radius: 999px; padding: 0.15rem 0.6rem; font-size: 0.7rem;
+    }
+
+    .table-wrap {
+      border: 1px solid #2d3148;
+      border-radius: 10px;
+      overflow: hidden;
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.83rem;
+      min-width: 700px;
+    }
+
+    thead { background: #1e2130; }
+    thead th {
+      padding: 0.65rem 1rem;
+      text-align: left;
+      font-size: 0.68rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #64748b;
+      border-bottom: 1px solid #2d3148;
+      white-space: nowrap;
+    }
+
+    tbody tr {
+      border-bottom: 1px solid #1e2130;
+      transition: background 0.15s;
+    }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: #1e2130; }
+
+    td { padding: 0.55rem 1rem; vertical-align: middle; }
+
+    .null   { color: #334155; font-style: italic; }
+    .score  { color: #22c55e; font-weight: 700; }
+    .mono   { font-family: 'Courier New', monospace; font-size: 0.75rem; color: #94a3b8; }
+
+    .gender-M { color: #60a5fa; font-weight: 600; }
+    .gender-F { color: #f472b6; font-weight: 600; }
+
+    .thumb {
+      width: 64px;
+      height: 64px;
+      object-fit: cover;
+      border-radius: 6px;
+      border: 1px solid #2d3148;
+      display: block;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+    .thumb:hover { transform: scale(1.08); }
+    .no-thumb { color: #334155; font-style: italic; font-size: 0.75rem; }
+
+    .empty-state {
+      text-align: center; padding: 4rem 2rem; color: #475569;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Tracks — Resumo</h1>
+  <nav class="nav">
+    <a href="/camera300/tracks/resumo">&#8635; Atualizar</a>
+    <a href="/camera300/tracks/lista">Lista</a>
+    <a href="/camera300/">&#8592; Checkin</a>
+  </nav>
+</header>
+
+<main>
+
+  {% if not results %}
+    <div class="empty-state">Nenhum track_id encontrado no banco.</div>
+  {% endif %}
+
+  {% for r in results %}
+    <div class="track-block">
+
+      <div class="track-label">
+        DB #{{ r.db_id }}
+        <span class="tid">{{ r.track_id }}</span>
+        {% if r.id_unico %}
+          <span style="color:#f59e0b;font-family:'Courier New',monospace;font-size:0.82rem">ID único: {{ r.id_unico }}</span>
+        {% endif %}
+        {% if r.nome %}
+          <span style="color:#e2e8f0;font-size:0.82rem">{{ r.nome }}</span>
+        {% endif %}
+        {% if r.apelido %}
+          <span style="color:#94a3b8;font-size:0.78rem">({{ r.apelido }})</span>
+        {% endif %}
+        {% if r.faces %}
+          <span class="count-badge">{{ r.faces | length }} ocorrência(s)</span>
+        {% endif %}
+        {% if r.error %}
+          <span class="badge-error">{{ r.error[:120] }}</span>
+        {% elif not r.faces %}
+          <span class="badge-empty">Sem resultados</span>
+        {% endif %}
+      </div>
+      {% if r.image_path %}
+        <div style="font-size:0.72rem;font-family:'Courier New',monospace;color:#64748b;margin-bottom:0.5rem;padding-left:0.1rem">
+          {{ r.image_path }}
+        </div>
+      {% endif %}
+
+      {% if r.faces %}
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Imagem</th>
+                <th>ID</th>
+                <th>Track ID</th>
+                <th>Idade</th>
+                <th>Gênero</th>
+                <th>Score Det.</th>
+                <th>Score Recgn.</th>
+                <th>Image Path</th>
+                <th>Timestamp</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for f in r.faces %}
+                <tr>
+                  <td class="null">{{ loop.index }}</td>
+                  <td>
+                    {% if f.image_url %}
+                      <img class="thumb" src="{{ f.image_url }}" alt="rosto"
+                           onerror="this.outerHTML='<span class=no-thumb>—</span>'" />
+                    {% else %}
+                      <span class="no-thumb">—</span>
+                    {% endif %}
+                  </td>
+                  <td class="mono">{{ f.id if f.id is not none else '—' }}</td>
+                  <td class="mono">{{ f.track_id or '—' }}</td>
+                  <td>{{ f.age if f.age is not none else '<span class="null">—</span>' | safe }}</td>
+                  <td class="gender-{{ f.gender if f.gender in ['M','F'] else '' }}">
+                    {{ f.gender if f.gender is not none else '<span class="null">—</span>' | safe }}
+                  </td>
+                  <td class="{{ 'score' if f.face_det_score else 'null' }}">
+                    {{ f.face_det_score or '—' }}
+                  </td>
+                  <td class="{{ 'score' if f.face_recgn_score else 'null' }}">
+                    {{ f.face_recgn_score or '—' }}
+                  </td>
+                  <td class="mono" style="font-size:0.72rem">
+                    {{ f.image_path if f.image_path else '<span class="null">—</span>' | safe }}
+                  </td>
+                  <td style="font-size:0.78rem; white-space:nowrap">
+                    {{ f.timestamp if f.timestamp is not none else '<span class="null">—</span>' | safe }}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+
+    </div>
+  {% endfor %}
+
+</main>
+</body>
+</html>

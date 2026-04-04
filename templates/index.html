@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Facial Recognition - Checkin</title>
+
+  <!-- PWA: manifest (Android / Chrome) -->
+  <link rel="manifest" href="/static/manifest.json" />
+  <meta name="theme-color" content="#1a1d27" />
+
+  <!-- PWA: iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Checkin" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/icons/icon-180.png" />
+
+  <!-- Fallback ícone padrão -->
+  <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #1a1d27;
+      border-bottom: 1px solid #2d3148;
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    header h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: #7c86ff;
+      letter-spacing: 0.03em;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    #status-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: #ef4444;
+      transition: background 0.3s;
+    }
+    #status-dot.connected { background: #22c55e; }
+
+    #status-text { font-size: 0.8rem; color: #94a3b8; }
+
+    #count-badge {
+      background: #7c86ff22;
+      border: 1px solid #7c86ff55;
+      color: #7c86ff;
+      border-radius: 999px;
+      padding: 0.2rem 0.75rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+
+    .nav-link {
+      color: #7c86ff;
+      text-decoration: none;
+      font-size: 0.8rem;
+      border: 1px solid #7c86ff44;
+      padding: 0.35rem 0.8rem;
+      border-radius: 6px;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+    .nav-link:hover { background: #7c86ff22; }
+
+    button#btn-clear {
+      background: #ef444422;
+      border: 1px solid #ef444444;
+      color: #ef4444;
+      border-radius: 6px;
+      padding: 0.35rem 0.9rem;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button#btn-clear:hover { background: #ef444433; }
+
+
+    main {
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 1.5rem 1.5rem;
+      display: flex;
+      gap: 1.5rem;
+      align-items: flex-start;
+    }
+
+    #events-area {
+      flex: 1;
+      min-width: 0;
+    }
+
+    /* ---- Log Panel ---- */
+    #log-panel {
+      width: 600px;
+      flex-shrink: 0;
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 12px;
+      position: sticky;
+      top: 5rem;
+      max-height: calc(100vh - 6rem);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    #log-panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem 1rem;
+      background: #1e2130;
+      border-bottom: 1px solid #2d3148;
+      flex-shrink: 0;
+    }
+
+    #log-panel-header h2 {
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #7c86ff;
+    }
+
+    #log-count {
+      font-size: 0.72rem;
+      color: #64748b;
+    }
+
+    button#btn-clear-log {
+      background: #475569;
+      border: none;
+      color: #94a3b8;
+      border-radius: 4px;
+      padding: 0.2rem 0.6rem;
+      font-size: 0.72rem;
+      cursor: pointer;
+    }
+    button#btn-clear-log:hover { background: #64748b; }
+
+    #log-entries {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0.5rem 0;
+      scroll-behavior: smooth;
+    }
+
+    .log-entry {
+      display: flex;
+      gap: 0.5rem;
+      padding: 0.3rem 0.75rem;
+      border-bottom: 1px solid #1e2130;
+      font-size: 0.75rem;
+      line-height: 1.4;
+      animation: fadeIn 0.2s ease;
+    }
+    .log-entry:hover { background: #1e2130; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+
+    .log-time {
+      color: #475569;
+      flex-shrink: 0;
+      font-family: monospace;
+      font-size: 0.7rem;
+      padding-top: 0.05rem;
+    }
+
+    .log-track {
+      flex-shrink: 0;
+      font-family: monospace;
+      font-size: 0.68rem;
+      font-weight: 700;
+      border-radius: 3px;
+      padding: 0.05rem 0.35rem;
+      align-self: flex-start;
+    }
+
+    .log-msg {
+      color: #cbd5e1;
+      word-break: break-word;
+    }
+
+    .log-msg.is-error { color: #ef4444; }
+    .log-msg.is-ok    { color: #22c55e; }
+
+    #empty-state {
+      text-align: center;
+      padding: 5rem 2rem;
+      color: #475569;
+    }
+    #empty-state svg { width: 56px; height: 56px; margin-bottom: 1rem; opacity: 0.4; }
+    #empty-state p { font-size: 1rem; }
+
+    /* ---- Event Card ---- */
+    .event-card {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 12px;
+      margin-bottom: 1.25rem;
+      overflow: hidden;
+      animation: slideIn 0.3s ease;
+    }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(-12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.85rem 1.25rem;
+      background: #1e2130;
+      border-bottom: 1px solid #2d3148;
+      cursor: pointer;
+      user-select: none;
+    }
+    .card-header:hover { background: #22253a; }
+
+    .card-title {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+
+    .badge {
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 0.2rem 0.6rem;
+      border-radius: 999px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .badge-new   { background: #7c86ff22; color: #7c86ff; border: 1px solid #7c86ff44; }
+    .badge-post  { background: #22c55e22; color: #22c55e; border: 1px solid #22c55e44; }
+
+    .card-meta {
+      font-size: 0.78rem;
+      color: #64748b;
+    }
+
+    .card-chevron {
+      color: #475569;
+      font-size: 0.85rem;
+      transition: transform 0.25s;
+    }
+    .card-chevron.open { transform: rotate(180deg); }
+
+    .card-body {
+      display: none;
+      padding: 1.25rem;
+      gap: 1.25rem;
+    }
+    .card-body.open { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+
+    /* ---- Section inside card ---- */
+    .section-title {
+      grid-column: 1 / -1;
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #7c86ff;
+      margin-bottom: -0.5rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid #2d3148;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+
+    .field-label {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #64748b;
+    }
+
+    .field-value {
+      font-size: 0.88rem;
+      color: #e2e8f0;
+      word-break: break-all;
+      background: #0f1117;
+      border: 1px solid #2d3148;
+      border-radius: 6px;
+      padding: 0.45rem 0.65rem;
+      min-height: 2rem;
+    }
+    .field-value.null  { color: #475569; font-style: italic; }
+    .field-value.score { color: #22c55e; font-weight: 700; }
+    .field-value.status-ok   { color: #22c55e; }
+    .field-value.status-warn { color: #f59e0b; }
+
+    .field-value img {
+      max-width: 100%;
+      max-height: 220px;
+      border-radius: 6px;
+      display: block;
+      margin-top: 0.25rem;
+      object-fit: cover;
+    }
+
+    /* Wide fields */
+    .field.wide {
+      grid-column: 1 / -1;
+    }
+
+    /* Groups list */
+    .groups-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .group-item {
+      background: #0f1117;
+      border: 1px solid #2d3148;
+      border-radius: 6px;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.82rem;
+    }
+    .group-item strong { color: #7c86ff; }
+
+    /* JSON blob */
+    .json-blob {
+      font-size: 0.75rem;
+      font-family: 'Courier New', monospace;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: #94a3b8;
+      background: #0f1117;
+      border: 1px solid #2d3148;
+      border-radius: 6px;
+      padding: 0.65rem;
+      max-height: 160px;
+      overflow-y: auto;
+    }
+
+    /* Camera section */
+    .camera-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 0.75rem;
+      grid-column: 1 / -1;
+    }
+
+    /* Recipients list */
+    .recipients {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+    }
+    .recipient-chip {
+      background: #7c86ff22;
+      border: 1px solid #7c86ff33;
+      color: #7c86ff;
+      border-radius: 999px;
+      padding: 0.15rem 0.65rem;
+      font-size: 0.78rem;
+    }
+
+    /* ---- PWA standalone: esconder log de debug, safe area ---- */
+    @media (display-mode: standalone) {
+      #log-panel { display: none; }
+      header {
+        padding-top: max(0.75rem, env(safe-area-inset-top));
+        padding-left: max(1rem, env(safe-area-inset-left));
+        padding-right: max(1rem, env(safe-area-inset-right));
+      }
+      main { padding-bottom: max(1.5rem, env(safe-area-inset-bottom)); }
+    }
+
+    /* ---- Mobile (≤ 600px) ---- */
+    @media (max-width: 600px) {
+      header {
+        padding: 0.75rem 1rem;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+      }
+      header h1 { font-size: 1rem; letter-spacing: 0; }
+
+      .header-right {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        width: 100%;
+      }
+
+      /* Esconde o texto "Desconectado / Conectado" — o ponto já indica */
+      #status-text { display: none; }
+
+      .nav-link { font-size: 0.72rem; padding: 0.25rem 0.55rem; }
+      button#btn-clear { font-size: 0.72rem; padding: 0.25rem 0.65rem; }
+
+      main {
+        flex-direction: column;
+        padding: 0.75rem;
+        gap: 1rem;
+      }
+
+      /* Log panel vai para baixo dos eventos, sem sticky */
+      #log-panel {
+        width: 100%;
+        position: static;
+        max-height: 220px;
+      }
+
+      .card-header { padding: 0.65rem 0.9rem; }
+      .card-body.open { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Facial Recognition &mdash; Checkin</h1>
+  <div class="header-right">
+    <div id="status-dot"></div>
+    <span id="status-text">Desconectado</span>
+    <span id="count-badge">0 eventos</span>
+    <a href="/camera300/tracks/lista" class="nav-link">Lista</a>
+    <a href="/camera300/tracks/dados" class="nav-link">Dados</a>
+    <a href="/camera300/tracks/tabuleiro" class="nav-link">Tabuleiro</a>
+    <a href="/camera300/tracks/quadro" class="nav-link">Quadro</a>
+    <a href="/camera300/tracks/permanencia" class="nav-link">Permanência</a>
+    <button id="btn-clear">Limpar</button>
+  </div>
+</header>
+
+<main>
+  <!-- Coluna de eventos -->
+  <div id="events-area">
+    <div id="empty-state">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="12" cy="12" r="10"/>
+        <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+        <line x1="9" y1="9" x2="9.01" y2="9"/>
+        <line x1="15" y1="9" x2="15.01" y2="9"/>
+      </svg>
+      <p>Aguardando eventos de reconhecimento facial...</p>
+      <p style="font-size:0.8rem;margin-top:0.5rem;color:#334155">Configure o servidor externo para enviar POST para esta URL.</p>
+    </div>
+    <div id="events-container"></div>
+  </div>
+
+  <!-- Painel de Log de Execução -->
+  <div id="log-panel">
+    <div id="log-panel-header">
+      <h2>Log de Execu&ccedil;&atilde;o</h2>
+      <span id="log-count">0 entradas</span>
+      <button id="btn-clear-log">Limpar</button>
+    </div>
+    <div id="log-entries"></div>
+  </div>
+</main>
+
+<script>
+  const container = document.getElementById('events-container');
+  const emptyState = document.getElementById('empty-state');
+  const countBadge = document.getElementById('count-badge');
+  const statusDot = document.getElementById('status-dot');
+  const statusText = document.getElementById('status-text');
+  const logEntries = document.getElementById('log-entries');
+  const logCount = document.getElementById('log-count');
+  let totalCount = 0;
+  let logTotal = 0;
+
+  // Paleta de cores para track_ids
+  const TRACK_COLORS = [
+    ['#7c86ff','#1a1d40'], ['#22c55e','#0f2a1a'], ['#f59e0b','#2a1f00'],
+    ['#ec4899','#2a0a1a'], ['#06b6d4','#001f2a'], ['#a78bfa','#1a0f2a'],
+    ['#fb923c','#2a1200'], ['#34d399','#00261a'], ['#f472b6','#270010'],
+  ];
+  const trackColorMap = {};
+  let colorIdx = 0;
+
+  function trackColor(trackId) {
+    if (!trackColorMap[trackId]) {
+      trackColorMap[trackId] = TRACK_COLORS[colorIdx % TRACK_COLORS.length];
+      colorIdx++;
+    }
+    return trackColorMap[trackId];
+  }
+
+  function addLogEntry(entry, scroll = true) {
+    logTotal++;
+    logCount.textContent = `${logTotal} entrada${logTotal !== 1 ? 's' : ''}`;
+
+    const [fg, bg] = trackColor(entry.track_id);
+    const msgClass = /ERRO|ERROR/i.test(entry.msg) ? 'is-error'
+                   : /OK|sucesso|criada|vinculado/i.test(entry.msg) ? 'is-ok'
+                   : '';
+
+    const div = document.createElement('div');
+    div.className = 'log-entry';
+    div.innerHTML = `
+      <span class="log-time">${escHtml(entry.time)}</span>
+      <span class="log-track" style="color:${fg};background:${bg}">${escHtml(String(entry.track_id))}</span>
+      <span class="log-msg ${msgClass}">${escHtml(entry.msg)}</span>
+    `;
+    logEntries.appendChild(div);
+
+    if (scroll) {
+      logEntries.scrollTop = logEntries.scrollHeight;
+    }
+  }
+
+  // Carrega traces existentes ao abrir a página
+  fetch('/camera300/api/traces')
+    .then(r => r.json())
+    .then(entries => {
+      entries.forEach(e => addLogEntry(e, false));
+      logEntries.scrollTop = logEntries.scrollHeight;
+    })
+    .catch(() => {});
+
+  document.getElementById('btn-clear-log').addEventListener('click', () => {
+    logEntries.innerHTML = '';
+    logTotal = 0;
+    logCount.textContent = '0 entradas';
+  });
+
+  function val(v, extraClass) {
+    if (v === null || v === undefined || v === '') {
+      return `<div class="field-value null">null</div>`;
+    }
+    return `<div class="field-value ${extraClass || ''}">${escHtml(String(v))}</div>`;
+  }
+
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function jsonVal(v) {
+    if (v === null || v === undefined) return `<div class="field-value null">null</div>`;
+    const str = (typeof v === 'string') ? v : JSON.stringify(v, null, 2);
+    return `<div class="json-blob">${escHtml(str)}</div>`;
+  }
+
+  function buildGroupsHtml(groups) {
+    if (!groups || !groups.length) return `<div class="field-value null">null</div>`;
+    const items = groups.map(g => `
+      <div class="group-item">
+        <strong>${escHtml(g.group_name || '')} </strong>
+        &mdash; Tipo: <em>${escHtml(g.group_type || '')}</em><br>
+        ID: ${g.group_id ?? '?'}
+        &nbsp;|&nbsp; alert_when_not_in_target: ${g.alert_when_not_in_target ?? 'null'}
+        &nbsp;|&nbsp; is_target_complement: ${g.is_target_complement ?? 'null'}
+        ${g.is_person_match !== undefined ? `&nbsp;|&nbsp; is_person_match: ${g.is_person_match}` : ''}
+      </div>`).join('');
+    return `<div class="groups-list">${items}</div>`;
+  }
+
+  function buildCameraHtml(camera) {
+    if (!camera) return `<div class="field-value null">null</div>`;
+    const addr = camera.camera_address || {};
+    return `
+      <div class="camera-grid">
+        <div class="field"><span class="field-label">Camera ID</span>${val(camera.id)}</div>
+        <div class="field"><span class="field-label">Nome</span>${val(camera.camera_name)}</div>
+        <div class="field"><span class="field-label">IP</span>${val(camera.ip)}</div>
+        <div class="field"><span class="field-label">Company ID</span>${val(camera.company_id)}</div>
+        <div class="field"><span class="field-label">RTSP</span>${val(camera.rtsp)}</div>
+        <div class="field"><span class="field-label">Remarks</span>${val(camera.remarks)}</div>
+        <div class="field"><span class="field-label">CEP</span>${val(addr.cep)}</div>
+        <div class="field"><span class="field-label">Endere&ccedil;o</span>${val(addr.address)}</div>
+        <div class="field"><span class="field-label">Bairro</span>${val(addr.district)}</div>
+        <div class="field"><span class="field-label">Cidade</span>${val(addr.city)}</div>
+        <div class="field"><span class="field-label">Estado</span>${val(addr.state)}</div>
+        <div class="field"><span class="field-label">Coordenada</span>${val(addr.coordinate)}</div>
+        <div class="field"><span class="field-label">Descri&ccedil;&atilde;o</span>${val(addr.description)}</div>
+      </div>`;
+  }
+
+  function buildRecipients(ids) {
+    if (!ids || !ids.length) return `<div class="field-value null">null</div>`;
+    const chips = ids.map(id => `<span class="recipient-chip">${id}</span>`).join('');
+    return `<div class="recipients">${chips}</div>`;
+  }
+
+  function buildImageHtml(b64) {
+    if (!b64) return `<div class="field-value null">null</div>`;
+    // Only show image if it looks like base64 data (not a long dump)
+    const src = b64.startsWith('data:') ? b64 : `data:image/jpeg;base64,${b64}`;
+    return `<div class="field-value"><img src="${src}" alt="Face detectada" onerror="this.parentElement.innerHTML='<em style=color:#475569>Imagem inv&aacute;lida ou corrompida</em>'" /></div>`;
+  }
+
+  function fmtDate(value) {
+    if (!value) return '';
+    const d = new Date(value);
+    if (isNaN(d)) return String(value);
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    const hh = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    return `${dd}/${mm}/${yyyy} ${hh}:${min}:${ss}`;
+  }
+
+  function buildCard(event, isNew) {
+    const d = event.payload?.data || event.payload || {};
+    const receivedAt = event.received_at || '';
+    const trackId = d['track-id'] ?? d.track_id ?? null;
+    const cameraId = d.camera_id ?? null;
+    const timestamp = fmtDate(d.created_at ?? receivedAt);
+
+    const card = document.createElement('div');
+    card.className = 'event-card';
+
+    const badgeNew = isNew ? '<span class="badge badge-new">Novo</span>' : '';
+
+    const camLabel = cameraId !== null
+      ? `<span class="cam-label" data-filled="1" style="font-size:0.75rem;color:#94a3b8">Câmera <strong style="color:#e2e8f0">${escHtml(String(cameraId))}</strong></span>`
+      : `<span class="cam-label" style="font-size:0.75rem;color:#94a3b8"></span>`;
+
+    card.innerHTML = `
+      <div class="card-header">
+        <div class="card-title">
+          <span class="badge badge-post">POST</span>
+          ${badgeNew}
+          <span style="font-family:monospace;font-size:0.9rem">${escHtml(String(trackId ?? 'sem track_id'))}</span>
+          ${camLabel}
+          <span class="det-score" style="display:none;font-size:0.72rem;font-weight:700;color:#22c55e;background:#22c55e18;border:1px solid #22c55e33;border-radius:4px;padding:0.15rem 0.45rem;" title="face_det_score"></span>
+        </div>
+        <div style="display:flex;align-items:center;gap:1rem">
+          <span class="card-meta">${escHtml(String(timestamp))}</span>
+          <div class="track-thumb" style="width:60px;height:60px;border-radius:6px;overflow:hidden;background:#0f1117;border:1px solid #2d3148;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <span style="font-size:0.6rem;color:#475569">...</span>
+          </div>
+        </div>
+      </div>
+    `;
+
+    if (trackId) {
+      const thumb = card.querySelector('.track-thumb');
+      const camSpan = card.querySelector('.cam-label');
+      const scoreSpan = card.querySelector('.det-score');
+      fetch(`/camera300/api/track_image/${encodeURIComponent(trackId)}`)
+        .then(r => r.json())
+        .then(resp => {
+          if (resp.image_url) {
+            thumb.innerHTML = `<img src="${escHtml(resp.image_url)}" style="width:100%;height:100%;object-fit:cover;" alt="Face" onerror="this.parentElement.innerHTML='<span style=font-size:0.6rem;color:#475569>N/A</span>'" />`;
+          } else {
+            thumb.innerHTML = '<span style="font-size:0.6rem;color:#475569">N/A</span>';
+          }
+          // Preenche câmera se não veio no payload
+          if (camSpan && !camSpan.dataset.filled && resp.camera_id != null) {
+            camSpan.innerHTML = `Câmera <strong style="color:#e2e8f0">${escHtml(String(resp.camera_id))}</strong>`;
+            camSpan.dataset.filled = '1';
+          }
+          // Exibe face_det_score
+          if (scoreSpan && resp.face_det_score != null) {
+            const pct = (resp.face_det_score * 100).toFixed(1) + '%';
+            scoreSpan.textContent = pct;
+            scoreSpan.style.display = 'inline';
+          }
+        })
+        .catch(() => {
+          thumb.innerHTML = '<span style="font-size:0.6rem;color:#ef4444">Err</span>';
+        });
+    }
+
+    return card;
+  }
+
+  function addEvent(event, isNew) {
+    emptyState.style.display = 'none';
+    totalCount++;
+    countBadge.textContent = `${totalCount} evento${totalCount !== 1 ? 's' : ''}`;
+    const card = buildCard(event, isNew);
+    if (isNew) {
+      container.prepend(card);
+    } else {
+      container.appendChild(card);
+    }
+  }
+
+  // SSE connection
+  let es;
+  let reconnectTimer;
+
+  function connect() {
+    if (es) es.close();
+    es = new EventSource('/camera300/stream');
+
+    es.onopen = () => {
+      statusDot.classList.add('connected');
+      statusText.textContent = 'Conectado';
+      clearTimeout(reconnectTimer);
+    };
+
+    es.onmessage = (e) => {
+      if (e.data === 'ping' || !e.data) return;
+      try {
+        const event = JSON.parse(e.data);
+        if (event.type === 'trace') {
+          addLogEntry(event);
+          if (event.track_id === 'SISTEMA' && /conclu[íi]do|ERRO inesperado/i.test(event.msg)) {
+            setAdequarRodando(false);
+          }
+          return;
+        }
+        // Distinguish initial load (no animation) from new events
+        const isNew = totalCount > 0 || container.children.length === 0;
+        addEvent(event, isNew);
+      } catch (_) {}
+    };
+
+    es.onerror = () => {
+      statusDot.classList.remove('connected');
+      statusText.textContent = 'Reconectando...';
+      es.close();
+      reconnectTimer = setTimeout(connect, 3000);
+    };
+  }
+
+
+
+  // Clear button (limpa eventos E log)
+  document.getElementById('btn-clear').addEventListener('click', async () => {
+    await fetch('/camera300/clear', { method: 'POST' });
+    container.innerHTML = '';
+    totalCount = 0;
+    countBadge.textContent = '0 eventos';
+    emptyState.style.display = '';
+    logEntries.innerHTML = '';
+    logTotal = 0;
+    logCount.textContent = '0 entradas';
+  });
+
+  connect();
+</script>
+
+<!-- PWA: registro do Service Worker -->
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/service-worker.js', { scope: '/' })
+      .catch(err => console.warn('Service Worker não registrado:', err));
+  }
+</script>
+</body>
+</html>

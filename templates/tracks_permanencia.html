@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tracks — Permanência</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #1a1d27;
+      border-bottom: 1px solid #2d3148;
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    header h1 { font-size: 1.2rem; font-weight: 600; color: #7c86ff; }
+
+    .nav { display: flex; gap: 0.6rem; }
+    .nav a {
+      color: #7c86ff;
+      text-decoration: none;
+      font-size: 0.82rem;
+      border: 1px solid #7c86ff44;
+      padding: 0.3rem 0.8rem;
+      border-radius: 6px;
+      transition: background 0.2s;
+    }
+    .nav a:hover { background: #7c86ff22; }
+
+    main { max-width: 1400px; margin: 0 auto; padding: 1.5rem; }
+
+    .empty-state { text-align: center; padding: 4rem 2rem; color: #475569; }
+
+    /* ---- Person card ---- */
+    .person-card {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 12px;
+      margin-bottom: 1.5rem;
+      overflow: hidden;
+    }
+
+    .person-header {
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+      padding: 1rem 1.25rem;
+      background: #1e2130;
+      border-bottom: 1px solid #2d3148;
+      flex-wrap: wrap;
+    }
+
+    .person-photo {
+      width: 72px;
+      height: 72px;
+      border-radius: 8px;
+      object-fit: cover;
+      border: 1px solid #2d3148;
+      flex-shrink: 0;
+      background: #0f1117;
+    }
+    .person-photo-placeholder {
+      width: 72px;
+      height: 72px;
+      border-radius: 8px;
+      border: 1px solid #2d3148;
+      background: #0f1117;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      color: #334155;
+      font-size: 0.65rem;
+    }
+
+    .person-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.35rem; }
+
+    .person-name {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #e2e8f0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .person-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .chip {
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 0.2rem 0.6rem;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+    .chip-id      { background: #7c86ff22; color: #7c86ff; border: 1px solid #7c86ff44; }
+    .chip-apelido { background: #0f111722; color: #94a3b8; border: 1px solid #2d3148; }
+    .chip-genero  { background: #60a5fa22; color: #60a5fa; border: 1px solid #60a5fa44; }
+    .chip-flag    { background: #f59e0b22; color: #f59e0b; border: 1px solid #f59e0b44; }
+    .chip-count   { background: #22c55e22; color: #22c55e; border: 1px solid #22c55e44; }
+
+    .person-notas {
+      font-size: 0.78rem;
+      color: #94a3b8;
+      font-style: italic;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    /* ---- Permanência strip ---- */
+    .permanencias {
+      display: flex;
+      gap: 0.75rem;
+      padding: 1rem 1.25rem;
+      overflow-x: auto;
+      flex-wrap: nowrap;
+    }
+    .permanencias::-webkit-scrollbar { height: 4px; }
+    .permanencias::-webkit-scrollbar-thumb { background: #2d3148; border-radius: 4px; }
+
+    .perm-entry {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.4rem;
+      flex-shrink: 0;
+      width: 90px;
+    }
+
+    .perm-entry img {
+      width: 80px;
+      height: 80px;
+      object-fit: cover;
+      border-radius: 6px;
+      border: 1px solid #2d3148;
+      display: block;
+      cursor: pointer;
+      transition: transform 0.2s, border-color 0.2s;
+    }
+    .perm-entry img:hover { transform: scale(1.06); border-color: #7c86ff66; }
+
+    .perm-placeholder {
+      width: 80px;
+      height: 80px;
+      border-radius: 6px;
+      border: 1px solid #2d3148;
+      background: #0f1117;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #334155;
+      font-size: 0.6rem;
+    }
+
+    .perm-label {
+      font-size: 0.62rem;
+      color: #64748b;
+      text-align: center;
+      line-height: 1.4;
+      word-break: break-word;
+    }
+
+    .perm-duration {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: #7c86ff;
+      text-align: center;
+    }
+    .perm-duration.estimado { color: #f59e0b; }
+
+    /* ---- Action buttons (person) ---- */
+    .btn-actions { display: flex; gap: 0.5rem; margin-left: auto; flex-shrink: 0; }
+
+    .btn-edit {
+      background: #7c86ff22;
+      border: 1px solid #7c86ff44;
+      color: #7c86ff;
+      border-radius: 6px;
+      padding: 0.3rem 0.75rem;
+      font-size: 0.78rem;
+      cursor: pointer;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+    .btn-edit:hover { background: #7c86ff33; }
+
+    /* ---- Modal (edição de pessoa) ---- */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: #00000099;
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+
+    .modal-box {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 14px;
+      padding: 1.75rem;
+      width: 100%;
+      max-width: 480px;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 24px 64px #00000088;
+    }
+
+    .modal-box h2 {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #7c86ff;
+      margin-bottom: 1.25rem;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.85rem;
+    }
+    .form-grid .full { grid-column: 1 / -1; }
+
+    .form-field { display: flex; flex-direction: column; gap: 0.35rem; }
+
+    .form-field label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #64748b;
+    }
+
+    .form-field textarea {
+      background: #0f1117;
+      border: 1px solid #2d3148;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.88rem;
+      padding: 0.5rem 0.65rem;
+      outline: none;
+      transition: border-color 0.2s;
+      width: 100%;
+      resize: vertical;
+      font-family: inherit;
+    }
+    .form-field textarea:focus { border-color: #7c86ff88; }
+
+    .form-field input, .form-field select {
+      background: #0f1117;
+      border: 1px solid #2d3148;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.88rem;
+      padding: 0.5rem 0.65rem;
+      outline: none;
+      transition: border-color 0.2s;
+      width: 100%;
+    }
+    .form-field input:focus, .form-field select:focus { border-color: #7c86ff88; }
+    .form-field select option { background: #1a1d27; }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.75rem;
+      margin-top: 1.5rem;
+    }
+
+    .btn-cancel {
+      background: transparent;
+      border: 1px solid #2d3148;
+      color: #94a3b8;
+      border-radius: 6px;
+      padding: 0.45rem 1.1rem;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-cancel:hover { background: #ffffff11; }
+
+    .btn-save {
+      background: #7c86ff33;
+      border: 1px solid #7c86ff66;
+      color: #7c86ff;
+      border-radius: 6px;
+      padding: 0.45rem 1.1rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-save:hover { background: #7c86ff44; }
+    .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .modal-error {
+      font-size: 0.8rem;
+      color: #ef4444;
+      margin-top: 0.75rem;
+      display: none;
+    }
+
+    /* ---- Pagination ---- */
+    .pagination {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 1.5rem 0 2rem;
+    }
+    .pagination a, .pagination span {
+      font-size: 0.82rem;
+      padding: 0.35rem 0.85rem;
+      border-radius: 6px;
+      border: 1px solid #2d3148;
+      text-decoration: none;
+      color: #7c86ff;
+      transition: background 0.2s;
+    }
+    .pagination a:hover { background: #7c86ff22; }
+    .pagination span.current {
+      background: #7c86ff22;
+      border-color: #7c86ff55;
+      color: #e2e8f0;
+      font-weight: 700;
+    }
+    .pagination span.disabled { color: #334155; cursor: default; }
+
+    /* ---- Mobile (≤ 600px) ---- */
+    @media (max-width: 600px) {
+      header {
+        padding: 0.75rem 1rem;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+      }
+      header h1 { font-size: 1rem; }
+
+      .nav { flex-wrap: wrap; gap: 0.4rem; }
+      .nav a { font-size: 0.72rem; padding: 0.25rem 0.55rem; }
+
+      main { padding: 1rem 0.75rem; }
+
+      .person-header { gap: 0.75rem; padding: 0.75rem 1rem; }
+      .person-name { white-space: normal; }
+
+      .btn-actions {
+        width: 100%;
+        margin-left: 0;
+        justify-content: flex-end;
+      }
+
+      .perm-entry { width: 76px; }
+
+      .modal-box { padding: 1.1rem; margin: 0.5rem; }
+      .form-grid { grid-template-columns: 1fr; }
+      .form-grid .full { grid-column: 1; }
+    }
+
+    /* ---- PWA standalone: safe area (iOS notch / Android gesture bar) ---- */
+    @media (display-mode: standalone) {
+      header {
+        padding-top: max(0.75rem, env(safe-area-inset-top));
+        padding-left: max(1rem, env(safe-area-inset-left));
+        padding-right: max(1rem, env(safe-area-inset-right));
+      }
+      main { padding-bottom: max(1.5rem, env(safe-area-inset-bottom)); }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Tracks — Permanência</h1>
+  <nav class="nav">
+    <a href="/camera300/tracks/permanencia">&#8635; Atualizar</a>
+    <a href="/camera300/tracks/lista">Lista</a>
+    <a href="/camera300/">&#8592; Checkin</a>
+  </nav>
+</header>
+
+<main>
+
+  {% if not groups %}
+    <div class="empty-state">Nenhum registro encontrado.</div>
+  {% endif %}
+
+  {% for g in groups %}
+    <div class="person-card">
+
+      <div class="person-header">
+        {% if g.foto %}
+          <img class="person-photo" src="{{ g.foto }}"
+               onerror="this.outerHTML='<div class=person-photo-placeholder>sem foto</div>'"
+               alt="foto" />
+        {% else %}
+          <div class="person-photo-placeholder">sem foto</div>
+        {% endif %}
+
+        <div class="person-info">
+          <div class="person-name">{{ g.nome or '—' }}</div>
+          <div class="person-meta">
+            {% if g.id_unico %}
+              <span class="chip chip-id">ID {{ g.id_unico }}</span>
+            {% endif %}
+            {% if g.apelido %}
+              <span class="chip chip-apelido">{{ g.apelido }}</span>
+            {% endif %}
+            {% if g.genero %}
+              {% set genero_map = {'M': 'Masculino', 'F': 'Feminino', 'A': 'Anônimo'} %}
+              <span class="chip chip-genero">{{ genero_map.get(g.genero, g.genero) }}</span>
+            {% endif %}
+            {% if g.idade %}
+              <span class="chip chip-genero">{{ g.idade }} anos</span>
+            {% endif %}
+            {% if g.flag %}
+              {% set flag_map = {'C': 'Cliente', 'A': 'Anônimo', 'F': 'Franqueado', 'E': 'Empregado'} %}
+              <span class="chip chip-flag">{{ flag_map.get(g.flag, g.flag) }}</span>
+            {% endif %}
+            <span class="chip chip-count">{{ g.dias | length }} dia(s)</span>
+          </div>
+          {% if g.notas %}
+            <div class="person-notas">{{ g.notas }}</div>
+          {% endif %}
+        </div>
+
+        <div class="btn-actions">
+          <button class="btn-edit"
+            data-id="{{ g.id_unico }}"
+            data-nome="{{ g.nome or '' }}"
+            data-apelido="{{ g.apelido or '' }}"
+            data-doc="{{ g.doc or '' }}"
+            data-idade="{{ g.idade or '' }}"
+            data-genero="{{ g.genero or '' }}"
+            data-flag="{{ g.flag or '' }}"
+            data-notas="{{ g.notas or '' }}"
+            onclick="abrirModal(this)">&#9998; Editar</button>
+        </div>
+      </div>
+
+      <div class="permanencias">
+        {% for d in g.dias %}
+          <div class="perm-entry">
+            {% if d.image_url %}
+              <img src="{{ d.image_url }}"
+                   onerror="this.outerHTML='<div class=perm-placeholder>N/A</div>'"
+                   alt="primeira ocorrência" />
+            {% else %}
+              <div class="perm-placeholder">N/A</div>
+            {% endif %}
+            <span class="perm-label">{{ d.dia }}</span>
+            <span class="perm-label">{{ d.hora_ini or '—' }}</span>
+            <span class="perm-duration{% if d.estimado %} estimado{% endif %}">
+              {{ d.permanencia }}{% if d.estimado %} *{% endif %}
+            </span>
+          </div>
+        {% endfor %}
+      </div>
+
+    </div>
+  {% endfor %}
+
+  {% if total_pages > 1 %}
+    <div class="pagination">
+      {% if page > 1 %}
+        <a href="?page={{ page - 1 }}">&laquo; Anterior</a>
+      {% else %}
+        <span class="disabled">&laquo; Anterior</span>
+      {% endif %}
+
+      <span class="current">{{ page }} / {{ total_pages }}</span>
+
+      {% if page < total_pages %}
+        <a href="?page={{ page + 1 }}">Próxima &raquo;</a>
+      {% else %}
+        <span class="disabled">Próxima &raquo;</span>
+      {% endif %}
+    </div>
+  {% endif %}
+
+</main>
+
+<!-- Modal de edição de pessoa -->
+<div id="modal-overlay" class="modal-overlay">
+  <div class="modal-box">
+    <h2 id="modal-title">Editar Pessoa</h2>
+    <form id="modal-form" onsubmit="salvarPessoa(event)">
+      <input type="hidden" id="f-id" />
+      <div class="form-grid">
+        <div class="form-field full">
+          <label>Nome</label>
+          <input type="text" id="f-nome" maxlength="120" />
+        </div>
+        <div class="form-field">
+          <label>Apelido</label>
+          <input type="text" id="f-apelido" maxlength="40" />
+        </div>
+        <div class="form-field">
+          <label>Idade</label>
+          <input type="number" id="f-idade" min="0" max="130" />
+        </div>
+        <div class="form-field full">
+          <label>Doc (CPF / CNPJ)</label>
+          <input type="text" id="f-doc" maxlength="20" placeholder="000.000.000-00" />
+        </div>
+        <div class="form-field">
+          <label>G&ecirc;nero</label>
+          <select id="f-genero">
+            <option value="">— selecionar —</option>
+            <option value="M">Masculino</option>
+            <option value="F">Feminino</option>
+            <option value="A">An&ocirc;nimo</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label>Flag</label>
+          <select id="f-flag">
+            <option value="">— selecionar —</option>
+            <option value="C">Cliente</option>
+            <option value="A">An&ocirc;nimo</option>
+            <option value="F">Franqueado</option>
+            <option value="E">Empregado</option>
+          </select>
+        </div>
+        <div class="form-field full">
+          <label>Notas</label>
+          <textarea id="f-notas" maxlength="255" rows="3" placeholder="Observações sobre a pessoa…"></textarea>
+        </div>
+      </div>
+      <div id="modal-error" class="modal-error"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn-cancel" onclick="fecharModal()">Cancelar</button>
+        <button type="submit" class="btn-save" id="btn-save">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  function abrirModal(btn) {
+    document.getElementById('f-id').value      = btn.dataset.id;
+    document.getElementById('f-nome').value    = btn.dataset.nome;
+    document.getElementById('f-apelido').value = btn.dataset.apelido;
+    document.getElementById('f-doc').value     = btn.dataset.doc;
+    document.getElementById('f-idade').value   = btn.dataset.idade;
+    document.getElementById('f-genero').value  = btn.dataset.genero;
+    document.getElementById('f-flag').value    = btn.dataset.flag;
+    document.getElementById('f-notas').value   = btn.dataset.notas;
+    document.getElementById('modal-title').textContent =
+      'Editar — ' + (btn.dataset.nome || 'ID ' + btn.dataset.id);
+    document.getElementById('modal-error').style.display = 'none';
+    document.getElementById('modal-overlay').classList.add('open');
+    document.getElementById('f-nome').focus();
+  }
+
+  function fecharModal() {
+    document.getElementById('modal-overlay').classList.remove('open');
+  }
+
+  document.getElementById('modal-overlay').addEventListener('click', function(e) {
+    if (e.target === this) fecharModal();
+  });
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') fecharModal();
+  });
+
+  async function salvarPessoa(e) {
+    e.preventDefault();
+    const id = document.getElementById('f-id').value;
+    const payload = {
+      nome:    document.getElementById('f-nome').value.trim(),
+      apelido: document.getElementById('f-apelido').value.trim(),
+      doc:     document.getElementById('f-doc').value.trim(),
+      idade:   document.getElementById('f-idade').value !== ''
+               ? parseInt(document.getElementById('f-idade').value) : '',
+      genero:  document.getElementById('f-genero').value,
+      flag:    document.getElementById('f-flag').value,
+      notas:   document.getElementById('f-notas').value.trim(),
+    };
+
+    const errEl = document.getElementById('modal-error');
+    const btnSave = document.getElementById('btn-save');
+    errEl.style.display = 'none';
+    btnSave.disabled = true;
+
+    try {
+      const resp = await fetch(`/camera300/tracks/api/pessoa/${id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await resp.json();
+      if (data.success) {
+        fecharModal();
+        location.reload();
+      } else {
+        errEl.textContent = data.error || 'Erro ao salvar.';
+        errEl.style.display = 'block';
+      }
+    } catch (err) {
+      errEl.textContent = 'Falha na requisição.';
+      errEl.style.display = 'block';
+    } finally {
+      btnSave.disabled = false;
+    }
+  }
+</script>
+</body>
+</html>

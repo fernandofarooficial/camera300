@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tracks - Consulta Heimdall</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #1a1d27;
+      border-bottom: 1px solid #2d3148;
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    header h1 { font-size: 1.25rem; font-weight: 600; color: #7c86ff; }
+
+    .nav-link {
+      color: #7c86ff;
+      text-decoration: none;
+      font-size: 0.85rem;
+      border: 1px solid #7c86ff44;
+      padding: 0.3rem 0.8rem;
+      border-radius: 6px;
+      transition: background 0.2s;
+    }
+    .nav-link:hover { background: #7c86ff22; }
+
+    main { max-width: 1400px; margin: 0 auto; padding: 1.5rem; }
+
+    .page-info {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.5rem;
+      font-size: 0.85rem;
+      color: #94a3b8;
+    }
+    .page-info strong { color: #7c86ff; }
+
+    /* Track card */
+    .track-card {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 12px;
+      margin-bottom: 1.5rem;
+      overflow: hidden;
+    }
+
+    .track-header {
+      background: #1e2130;
+      border-bottom: 1px solid #2d3148;
+      padding: 0.9rem 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .track-id {
+      font-family: 'Courier New', monospace;
+      font-size: 0.85rem;
+      color: #7c86ff;
+      font-weight: 600;
+    }
+
+    .track-meta { font-size: 0.78rem; color: #64748b; }
+
+    .badge {
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 0.2rem 0.6rem;
+      border-radius: 999px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .badge-ok    { background: #22c55e22; color: #22c55e; border: 1px solid #22c55e44; }
+    .badge-error { background: #ef444422; color: #ef4444; border: 1px solid #ef444444; }
+    .badge-empty { background: #f59e0b22; color: #f59e0b; border: 1px solid #f59e0b44; }
+
+    /* Error box */
+    .error-box {
+      padding: 1.25rem;
+      color: #ef4444;
+      font-size: 0.85rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    /* Faces grid */
+    .faces-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 1.25rem;
+      padding: 1.25rem;
+    }
+
+    .face-card {
+      background: #0f1117;
+      border: 1px solid #2d3148;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .face-card-header {
+      background: #13151f;
+      padding: 0.6rem 0.9rem;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #7c86ff;
+      border-bottom: 1px solid #2d3148;
+    }
+
+    .face-img-wrap {
+      width: 100%;
+      background: #0a0b0f;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 180px;
+      border-bottom: 1px solid #2d3148;
+    }
+
+    .face-img-wrap img {
+      max-width: 100%;
+      max-height: 260px;
+      object-fit: contain;
+      display: block;
+    }
+
+    .face-img-wrap .no-img {
+      color: #334155;
+      font-size: 0.8rem;
+      font-style: italic;
+      padding: 2rem;
+    }
+
+    .face-fields { padding: 0.75rem 0.9rem; display: flex; flex-direction: column; gap: 0.5rem; }
+
+    .field-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 0.5rem;
+      font-size: 0.82rem;
+    }
+
+    .field-label {
+      color: #64748b;
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      white-space: nowrap;
+      min-width: 90px;
+    }
+
+    .field-value {
+      color: #e2e8f0;
+      text-align: right;
+      word-break: break-all;
+    }
+
+    .field-value.score  { color: #22c55e; font-weight: 700; }
+    .field-value.null   { color: #475569; font-style: italic; }
+    .field-value.mono   { font-family: 'Courier New', monospace; font-size: 0.78rem; }
+
+    /* JSON raw */
+    .raw-section { padding: 1.25rem; border-top: 1px solid #2d3148; }
+    .raw-title {
+      font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.1em; color: #7c86ff; margin-bottom: 0.6rem;
+    }
+    .json-blob {
+      font-size: 0.75rem;
+      font-family: 'Courier New', monospace;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: #94a3b8;
+      background: #0a0b0f;
+      border: 1px solid #2d3148;
+      border-radius: 6px;
+      padding: 0.75rem;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 3rem 2rem;
+      color: #475569;
+      font-size: 0.9rem;
+    }
+    .empty-state p + p { margin-top: 0.4rem; font-size: 0.8rem; color: #334155; }
+
+    /* Reload button */
+    .btn-reload {
+      background: #7c86ff22;
+      border: 1px solid #7c86ff44;
+      color: #7c86ff;
+      border-radius: 6px;
+      padding: 0.35rem 0.9rem;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: background 0.2s;
+      text-decoration: none;
+    }
+    .btn-reload:hover { background: #7c86ff33; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Tracks &mdash; Consulta Heimdall</h1>
+  <div style="display:flex;gap:0.75rem;align-items:center">
+    <a href="/camera300/" class="nav-link">&#8592; Checkin</a>
+  </div>
+</header>
+
+<main>
+
+  <div class="page-info">
+    Consultando os <strong>últimos 5 track_ids</strong> registrados no banco &rarr;
+    POST <strong>{{ "http://187.17.228.160:6500/api/facial/recognize-by-track" }}</strong>
+  </div>
+
+  {% if not results %}
+    <div class="empty-state">
+      <p>Nenhum track_id encontrado no banco de dados.</p>
+      <p>Aguardando eventos de reconhecimento facial...</p>
+    </div>
+  {% endif %}
+
+  {% for r in results %}
+    {% set faces = r.data if r.data is iterable and r.data is not mapping else [] %}
+    {% set is_list = r.data is sequence and r.data is not string and r.data is not mapping %}
+
+    <div class="track-card">
+
+      <div class="track-header">
+        <div>
+          <div class="track-meta" style="margin-bottom:0.3rem">DB ID #{{ r.db_id }} &nbsp;|&nbsp; {{ r.db_created_at }}</div>
+          <div class="track-id">{{ r.track_id }}</div>
+        </div>
+        <div style="display:flex;gap:0.5rem;align-items:center">
+          {% if r.error %}
+            <span class="badge badge-error">Erro</span>
+          {% elif r.data is none %}
+            <span class="badge badge-empty">Sem dados</span>
+          {% elif is_list %}
+            <span class="badge badge-ok">{{ r.data | length }} resultado(s)</span>
+          {% else %}
+            <span class="badge badge-ok">OK</span>
+          {% endif %}
+        </div>
+      </div>
+
+      {% if r.error %}
+        <div class="error-box">
+          &#9888; {{ r.error }}
+        </div>
+
+      {% elif r.data is none %}
+        <div class="error-box" style="color:#f59e0b">
+          &#9888; Nenhuma resposta retornada pela API.
+        </div>
+
+      {% elif is_list and r.data | length == 0 %}
+        <div class="error-box" style="color:#f59e0b">
+          &#9888; Nenhum rosto encontrado para este track_id.
+        </div>
+
+      {% else %}
+        {# Normalize: se for dict único, embrulha em lista #}
+        {% set items = r.data if is_list else [r.data] %}
+
+        <div class="faces-grid">
+          {% for face in items %}
+            <div class="face-card">
+              <div class="face-card-header">Resultado {{ loop.index }}</div>
+
+              {# Tenta montar URL da imagem #}
+              {% set img_url = none %}
+              {% if face.image_path is defined and face.image_path %}
+                {% set img_url = r.image_base ~ "/" ~ face.camera_id|default("") ~ "/" ~ face.image_path %}
+              {% elif face.image is defined and face.image %}
+                {% set img_url = r.image_base ~ "/" ~ face.camera_id|default("") ~ "/" ~ face.image %}
+              {% elif face.filename is defined and face.filename %}
+                {% set img_url = r.image_base ~ "/" ~ face.camera_id|default("") ~ "/" ~ face.filename %}
+              {% elif face.face_image is defined and face.face_image %}
+                {% if face.face_image.startswith("http") %}
+                  {% set img_url = face.face_image %}
+                {% else %}
+                  {% set img_url = r.image_base ~ "/" ~ face.camera_id|default("") ~ "/" ~ face.face_image %}
+                {% endif %}
+              {% elif face.url is defined and face.url %}
+                {% set img_url = face.url %}
+              {% elif face.image_base64 is defined and face.image_base64 %}
+                {% set img_url = "data:image/jpeg;base64," ~ face.image_base64 %}
+              {% endif %}
+
+              <div class="face-img-wrap">
+                {% if img_url %}
+                  <img src="{{ img_url }}"
+                       alt="Rosto detectado"
+                       onerror="this.parentElement.innerHTML='<span class=no-img>Imagem indispon&iacute;vel</span>'" />
+                {% else %}
+                  <span class="no-img">Sem imagem</span>
+                {% endif %}
+              </div>
+
+              <div class="face-fields">
+                {% for key, value in face.items() %}
+                  {# Pula campos de imagem já exibidos acima #}
+                  {% if key not in ['image_path','image','filename','face_image','url','image_base64'] %}
+                    <div class="field-row">
+                      <span class="field-label">{{ key }}</span>
+                      <span class="field-value
+                        {% if value is none or value == '' %}null
+                        {% elif key in ['score','confidence','similarity'] %}score
+                        {% elif key in ['track_id','id','camera_id','person_id'] %}mono
+                        {% endif %}">
+                        {% if value is none or value == '' %}null
+                        {% elif value is mapping or value is sequence and value is not string %}
+                          <span style="font-family:monospace;font-size:0.75rem;color:#94a3b8">{{ value | tojson }}</span>
+                        {% else %}
+                          {{ value }}
+                        {% endif %}
+                      </span>
+                    </div>
+                  {% endif %}
+                {% endfor %}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+
+        <div class="raw-section">
+          <div class="raw-title">JSON completo recebido</div>
+          <div class="json-blob">{{ r.data | tojson(indent=2) }}</div>
+        </div>
+
+      {% endif %}
+
+    </div>
+  {% endfor %}
+
+</main>
+
+</body>
+</html>
