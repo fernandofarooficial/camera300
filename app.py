@@ -21,7 +21,7 @@ def get_best_match(track_id):
     for face in matches:
         score_raw = face.get("face_det_score")
         try:
-            if score_raw is not None and float(score_raw) >= 0.75:
+            if score_raw is not None and float(score_raw) >= 0.73:
                 path = face.get("image_path")
                 if path:
                     return path, face.get("camera_id"), float(score_raw)
@@ -56,10 +56,10 @@ def salvar_rosto(track_id, camera_id=None):
             heimdall_data, _ = query_heimdall(str(track_id))
             image_path, cam_from_match, face_det_score = get_best_face(track_id, data=heimdall_data)
             tracer.trace(track_id, f"salvar_rosto: tentativa {tentativa} → image_path={image_path} score={face_det_score}")
-            if face_det_score is not None and face_det_score >= 0.75:
+            if face_det_score is not None and face_det_score >= 0.73:
                 break
         else:
-            tracer.trace(track_id, f"salvar_rosto: todas as tentativas esgotadas — score {face_det_score} abaixo de 0.75, ignorado")
+            tracer.trace(track_id, f"salvar_rosto: todas as tentativas esgotadas — score {face_det_score} abaixo de 0.73, ignorado")
             return
 
         # camera_id do match tem prioridade; usa o do payload como fallback

@@ -196,7 +196,7 @@ def tracks_resumo():
             for face in matches:
                 score_raw = face.get("face_det_score")
                 try:
-                    if score_raw is None or float(score_raw) < 0.75:
+                    if score_raw is None or float(score_raw) < 0.73:
                         continue
                 except (ValueError, TypeError):
                     continue
