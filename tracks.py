@@ -3,7 +3,7 @@ import cv2
 import requests
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
-from flask import Blueprint, render_template, jsonify, request, Response, send_file
+from flask import Blueprint, render_template, jsonify, request, Response, send_file, make_response
 from requests_toolbelt import MultipartEncoder
 from datetime import datetime, timedelta, date
 
@@ -857,75 +857,84 @@ def tracks_export_download():
     data_ini = request.args.get("data_ini", week_ago.isoformat())
     data_fim = request.args.get("data_fim", today.isoformat())
 
-    conn = get_conn()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("""
-        SELECT
-            r.id,
-            r.camera_id,
-            r.created_at,
-            r.id_unico,
-            p.nome,
-            p.apelido,
-            p.idade,
-            p.genero,
-            p.flag,
-            tc.tipo_camera,
-            c.camera,
-            e.empresa
-        FROM registros r
-        LEFT JOIN pessoas      p  ON p.id_unico      = r.id_unico
-        LEFT JOIN cameras      c  ON c.id_camera      = r.camera_id
-        LEFT JOIN tipos_camera tc ON tc.id_tipo_camera = c.id_tipo_camera
-        LEFT JOIN locais       l  ON l.id_local       = c.id_local
-        LEFT JOIN empresas     e  ON e.id_empresa     = l.id_empresa
-        WHERE DATE(r.created_at) BETWEEN %s AND %s
-        ORDER BY r.created_at
-    """, (data_ini, data_fim))
-    rows = cursor.fetchall()
-    cursor.close()
-    conn.close()
+    try:
+        conn = get_conn()
+        try:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute("""
+                SELECT
+                    r.id,
+                    r.camera_id,
+                    r.created_at,
+                    r.id_unico,
+                    p.nome,
+                    p.apelido,
+                    p.idade,
+                    p.genero,
+                    p.flag,
+                    tc.tipo_camera,
+                    c.camera,
+                    e.empresa
+                FROM registros r
+                LEFT JOIN pessoas      p  ON p.id_unico       = r.id_unico
+                LEFT JOIN cameras      c  ON c.id_camera       = r.camera_id
+                LEFT JOIN tipos_camera tc ON tc.id_tipo_camera = c.id_tipo_camera
+                LEFT JOIN locais       l  ON l.id_local        = c.id_local
+                LEFT JOIN empresas     e  ON e.id_empresa      = l.id_empresa
+                WHERE DATE(r.created_at) BETWEEN %s AND %s
+                ORDER BY r.created_at
+            """, (data_ini, data_fim))
+            rows = cursor.fetchall()
+            cursor.close()
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"[export] Erro no banco: {e}")
+        return Response(f"Erro ao consultar banco de dados: {e}", status=500, mimetype="text/plain")
 
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Registros"
+    try:
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Registros"
 
-    header_fill = PatternFill("solid", fgColor="1A1D27")
-    header_font = Font(bold=True, color="7C86FF")
-    headers = ["Ocor", "Id Cam", "DataHora", "Id Pessoa",
-               "Nome", "Apelido", "Idade", "Gênero", "Flag",
-               "Tipo Câmera", "Nome Câmera", "Empresa"]
-    col_widths = [8, 8, 20, 10, 25, 15, 8, 12, 12, 15, 20, 25]
+        header_fill = PatternFill(patternType="solid", fgColor="1A1D27")
+        header_font = Font(bold=True, color="7C86FF")
+        headers = ["Ocor", "Id Cam", "DataHora", "Id Pessoa",
+                   "Nome", "Apelido", "Idade", "Gênero", "Flag",
+                   "Tipo Câmera", "Nome Câmera", "Empresa"]
+        col_widths = [8, 8, 20, 10, 25, 15, 8, 12, 12, 15, 20, 25]
 
-    for col_idx, (header, width) in enumerate(zip(headers, col_widths), start=1):
-        cell = ws.cell(row=1, column=col_idx, value=header)
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = Alignment(horizontal="center")
-        ws.column_dimensions[openpyxl.utils.get_column_letter(col_idx)].width = width
+        for col_idx, (header, width) in enumerate(zip(headers, col_widths), start=1):
+            cell = ws.cell(row=1, column=col_idx, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center")
+            ws.column_dimensions[openpyxl.utils.get_column_letter(col_idx)].width = width
 
-    for row_idx, row in enumerate(rows, start=2):
-        ws.cell(row=row_idx, column=1,  value=row["id"])
-        ws.cell(row=row_idx, column=2,  value=row["camera_id"])
-        ws.cell(row=row_idx, column=3,  value=row["created_at"].strftime("%d/%m/%Y %H:%M:%S") if row["created_at"] else "")
-        ws.cell(row=row_idx, column=4,  value=row["id_unico"])
-        ws.cell(row=row_idx, column=5,  value=row["nome"] or "")
-        ws.cell(row=row_idx, column=6,  value=row["apelido"] or "")
-        ws.cell(row=row_idx, column=7,  value=row["idade"])
-        ws.cell(row=row_idx, column=8,  value=_GENERO_LABEL.get(row["genero"], row["genero"] or ""))
-        ws.cell(row=row_idx, column=9,  value=_FLAG_LABEL.get(row["flag"], row["flag"] or ""))
-        ws.cell(row=row_idx, column=10, value=row["tipo_camera"] or "")
-        ws.cell(row=row_idx, column=11, value=row["camera"] or "")
-        ws.cell(row=row_idx, column=12, value=row["empresa"] or "")
+        for row_idx, row in enumerate(rows, start=2):
+            ws.cell(row=row_idx, column=1,  value=row["id"])
+            ws.cell(row=row_idx, column=2,  value=row["camera_id"])
+            ws.cell(row=row_idx, column=3,  value=row["created_at"].strftime("%d/%m/%Y %H:%M:%S") if row["created_at"] else "")
+            ws.cell(row=row_idx, column=4,  value=row["id_unico"])
+            ws.cell(row=row_idx, column=5,  value=row["nome"] or "")
+            ws.cell(row=row_idx, column=6,  value=row["apelido"] or "")
+            ws.cell(row=row_idx, column=7,  value=row["idade"])
+            ws.cell(row=row_idx, column=8,  value=_GENERO_LABEL.get(row["genero"], row["genero"] or ""))
+            ws.cell(row=row_idx, column=9,  value=_FLAG_LABEL.get(row["flag"], row["flag"] or ""))
+            ws.cell(row=row_idx, column=10, value=row["tipo_camera"] or "")
+            ws.cell(row=row_idx, column=11, value=row["camera"] or "")
+            ws.cell(row=row_idx, column=12, value=row["empresa"] or "")
 
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
+        output = io.BytesIO()
+        wb.save(output)
+        xlsx_bytes = output.getvalue()
+    except Exception as e:
+        print(f"[export] Erro ao gerar planilha: {e}")
+        return Response(f"Erro ao gerar planilha: {e}", status=500, mimetype="text/plain")
 
     filename = f"registros_{data_ini}_{data_fim}.xlsx"
-    return send_file(
-        output,
-        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        as_attachment=True,
-        download_name=filename,
-    )
+    resp = make_response(xlsx_bytes)
+    resp.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    resp.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    resp.headers["Content-Length"] = len(xlsx_bytes)
+    return resp
