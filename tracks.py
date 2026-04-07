@@ -549,12 +549,27 @@ def mover_registro(reg_id):
         if cursor.fetchone() is None:
             cursor.close()
             return jsonify({"error": f"Pessoa {id_unico} não encontrada"}), 404
+
+        # descobre o id_unico original do registro antes de mover
+        cursor.execute("SELECT id_unico FROM registros WHERE id = %s", (reg_id,))
+        row = cursor.fetchone()
+        id_unico_original = row["id_unico"] if row else None
+
         cursor.execute("UPDATE registros SET id_unico = %s WHERE id = %s", (id_unico, reg_id))
+
+        # se havia um dono original, verifica se ainda tem registros; se não, exclui a pessoa
+        pessoa_excluida = False
+        if id_unico_original and id_unico_original != id_unico:
+            cursor.execute("SELECT COUNT(*) AS total FROM registros WHERE id_unico = %s", (id_unico_original,))
+            if cursor.fetchone()["total"] == 0:
+                cursor.execute("DELETE FROM pessoas WHERE id_unico = %s", (id_unico_original,))
+                pessoa_excluida = True
+
         conn.commit()
         cursor.close()
     finally:
         conn.close()
-    return jsonify({"success": True})
+    return jsonify({"success": True, "pessoa_excluida": pessoa_excluida})
 
 
 @tracks_bp.route("/tracks/tabuleiro")
