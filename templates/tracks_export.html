@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tracks — Exportação</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #1a1d27;
+      border-bottom: 1px solid #2d3148;
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    header h1 { font-size: 1.2rem; font-weight: 600; color: #7c86ff; }
+
+    .nav { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+    .nav a {
+      color: #7c86ff;
+      text-decoration: none;
+      font-size: 0.82rem;
+      border: 1px solid #7c86ff44;
+      padding: 0.3rem 0.8rem;
+      border-radius: 6px;
+      transition: background 0.2s;
+    }
+    .nav a:hover { background: #7c86ff22; }
+
+    main {
+      max-width: 640px;
+      margin: 3rem auto;
+      padding: 0 1.5rem;
+    }
+
+    .card {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 12px;
+      padding: 2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .card h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .field-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .field-group label {
+      font-size: 0.82rem;
+      color: #64748b;
+    }
+
+    .field-group input[type="date"] {
+      background: #0f1117;
+      border: 1px solid #2d3148;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.9rem;
+      padding: 0.5rem 0.75rem;
+      width: 100%;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .field-group input[type="date"]:focus {
+      border-color: #7c86ff;
+    }
+
+    .row {
+      display: flex;
+      gap: 1rem;
+    }
+    .row .field-group { flex: 1; }
+
+    .btn-export {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      background: #7c86ff;
+      color: #0f1117;
+      font-weight: 700;
+      font-size: 0.95rem;
+      border: none;
+      border-radius: 8px;
+      padding: 0.65rem 1.5rem;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.2s;
+      width: 100%;
+    }
+    .btn-export:hover { background: #6370e8; }
+
+    .info {
+      font-size: 0.8rem;
+      color: #475569;
+      line-height: 1.5;
+    }
+
+    .cols-list {
+      list-style: none;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.3rem 1rem;
+    }
+    .cols-list li {
+      font-size: 0.82rem;
+      color: #64748b;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .cols-list li::before {
+      content: "·";
+      color: #7c86ff;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Exportação</h1>
+  <nav class="nav">
+    <a href="/camera300/tracks/lista">Lista</a>
+    <a href="/camera300/tracks/tabuleiro">Tabuleiro</a>
+    <a href="/camera300/tracks/permanencia">Permanência</a>
+    <a href="/camera300/tracks/quadro">Quadro</a>
+    <a href="/camera300/">&#8592; Checkin</a>
+  </nav>
+</header>
+
+<main>
+  <div class="card">
+    <h2>Exportar planilha Excel</h2>
+
+    <div class="info">
+      Selecione o período desejado. Serão exportados todos os registros de reconhecimento
+      facial do intervalo, com dados de câmera, pessoa e empresa.
+    </div>
+
+    <form id="export-form" method="get" action="/camera300/tracks/export/download">
+      <div class="row">
+        <div class="field-group">
+          <label for="data_ini">Data inicial</label>
+          <input type="date" id="data_ini" name="data_ini" value="{{ data_ini }}" />
+        </div>
+        <div class="field-group">
+          <label for="data_fim">Data final</label>
+          <input type="date" id="data_fim" name="data_fim" value="{{ data_fim }}" />
+        </div>
+      </div>
+
+      <div style="margin-top: 1.5rem;">
+        <button type="submit" class="btn-export">
+          &#8595; Exportação
+        </button>
+      </div>
+    </form>
+
+    <div>
+      <p class="info" style="margin-bottom: 0.6rem;">Colunas incluídas na planilha:</p>
+      <ul class="cols-list">
+        <li>Ocor</li>
+        <li>Id Cam</li>
+        <li>DataHora</li>
+        <li>Id Pessoa</li>
+        <li>Nome</li>
+        <li>Apelido</li>
+        <li>Idade</li>
+        <li>Gênero</li>
+        <li>Flag</li>
+        <li>Tipo Câmera</li>
+        <li>Nome Câmera</li>
+        <li>Empresa</li>
+      </ul>
+    </div>
+  </div>
+</main>
+
+</body>
+</html>

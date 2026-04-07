@@ -4,3 +4,4 @@ requests
 requests-toolbelt
 gunicorn
 opencv-python-headless
+openpyxl
