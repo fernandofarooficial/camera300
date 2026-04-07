@@ -897,8 +897,8 @@ def tracks_export_download():
         ws = wb.active
         ws.title = "Registros"
 
-        header_fill = PatternFill(patternType="solid", fgColor="1A1D27")
-        header_font = Font(bold=True, color="7C86FF")
+        header_fill = PatternFill(patternType="solid", fgColor="1F3864")
+        header_font = Font(bold=True, color="FFFFFF")
         headers = ["Ocor", "Id Cam", "DataHora", "Id Pessoa",
                    "Nome", "Apelido", "Idade", "Gênero", "Flag",
                    "Tipo Câmera", "Nome Câmera", "Empresa"]
