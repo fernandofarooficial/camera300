@@ -24,14 +24,14 @@ def adequar_bases():
 
 
 def atualizar_path_camera(track_id, idreg):
-    image_path, camera_id, face_det_score = get_best_face(track_id)
+    image_path, camera_id, face_det_score, face_recgn_score = get_best_face(track_id)
     if image_path is not None:
         conn = get_conn()
         try:
             cursor = conn.cursor()
             cursor.execute(
-                "UPDATE registros SET image_path = %s, camera_id = %s, face_det_score = %s WHERE id = %s",
-                (image_path, camera_id, face_det_score, idreg),
+                "UPDATE registros SET image_path = %s, camera_id = %s, face_det_score = %s, face_recgn_score = %s WHERE id = %s",
+                (image_path, camera_id, face_det_score, face_recgn_score, idreg),
             )
             conn.commit()
             cursor.close()

@@ -156,10 +156,14 @@ def get_best_face(track_id, data=None):
             best_score = score
             best = face
     if best:
-        trace(track_id, f"get_best_face: melhor face → image_path={best['image_path']} camera_id={best.get('camera_id')} score={best_score:.4f}")
-        return best["image_path"], best.get("camera_id"), best_score if best_score >= 0 else None
+        try:
+            recgn_score = float(best.get("face_recgn_score") or 0) or None
+        except (ValueError, TypeError):
+            recgn_score = None
+        trace(track_id, f"get_best_face: melhor face → image_path={best['image_path']} camera_id={best.get('camera_id')} score={best_score:.4f} recgn={recgn_score}")
+        return best["image_path"], best.get("camera_id"), best_score if best_score >= 0 else None, recgn_score
     trace(track_id, "get_best_face: nenhuma face com image_path encontrada")
-    return None, None, None
+    return None, None, None, None
 
 
 def get_pessoas_by_ids(id_unicos):
