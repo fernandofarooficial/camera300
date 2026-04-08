@@ -770,7 +770,7 @@
               <span class="chip chip-genero">{{ g.idade }} anos</span>
             {% endif %}
             {% if g.flag %}
-              {% set flag_map = {'C': 'Cliente', 'A': 'Anônimo', 'F': 'Franqueado', 'E': 'Empregado'} %}
+              {% set flag_map = {'C': 'Cliente', 'A': 'Anônimo', 'F': 'Franqueado', 'E': 'Empregado', 'K': 'Criança', 'P': 'Prestador'} %}
               <span class="chip chip-flag">{{ flag_map.get(g.flag, g.flag) }}</span>
             {% endif %}
             <span class="chip chip-count">{{ g.ocorrencias | length }} ocorrência(s)</span>
@@ -917,6 +917,8 @@
             <option value="A">An&ocirc;nimo</option>
             <option value="F">Franqueado</option>
             <option value="E">Empregado</option>
+            <option value="K">Crian&ccedil;a</option>
+            <option value="P">Prestador</option>
           </select>
         </div>
         <div class="form-field full">
@@ -1313,7 +1315,7 @@
      Lightbox — foto ampliada + cadastro completo
   ========================================================= */
   const GENERO_MAP = { M: 'Masculino', F: 'Feminino', A: 'Anônimo' };
-  const FLAG_MAP   = { C: 'Cliente',  A: 'Anônimo',  F: 'Franqueado', E: 'Empregado' };
+  const FLAG_MAP   = { C: 'Cliente',  A: 'Anônimo',  F: 'Franqueado', E: 'Empregado', K: 'Criança', P: 'Prestador' };
   const CAMERAS_MAP = {{ cameras_map | tojson }};
 
   function abrirLightbox(imgEl, tipo) {

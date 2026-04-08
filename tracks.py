@@ -853,7 +853,7 @@ def tracks_api():
 
 
 _GENERO_LABEL = {"M": "Masculino", "F": "Feminino", "A": "Anônimo"}
-_FLAG_LABEL   = {"C": "Cliente",   "A": "Anônimo",  "F": "Franqueado", "E": "Empregado"}
+_FLAG_LABEL   = {"C": "Cliente",   "A": "Anônimo",  "F": "Franqueado", "E": "Empregado", "K": "Criança", "P": "Prestador"}
 
 
 @tracks_bp.route("/tracks/export")

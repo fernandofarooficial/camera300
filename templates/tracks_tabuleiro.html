@@ -325,7 +325,7 @@
             <span class="card-id">ID {{ p.id_unico }}</span>
             <span class="card-nome" title="{{ p.nome or '' }}">{{ p.nome or '—' }}</span>
             {% if p.flag %}
-              {% set flag_map = {'C': 'Cliente', 'A': 'Anônimo', 'F': 'Franqueado', 'E': 'Empregado'} %}
+              {% set flag_map = {'C': 'Cliente', 'A': 'Anônimo', 'F': 'Franqueado', 'E': 'Empregado', 'K': 'Criança', 'P': 'Prestador'} %}
               <span class="chip-flag">{{ flag_map.get(p.flag, p.flag) }}</span>
             {% endif %}
             <div class="card-actions">
@@ -411,6 +411,8 @@
             <option value="A">An&ocirc;nimo</option>
             <option value="F">Franqueado</option>
             <option value="E">Empregado</option>
+            <option value="K">Crian&ccedil;a</option>
+            <option value="P">Prestador</option>
           </select>
         </div>
         <div class="form-field full">
