@@ -7,7 +7,7 @@ from flask import Blueprint, render_template, jsonify, request, Response, send_f
 from requests_toolbelt import MultipartEncoder
 from datetime import datetime, timedelta, date
 
-from config import get_conn, HEIMDALL_URL, HEIMDALL_IMAGE_BASE
+from config import get_conn, HEIMDALL_URL, HEIMDALL_IMAGE_BASE, HEIMDALL_START_DATE, HEIMDALL_END_DATE
 from tracer import trace
 
 
@@ -57,8 +57,8 @@ def query_heimdall(track_id):
         fields = [
             ("track_id",   track_id),
             ("confidence", "0.7"),
-            ("start_date", "2026-04-02"),
-            ("end_date",   "2026-12-31"),
+            ("start_date", HEIMDALL_START_DATE),
+            ("end_date",   HEIMDALL_END_DATE),
         ]
         for cam_id in CAMERA_IDS:
             fields.append(("camera_id", cam_id))

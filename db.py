@@ -1,5 +1,5 @@
 from tracks import query_heimdall, fmt_timestamp, get_best_face, GENDER_MAP
-from config import get_conn
+from config import get_conn, FLAG_NOVO_ANONIMO, SCORE_MINIMO
 from tracer import trace
 from telegram import enviar_mensagem_telegram
 
@@ -67,7 +67,7 @@ def listar_matches_simples(track_id, data=None):
         for face in matches:
             score_raw = face.get("face_det_score")
             try:
-                if score_raw is None or float(score_raw) < 0.73:
+                if score_raw is None or float(score_raw) < SCORE_MINIMO:
                     continue
             except (ValueError, TypeError):
                 continue
@@ -132,7 +132,7 @@ def criar_pessoa(track_id, data=None):
         cursor = conn.cursor(dictionary=True)
         cursor.execute(
             "INSERT INTO pessoas (track_id_base, flag) VALUES (%s, %s)",
-            (track_id, "C"),
+            (track_id, FLAG_NOVO_ANONIMO),
         )
         conn.commit()
         cursor.execute(
@@ -164,46 +164,39 @@ def criar_pessoa(track_id, data=None):
 
 
 def telegram_cliente_chegou(track_id, id_unico):
-    print(f"TCC(01): Entrei")
     conn = get_conn()
     try:
         cursor = conn.cursor(dictionary=True)
         cursor.execute("SELECT * FROM pessoas WHERE id_unico = %s LIMIT 1", (id_unico,))
         pes = cursor.fetchone()
-        print(f"TCC(02): pes={pes}")
         if pes is None:
             cursor.close()
             return
-        if pes.get("flag", None) == "C":
-            print(f"TCC(03): É cliente!")
+        if pes.get("flag") == "C":
             cursor.execute("""
                 SELECT COUNT(*) AS qtd_hoje
                 FROM registros
                 WHERE id_unico = %s AND DATE(created_at) = CURDATE()
             """, (id_unico,))
             qtd_hoje = cursor.fetchone().get("qtd_hoje", 0)
-            print(f"TCC(03b): qtd_hoje={qtd_hoje}")
             if qtd_hoje > 1:
-                print(f"TCC(03c): Não é a primeira ocorrência do dia — abortando")
+                trace(track_id, f"telegram_cliente_chegou: não é a primeira ocorrência do dia (qtd_hoje={qtd_hoje}) — abortando")
                 cursor.close()
                 return
             nome = pes.get("nome")
             nick = pes.get("apelido")
             nota = pes.get("notas")
             cursor.execute("SELECT COUNT(DISTINCT DATE(created_at)) AS qtd_visit FROM registros WHERE id_unico = %s", (id_unico,))
-            vol_visit = cursor.fetchone()
-            qtd_visit = vol_visit.get("qtd_visit")
-            print(f"TCC(04): Select count")
+            qtd_visit = cursor.fetchone().get("qtd_visit")
             if qtd_visit >= 2:
                 cursor.execute("""
                     SELECT created_at AS data_hora
                     FROM registros
                     WHERE id_unico = %s
                     ORDER BY created_at DESC
-                    LIMIT 2;
+                    LIMIT 2
                 """, (id_unico,))
                 visitas = cursor.fetchall()
-                print(f"TCC(05): Select registros - duas visitas")
                 ult_visit = visitas[0]["data_hora"].strftime("%d/%m/%Y %H:%M")
                 ant_visit = visitas[1]["data_hora"].strftime("%d/%m/%Y %H:%M")
                 msg1 = f"Cliente {nome}({nick}) chegou em {ult_visit}. "
@@ -212,7 +205,7 @@ def telegram_cliente_chegou(track_id, id_unico):
                 mensagem = msg1 + msg2 + msg3
             else:
                 mensagem = f"Cliente {nome}({nick}) chegou. Esta é a sua primeira visita."
-            print(f"TCC(06): Vou enviar mensagem")
+            trace(track_id, f"telegram_cliente_chegou: enviando mensagem para {nome}({nick})")
             enviar_mensagem_telegram(mensagem)
         cursor.close()
     finally:
