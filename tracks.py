@@ -709,25 +709,20 @@ def tracks_quadro():
     cursor = conn.cursor(dictionary=True)
     cursor.execute("""
         SELECT
-            visits.dia_visit AS dia,
-            SUM(CASE WHEN min_global.primeira = visits.dia_visit THEN 1 ELSE 0 END) AS novos,
-            SUM(CASE WHEN min_global.primeira < visits.dia_visit THEN 1 ELSE 0 END) AS retornantes
-        FROM (
-            SELECT DISTINCT r.id_unico, DATE(r.created_at) AS dia_visit
-            FROM registros r
-            JOIN pessoas p ON r.id_unico = p.id_unico
-            WHERE DATE(r.created_at) BETWEEN %s AND %s
-              AND p.flag IN ('C', 'A')
-        ) AS visits
+            DATE(r.created_at) AS dia,
+            COUNT(DISTINCT CASE WHEN mg.primeira = DATE(r.created_at) THEN r.id_unico END) AS novos,
+            COUNT(DISTINCT CASE WHEN mg.primeira < DATE(r.created_at) THEN r.id_unico END) AS retornantes
+        FROM registros r
+        JOIN pessoas p ON r.id_unico = p.id_unico
         JOIN (
-            SELECT r.id_unico, MIN(DATE(r.created_at)) AS primeira
-            FROM registros r
-            JOIN pessoas p ON r.id_unico = p.id_unico
-            WHERE p.flag IN ('C', 'A')
-            GROUP BY r.id_unico
-        ) AS min_global ON visits.id_unico = min_global.id_unico
-        GROUP BY visits.dia_visit
-        ORDER BY visits.dia_visit ASC
+            SELECT id_unico, MIN(DATE(created_at)) AS primeira
+            FROM registros
+            GROUP BY id_unico
+        ) mg ON r.id_unico = mg.id_unico
+        WHERE DATE(r.created_at) BETWEEN %s AND %s
+          AND p.flag IN ('C', 'A')
+        GROUP BY DATE(r.created_at)
+        ORDER BY dia ASC
     """, (d_ini, d_fim))
     rows = cursor.fetchall()
     ocorrencias_por_dia = [
