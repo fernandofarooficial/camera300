@@ -1,5 +1,7 @@
 import os
 import mysql.connector.pooling
+import psycopg2
+import psycopg2.pool
 
 HEIMDALL_URL       = os.environ.get("HEIMDALL_URL",        "http://187.17.228.160:6500/api/facial/recognize-by-track")
 HEIMDALL_IMAGE_BASE = os.environ.get("HEIMDALL_IMAGE_BASE", "http://187.17.228.160:6500/api/facial/images")
@@ -39,4 +41,23 @@ _pool = mysql.connector.pooling.MySQLConnectionPool(
 def get_conn():
     """Retorna uma conexão do pool. Chamar .close() devolve ao pool."""
     return _pool.get_connection()
+
+
+# ── PostgreSQL (microvix) ──────────────────────────────────────────────────────
+PG_DSN = os.environ.get(
+    "PG_DSN",
+    "postgresql://fefa_dev:Fd7493dt@72.60.58.241:5432/lojas",
+)
+
+_pg_pool = psycopg2.pool.ThreadedConnectionPool(1, 5, PG_DSN)
+
+
+def get_pg_conn():
+    """Retorna uma conexão PostgreSQL do pool. Chamar .close() devolve ao pool."""
+    return _pg_pool.getconn()
+
+
+def release_pg_conn(conn):
+    """Devolve a conexão PostgreSQL ao pool."""
+    _pg_pool.putconn(conn)
 

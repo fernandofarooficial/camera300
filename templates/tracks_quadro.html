@@ -166,6 +166,8 @@
       <input type="hidden" id="hd-perm_fim" name="perm_fim" value="{{ perm_fim }}">
       <input type="hidden" id="hd-gd_ini" name="gd_ini" value="{{ gd_ini }}">
       <input type="hidden" id="hd-gd_fim" name="gd_fim" value="{{ gd_fim }}">
+      <input type="hidden" id="hd-fat_ini" name="fat_ini" value="{{ fat_ini }}">
+      <input type="hidden" id="hd-fat_fim" name="fat_fim" value="{{ fat_fim }}">
       <label for="d_ini">De</label>
       <input type="date" id="d_ini" name="d_ini" value="{{ d_ini }}">
       <label for="d_fim">até</label>
@@ -190,6 +192,8 @@
       <input type="hidden" id="hd2-perm_fim" name="perm_fim" value="{{ perm_fim }}">
       <input type="hidden" id="hd2-gd_ini" name="gd_ini" value="{{ gd_ini }}">
       <input type="hidden" id="hd2-gd_fim" name="gd_fim" value="{{ gd_fim }}">
+      <input type="hidden" id="hd2-fat_ini" name="fat_ini" value="{{ fat_ini }}">
+      <input type="hidden" id="hd2-fat_fim" name="fat_fim" value="{{ fat_fim }}">
       <label for="h_ini">De</label>
       <input type="date" id="h_ini" name="h_ini" value="{{ h_ini }}">
       <label for="h_fim">até</label>
@@ -214,6 +218,8 @@
       <input type="hidden" id="hd3-perm_fim" name="perm_fim" value="{{ perm_fim }}">
       <input type="hidden" id="hd3-gd_ini" name="gd_ini" value="{{ gd_ini }}">
       <input type="hidden" id="hd3-gd_fim" name="gd_fim" value="{{ gd_fim }}">
+      <input type="hidden" id="hd3-fat_ini" name="fat_ini" value="{{ fat_ini }}">
+      <input type="hidden" id="hd3-fat_fim" name="fat_fim" value="{{ fat_fim }}">
       <label for="p_ini">De</label>
       <input type="date" id="p_ini" name="p_ini" value="{{ p_ini }}">
       <label for="p_fim">até</label>
@@ -238,6 +244,8 @@
       <input type="hidden" id="hd4-perm_fim" name="perm_fim" value="{{ perm_fim }}">
       <input type="hidden" id="hd4-gd_ini" name="gd_ini" value="{{ gd_ini }}">
       <input type="hidden" id="hd4-gd_fim" name="gd_fim" value="{{ gd_fim }}">
+      <input type="hidden" id="hd4-fat_ini" name="fat_ini" value="{{ fat_ini }}">
+      <input type="hidden" id="hd4-fat_fim" name="fat_fim" value="{{ fat_fim }}">
       <label for="e_ini">De</label>
       <input type="date" id="e_ini" name="e_ini" value="{{ e_ini }}">
       <label for="e_fim">até</label>
@@ -262,6 +270,8 @@
       <input type="hidden" id="hd6-e_fim" name="e_fim" value="{{ e_fim }}">
       <input type="hidden" id="hd6-perm_ini" name="perm_ini" value="{{ perm_ini }}">
       <input type="hidden" id="hd6-perm_fim" name="perm_fim" value="{{ perm_fim }}">
+      <input type="hidden" id="hd6-fat_ini" name="fat_ini" value="{{ fat_ini }}">
+      <input type="hidden" id="hd6-fat_fim" name="fat_fim" value="{{ fat_fim }}">
       <label for="gd_ini">De</label>
       <input type="date" id="gd_ini" name="gd_ini" value="{{ gd_ini }}">
       <label for="gd_fim">até</label>
@@ -270,6 +280,32 @@
     </form>
     <div class="chart-wrap">
       <canvas id="chartGeneroDia"></canvas>
+    </div>
+  </div>
+
+  <div class="chart-card">
+    <h2>Faturamento Diário — Valor e Notas Emitidas</h2>
+    <form id="form-fat" class="date-filter" method="get" action="">
+      <input type="hidden" id="hd7-d_ini" name="d_ini" value="{{ d_ini }}">
+      <input type="hidden" id="hd7-d_fim" name="d_fim" value="{{ d_fim }}">
+      <input type="hidden" id="hd7-h_ini" name="h_ini" value="{{ h_ini }}">
+      <input type="hidden" id="hd7-h_fim" name="h_fim" value="{{ h_fim }}">
+      <input type="hidden" id="hd7-p_ini" name="p_ini" value="{{ p_ini }}">
+      <input type="hidden" id="hd7-p_fim" name="p_fim" value="{{ p_fim }}">
+      <input type="hidden" id="hd7-e_ini" name="e_ini" value="{{ e_ini }}">
+      <input type="hidden" id="hd7-e_fim" name="e_fim" value="{{ e_fim }}">
+      <input type="hidden" id="hd7-perm_ini" name="perm_ini" value="{{ perm_ini }}">
+      <input type="hidden" id="hd7-perm_fim" name="perm_fim" value="{{ perm_fim }}">
+      <input type="hidden" id="hd7-gd_ini" name="gd_ini" value="{{ gd_ini }}">
+      <input type="hidden" id="hd7-gd_fim" name="gd_fim" value="{{ gd_fim }}">
+      <label for="fat_ini">De</label>
+      <input type="date" id="fat_ini" name="fat_ini" value="{{ fat_ini }}">
+      <label for="fat_fim">até</label>
+      <input type="date" id="fat_fim" name="fat_fim" value="{{ fat_fim }}">
+      <button type="submit">Aplicar</button>
+    </form>
+    <div class="chart-wrap">
+      <canvas id="chartFaturamento"></canvas>
     </div>
   </div>
 
@@ -286,6 +322,8 @@
       <input type="hidden" id="hd5-e_fim" name="e_fim" value="{{ e_fim }}">
       <input type="hidden" id="hd5-gd_ini" name="gd_ini" value="{{ gd_ini }}">
       <input type="hidden" id="hd5-gd_fim" name="gd_fim" value="{{ gd_fim }}">
+      <input type="hidden" id="hd5-fat_ini" name="fat_ini" value="{{ fat_ini }}">
+      <input type="hidden" id="hd5-fat_fim" name="fat_fim" value="{{ fat_fim }}">
       <label for="perm_ini">De</label>
       <input type="date" id="perm_ini" name="perm_ini" value="{{ perm_ini }}">
       <label for="perm_fim">até</label>
@@ -631,7 +669,90 @@
     }
   });
 
-  // Sincronização dos filtros de data entre os seis gráficos
+  // Gráfico de Faturamento Diário (combo: barra=valor, linha=qtd notas)
+  const dadosFat = {{ faturamento_por_dia | tojson }};
+  const fatLabels = dadosFat.map(d => {
+    const [ano, mes, dia] = d.dia.split('-');
+    return `${dia}/${mes}`;
+  });
+  new Chart(document.getElementById('chartFaturamento'), {
+    data: {
+      labels: fatLabels,
+      datasets: [
+        {
+          type: 'bar',
+          label: 'Valor Faturado (R$)',
+          data: dadosFat.map(d => d.soma),
+          backgroundColor: '#34d39933',
+          borderColor: '#34d399',
+          borderWidth: 2,
+          borderRadius: 4,
+          yAxisID: 'yValor',
+        },
+        {
+          type: 'line',
+          label: 'Notas Emitidas',
+          data: dadosFat.map(d => d.qtd_notas),
+          borderColor: '#f59e0b',
+          backgroundColor: '#f59e0b22',
+          borderWidth: 2,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          tension: 0.3,
+          fill: false,
+          yAxisID: 'yNotas',
+        },
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: true, labels: { color: '#94a3b8', font: { size: 11 } } },
+        datalabels: { display: false },
+        tooltip: {
+          callbacks: {
+            title: (items) => {
+              const idx = items[0].dataIndex;
+              return dadosFat[idx].dia;
+            },
+            label: (item) => {
+              if (item.dataset.yAxisID === 'yValor') {
+                return ` R$ ${item.raw.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+              }
+              return ` ${item.raw} nota${item.raw !== 1 ? 's' : ''}`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: xTicks(11),
+          grid: { color: '#1e2130' },
+        },
+        yValor: {
+          type: 'linear',
+          position: 'left',
+          beginAtZero: true,
+          ticks: {
+            color: '#34d399',
+            font: { size: 11 },
+            callback: (v) => 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 0 }),
+          },
+          grid: { color: '#2d3148' },
+        },
+        yNotas: {
+          type: 'linear',
+          position: 'right',
+          beginAtZero: true,
+          ticks: { color: '#f59e0b', font: { size: 11 }, precision: 0 },
+          grid: { drawOnChartArea: false },
+        },
+      }
+    }
+  });
+
+  // Sincronização dos filtros de data entre os sete gráficos
   document.getElementById('form-dia').addEventListener('submit', function () {
     document.getElementById('hd-h_ini').value = document.getElementById('h_ini').value;
     document.getElementById('hd-h_fim').value = document.getElementById('h_fim').value;
@@ -643,6 +764,8 @@
     document.getElementById('hd-perm_fim').value = document.getElementById('perm_fim').value;
     document.getElementById('hd-gd_ini').value = document.getElementById('gd_ini').value;
     document.getElementById('hd-gd_fim').value = document.getElementById('gd_fim').value;
+    document.getElementById('hd-fat_ini').value = document.getElementById('fat_ini').value;
+    document.getElementById('hd-fat_fim').value = document.getElementById('fat_fim').value;
   });
   document.getElementById('form-hora').addEventListener('submit', function () {
     document.getElementById('hd-d_ini').value = document.getElementById('d_ini').value;
@@ -655,6 +778,8 @@
     document.getElementById('hd2-perm_fim').value = document.getElementById('perm_fim').value;
     document.getElementById('hd2-gd_ini').value = document.getElementById('gd_ini').value;
     document.getElementById('hd2-gd_fim').value = document.getElementById('gd_fim').value;
+    document.getElementById('hd2-fat_ini').value = document.getElementById('fat_ini').value;
+    document.getElementById('hd2-fat_fim').value = document.getElementById('fat_fim').value;
   });
   document.getElementById('form-pessoa').addEventListener('submit', function () {
     document.getElementById('hd3-d_ini').value = document.getElementById('d_ini').value;
@@ -667,6 +792,8 @@
     document.getElementById('hd3-perm_fim').value = document.getElementById('perm_fim').value;
     document.getElementById('hd3-gd_ini').value = document.getElementById('gd_ini').value;
     document.getElementById('hd3-gd_fim').value = document.getElementById('gd_fim').value;
+    document.getElementById('hd3-fat_ini').value = document.getElementById('fat_ini').value;
+    document.getElementById('hd3-fat_fim').value = document.getElementById('fat_fim').value;
   });
   document.getElementById('form-etaria').addEventListener('submit', function () {
     document.getElementById('hd4-d_ini').value = document.getElementById('d_ini').value;
@@ -679,6 +806,8 @@
     document.getElementById('hd4-perm_fim').value = document.getElementById('perm_fim').value;
     document.getElementById('hd4-gd_ini').value = document.getElementById('gd_ini').value;
     document.getElementById('hd4-gd_fim').value = document.getElementById('gd_fim').value;
+    document.getElementById('hd4-fat_ini').value = document.getElementById('fat_ini').value;
+    document.getElementById('hd4-fat_fim').value = document.getElementById('fat_fim').value;
   });
   document.getElementById('form-perm').addEventListener('submit', function () {
     document.getElementById('hd5-d_ini').value = document.getElementById('d_ini').value;
@@ -691,6 +820,8 @@
     document.getElementById('hd5-e_fim').value = document.getElementById('e_fim').value;
     document.getElementById('hd5-gd_ini').value = document.getElementById('gd_ini').value;
     document.getElementById('hd5-gd_fim').value = document.getElementById('gd_fim').value;
+    document.getElementById('hd5-fat_ini').value = document.getElementById('fat_ini').value;
+    document.getElementById('hd5-fat_fim').value = document.getElementById('fat_fim').value;
   });
   document.getElementById('form-gd').addEventListener('submit', function () {
     document.getElementById('hd6-d_ini').value = document.getElementById('d_ini').value;
@@ -703,6 +834,22 @@
     document.getElementById('hd6-e_fim').value = document.getElementById('e_fim').value;
     document.getElementById('hd6-perm_ini').value = document.getElementById('perm_ini').value;
     document.getElementById('hd6-perm_fim').value = document.getElementById('perm_fim').value;
+    document.getElementById('hd6-fat_ini').value = document.getElementById('fat_ini').value;
+    document.getElementById('hd6-fat_fim').value = document.getElementById('fat_fim').value;
+  });
+  document.getElementById('form-fat').addEventListener('submit', function () {
+    document.getElementById('hd7-d_ini').value = document.getElementById('d_ini').value;
+    document.getElementById('hd7-d_fim').value = document.getElementById('d_fim').value;
+    document.getElementById('hd7-h_ini').value = document.getElementById('h_ini').value;
+    document.getElementById('hd7-h_fim').value = document.getElementById('h_fim').value;
+    document.getElementById('hd7-p_ini').value = document.getElementById('p_ini').value;
+    document.getElementById('hd7-p_fim').value = document.getElementById('p_fim').value;
+    document.getElementById('hd7-e_ini').value = document.getElementById('e_ini').value;
+    document.getElementById('hd7-e_fim').value = document.getElementById('e_fim').value;
+    document.getElementById('hd7-perm_ini').value = document.getElementById('perm_ini').value;
+    document.getElementById('hd7-perm_fim').value = document.getElementById('perm_fim').value;
+    document.getElementById('hd7-gd_ini').value = document.getElementById('gd_ini').value;
+    document.getElementById('hd7-gd_fim').value = document.getElementById('gd_fim').value;
   });
 </script>
 

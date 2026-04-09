@@ -7,7 +7,7 @@ from flask import Blueprint, render_template, jsonify, request, Response, send_f
 from requests_toolbelt import MultipartEncoder
 from datetime import datetime, timedelta, date
 
-from config import get_conn, HEIMDALL_URL, HEIMDALL_IMAGE_BASE, HEIMDALL_START_DATE, HEIMDALL_END_DATE, ZIONS_API_URL, ZIONS_TOKEN
+from config import get_conn, get_pg_conn, release_pg_conn, HEIMDALL_URL, HEIMDALL_IMAGE_BASE, HEIMDALL_START_DATE, HEIMDALL_END_DATE, ZIONS_API_URL, ZIONS_TOKEN
 from tracer import trace
 
 
@@ -648,6 +648,40 @@ def tracks_quadro():
     perm_fim = request.args.get('perm_fim', today.isoformat())
     gd_ini = request.args.get('gd_ini', week_ago.isoformat())
     gd_fim = request.args.get('gd_fim', today.isoformat())
+    fat_ini = request.args.get('fat_ini', week_ago.isoformat())
+    fat_fim = request.args.get('fat_fim', today.isoformat())
+
+    # ── Faturamento diário (PostgreSQL) ───────────────────────────────────────
+    faturamento_por_dia = []
+    pg_conn = None
+    try:
+        pg_conn = get_pg_conn()
+        pg_cur = pg_conn.cursor()
+        pg_cur.execute("""
+            SELECT
+                data_lancamento::date AS data_doc,
+                COUNT(DISTINCT documento) AS qtd_notas,
+                SUM(valor_total) AS soma
+            FROM microvix_movimento
+            WHERE cod_natureza_operacao = '10030'
+              AND cancelado = 'N'
+              AND excluido = 'N'
+              AND data_lancamento::date BETWEEN %s AND %s
+            GROUP BY data_lancamento::date
+            ORDER BY data_lancamento::date ASC
+        """, (fat_ini, fat_fim))
+        for row in pg_cur.fetchall():
+            faturamento_por_dia.append({
+                "dia": str(row[0]),
+                "qtd_notas": int(row[1]),
+                "soma": float(row[2]) if row[2] is not None else 0.0,
+            })
+        pg_cur.close()
+    except Exception as e:
+        print(f"[quadro] Erro PostgreSQL faturamento: {e}")
+    finally:
+        if pg_conn:
+            release_pg_conn(pg_conn)
 
     conn = get_conn()
     cursor = conn.cursor(dictionary=True)
@@ -811,13 +845,15 @@ def tracks_quadro():
                            ocorrencias_por_pessoa=ocorrencias_por_pessoa,
                            ocorrencias_por_faixa_etaria=ocorrencias_por_faixa_etaria,
                            permanencia_media=permanencia_media,
+                           faturamento_por_dia=faturamento_por_dia,
                            d_ini=d_ini, d_fim=d_fim,
                            h_ini=h_ini, h_fim=h_fim,
                            p_ini=p_ini, p_fim=p_fim,
                            e_ini=e_ini, e_fim=e_fim,
                            perm_ini=perm_ini, perm_fim=perm_fim,
                            genero_por_dia=genero_por_dia,
-                           gd_ini=gd_ini, gd_fim=gd_fim)
+                           gd_ini=gd_ini, gd_fim=gd_fim,
+                           fat_ini=fat_ini, fat_fim=fat_fim)
 
 
 @tracks_bp.route("/tracks/dados")
