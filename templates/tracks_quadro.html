@@ -702,6 +702,20 @@
           fill: false,
           yAxisID: 'yNotas',
         },
+        {
+          type: 'line',
+          label: 'Clientes',
+          data: dadosFat.map(d => d.qtd_clientes),
+          borderColor: '#a78bfa',
+          backgroundColor: '#a78bfa22',
+          borderWidth: 2,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          tension: 0.3,
+          fill: false,
+          borderDash: [5, 3],
+          yAxisID: 'yNotas',
+        },
       ]
     },
     options: {
@@ -719,6 +733,9 @@
             label: (item) => {
               if (item.dataset.yAxisID === 'yValor') {
                 return ` R$ ${item.raw.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+              }
+              if (item.dataset.label === 'Clientes') {
+                return ` ${item.raw} cliente${item.raw !== 1 ? 's' : ''}`;
               }
               return ` ${item.raw} nota${item.raw !== 1 ? 's' : ''}`;
             }

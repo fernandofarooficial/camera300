@@ -675,6 +675,7 @@ def tracks_quadro():
                 "dia": str(row[0]),
                 "qtd_notas": int(row[1]),
                 "soma": float(row[2]) if row[2] is not None else 0.0,
+                "qtd_clientes": 0,
             })
         pg_cur.close()
     except Exception as e:
@@ -682,6 +683,27 @@ def tracks_quadro():
     finally:
         if pg_conn:
             release_pg_conn(pg_conn)
+
+    # ── Clientes por dia no intervalo do faturamento (MySQL) ─────────────────
+    if faturamento_por_dia:
+        try:
+            _conn_fat = get_conn()
+            _cur_fat = _conn_fat.cursor(dictionary=True)
+            _cur_fat.execute("""
+                SELECT DATE(r.created_at) AS dia, COUNT(DISTINCT r.id_unico) AS total
+                FROM registros r
+                JOIN pessoas p ON r.id_unico = p.id_unico
+                WHERE DATE(r.created_at) BETWEEN %s AND %s
+                  AND p.flag IN ('C', 'A')
+                GROUP BY DATE(r.created_at)
+            """, (fat_ini, fat_fim))
+            clientes_map = {str(row["dia"]): row["total"] for row in _cur_fat.fetchall()}
+            _cur_fat.close()
+            _conn_fat.close()
+            for entry in faturamento_por_dia:
+                entry["qtd_clientes"] = clientes_map.get(entry["dia"], 0)
+        except Exception as e:
+            print(f"[quadro] Erro MySQL clientes/faturamento: {e}")
 
     conn = get_conn()
     cursor = conn.cursor(dictionary=True)
