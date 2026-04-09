@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tracks — Logs de Reconhecimento</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #1a1d27;
+      border-bottom: 1px solid #2d3148;
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    header h1 { font-size: 1.2rem; font-weight: 600; color: #7c86ff; }
+
+    .nav { display: flex; gap: 0.6rem; }
+    .nav a {
+      color: #7c86ff;
+      text-decoration: none;
+      font-size: 0.82rem;
+      border: 1px solid #7c86ff44;
+      padding: 0.3rem 0.8rem;
+      border-radius: 6px;
+      transition: background 0.2s;
+    }
+    .nav a:hover { background: #7c86ff22; }
+
+    main { max-width: 1400px; margin: 0 auto; padding: 1.5rem; }
+
+    .error-box {
+      background: #ef444422;
+      border: 1px solid #ef444455;
+      color: #ef4444;
+      border-radius: 8px;
+      padding: 1rem 1.2rem;
+      margin-bottom: 1.5rem;
+      font-size: 0.85rem;
+      font-family: 'Courier New', monospace;
+    }
+
+    .table-wrap {
+      border: 1px solid #2d3148;
+      border-radius: 10px;
+      overflow: hidden;
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.83rem;
+      min-width: 900px;
+    }
+
+    thead { background: #1e2130; }
+    thead th {
+      padding: 0.65rem 1rem;
+      text-align: left;
+      font-size: 0.68rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #64748b;
+      border-bottom: 1px solid #2d3148;
+      white-space: nowrap;
+    }
+
+    tbody tr {
+      border-bottom: 1px solid #1e2130;
+      transition: background 0.15s;
+    }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: #1e2130; }
+
+    td { padding: 0.55rem 1rem; vertical-align: middle; }
+
+    .null { color: #334155; font-style: italic; }
+    .mono { font-family: 'Courier New', monospace; font-size: 0.75rem; color: #94a3b8; }
+
+    .score {
+      color: #22c55e;
+      font-weight: 700;
+    }
+
+    .thumb {
+      width: 56px;
+      height: 56px;
+      object-fit: cover;
+      border-radius: 6px;
+      border: 1px solid #2d3148;
+      display: block;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+    .thumb:hover { transform: scale(1.1); }
+    .no-thumb { color: #334155; font-style: italic; font-size: 0.75rem; }
+
+    .badge {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 0.15rem 0.65rem;
+      font-size: 0.7rem;
+      font-weight: 600;
+    }
+    .badge-unattended { background: #f59e0b22; border: 1px solid #f59e0b44; color: #f59e0b; }
+    .badge-verified   { background: #22c55e22; border: 1px solid #22c55e44; color: #22c55e; }
+    .badge-default    { background: #7c86ff22; border: 1px solid #7c86ff44; color: #7c86ff; }
+
+    .empty-state {
+      text-align: center;
+      padding: 4rem 2rem;
+      color: #475569;
+    }
+
+    /* Lightbox */
+    #lightbox {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: #000000cc;
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    #lightbox.open { display: flex; }
+    #lightbox img {
+      max-width: 90vw;
+      max-height: 90vh;
+      border-radius: 8px;
+      border: 1px solid #2d3148;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Tracks — Logs de Reconhecimento</h1>
+  <nav class="nav">
+    <a href="/camera300/tracks/logs">&#8635; Atualizar</a>
+    <a href="/camera300/">&#8592; Checkin</a>
+  </nav>
+</header>
+
+<main>
+
+  {% if error %}
+    <div class="error-box">Erro ao consultar a API: {{ error }}</div>
+  {% endif %}
+
+  {% if not logs and not error %}
+    <div class="empty-state">Nenhum log encontrado.</div>
+  {% endif %}
+
+  {% if logs %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Foto</th>
+          <th>Ref.</th>
+          <th>Nome</th>
+          <th>Score</th>
+          <th>Câmera</th>
+          <th>Primeira ocorrência</th>
+          <th>Status</th>
+          <th>Data/Hora</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in logs %}
+        <tr>
+          <td class="mono">{{ log.id }}</td>
+
+          <td>
+            {% if log.url %}
+              <img class="thumb" src="{{ log.url }}" alt="foto"
+                   onclick="openLightbox('{{ log.url }}')" />
+            {% else %}
+              <span class="no-thumb">—</span>
+            {% endif %}
+          </td>
+
+          <td>
+            {% if log.url_reference %}
+              <img class="thumb" src="{{ log.url_reference }}" alt="ref"
+                   onclick="openLightbox('{{ log.url_reference }}')" />
+            {% else %}
+              <span class="no-thumb">—</span>
+            {% endif %}
+          </td>
+
+          <td>
+            {% if log.full_name %}
+              {{ log.full_name }}
+              {% if log.age %}<span class="null" style="font-style:normal;font-size:0.75rem;margin-left:0.3rem">{{ log.age }}a</span>{% endif %}
+              {% if log.sex %}<span class="null" style="font-style:normal;font-size:0.75rem;margin-left:0.2rem">({{ log.sex }})</span>{% endif %}
+            {% elif log.person_id %}
+              <span class="mono">person #{{ log.person_id }}</span>
+            {% else %}
+              <span class="null">—</span>
+            {% endif %}
+          </td>
+
+          <td>
+            {% if log.score is not none %}
+              <span class="score">{{ "%.1f"|format(log.score) }}%</span>
+            {% else %}
+              <span class="null">—</span>
+            {% endif %}
+          </td>
+
+          <td>
+            {% if log.camera %}
+              {{ log.camera.camera_name }}
+            {% else %}
+              <span class="null">—</span>
+            {% endif %}
+          </td>
+
+          <td>
+            {% if log.facial_first_occurrence %}
+              <span class="badge badge-verified">Sim</span>
+            {% else %}
+              <span class="badge badge-default">Não</span>
+            {% endif %}
+          </td>
+
+          <td>
+            {% set cs = log.check_status %}
+            {% if cs == 'unattended' %}
+              <span class="badge badge-unattended">Não verificado</span>
+            {% elif cs == 'verified' %}
+              <span class="badge badge-verified">Verificado</span>
+            {% elif cs %}
+              <span class="badge badge-default">{{ cs }}</span>
+            {% else %}
+              <span class="null">—</span>
+            {% endif %}
+          </td>
+
+          <td class="mono">{{ log.created_at or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+</main>
+
+<div id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" src="" alt="imagem ampliada" />
+</div>
+
+<script>
+  function openLightbox(url) {
+    document.getElementById('lightbox-img').src = url;
+    document.getElementById('lightbox').classList.add('open');
+  }
+  function closeLightbox() {
+    document.getElementById('lightbox').classList.remove('open');
+    document.getElementById('lightbox-img').src = '';
+  }
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeLightbox();
+  });
+</script>
+
+</body>
+</html>

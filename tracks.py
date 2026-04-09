@@ -7,7 +7,7 @@ from flask import Blueprint, render_template, jsonify, request, Response, send_f
 from requests_toolbelt import MultipartEncoder
 from datetime import datetime, timedelta, date
 
-from config import get_conn, HEIMDALL_URL, HEIMDALL_IMAGE_BASE, HEIMDALL_START_DATE, HEIMDALL_END_DATE
+from config import get_conn, HEIMDALL_URL, HEIMDALL_IMAGE_BASE, HEIMDALL_START_DATE, HEIMDALL_END_DATE, ZIONS_API_URL, ZIONS_TOKEN
 from tracer import trace
 
 
@@ -156,10 +156,16 @@ def get_best_face(track_id, data=None):
             best_score = score
             best = face
     if best:
-        try:
-            recgn_score = float(best.get("face_recgn_score") or 0) or None
-        except (ValueError, TypeError):
-            recgn_score = None
+        # face_recgn_score não existe em track.faces[] — está em matches[].
+        # Usa o maior score entre todos os matches disponíveis.
+        recgn_score = None
+        for match in (data.get("matches") or []):
+            try:
+                s = float(match.get("face_recgn_score") or 0) or None
+            except (ValueError, TypeError):
+                s = None
+            if s is not None and (recgn_score is None or s > recgn_score):
+                recgn_score = s
         trace(track_id, f"get_best_face: melhor face → image_path={best['image_path']} camera_id={best.get('camera_id')} score={best_score:.4f} recgn={recgn_score}")
         return best["image_path"], best.get("camera_id"), best_score if best_score >= 0 else None, recgn_score
     trace(track_id, "get_best_face: nenhuma face com image_path encontrada")
@@ -957,3 +963,28 @@ def tracks_export_download():
     resp.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
     resp.headers["Content-Length"] = len(xlsx_bytes)
     return resp
+
+
+@tracks_bp.route("/tracks/logs")
+def tracks_logs():
+    error = None
+    logs = []
+    try:
+        resp = requests.get(
+            f"{ZIONS_API_URL}/facial_recognition_log",
+            headers={
+                "Accept": "application/json",
+                "Authorization": f"Bearer {ZIONS_TOKEN}",
+                "paginate": "10",
+                "orderDirection": "desc",
+            },
+            timeout=10,
+        )
+        if resp.ok:
+            body = resp.json()
+            logs = body.get("data", [])
+        else:
+            error = f"HTTP {resp.status_code}: {resp.text[:300]}"
+    except Exception as e:
+        error = str(e)
+    return render_template("tracks_logs.html", logs=logs, error=error)

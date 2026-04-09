@@ -18,6 +18,9 @@ SCORE_MINIMO = float(os.environ.get("SCORE_MINIMO", "0.73"))
 TELEGRAM_TOKEN   = os.environ.get("TELEGRAM_TOKEN",   "8608684261:AAEuQYGMbSA9ytbGFCvV-jl87cPhRHw1le4")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "-1003759902077")
 
+ZIONS_API_URL = os.environ.get("ZIONS_API_URL", "http://187.17.228.160:6500/api")
+ZIONS_TOKEN   = os.environ.get("ZIONS_TOKEN",   "")
+
 DB_CONFIG = {
     'user':     os.environ.get("DB_USER",     "fefa_dev"),
     'password': os.environ.get("DB_PASSWORD", "Fd7493dt"),
