@@ -708,17 +708,30 @@ def tracks_quadro():
     conn = get_conn()
     cursor = conn.cursor(dictionary=True)
     cursor.execute("""
-        SELECT DATE(r.created_at) AS dia, COUNT(DISTINCT r.id_unico) AS total
-        FROM registros r
-        JOIN pessoas p ON r.id_unico = p.id_unico
-        WHERE DATE(r.created_at) BETWEEN %s AND %s
-          AND p.flag IN ('C', 'A')
-        GROUP BY DATE(r.created_at)
-        ORDER BY dia ASC
+        SELECT
+            visits.dia_visit AS dia,
+            SUM(CASE WHEN min_global.primeira = visits.dia_visit THEN 1 ELSE 0 END) AS novos,
+            SUM(CASE WHEN min_global.primeira < visits.dia_visit THEN 1 ELSE 0 END) AS retornantes
+        FROM (
+            SELECT DISTINCT r.id_unico, DATE(r.created_at) AS dia_visit
+            FROM registros r
+            JOIN pessoas p ON r.id_unico = p.id_unico
+            WHERE DATE(r.created_at) BETWEEN %s AND %s
+              AND p.flag IN ('C', 'A')
+        ) AS visits
+        JOIN (
+            SELECT r.id_unico, MIN(DATE(r.created_at)) AS primeira
+            FROM registros r
+            JOIN pessoas p ON r.id_unico = p.id_unico
+            WHERE p.flag IN ('C', 'A')
+            GROUP BY r.id_unico
+        ) AS min_global ON visits.id_unico = min_global.id_unico
+        GROUP BY visits.dia_visit
+        ORDER BY visits.dia_visit ASC
     """, (d_ini, d_fim))
     rows = cursor.fetchall()
     ocorrencias_por_dia = [
-        {"dia": str(r["dia"]), "total": r["total"]}
+        {"dia": str(r["dia"]), "novos": r["novos"], "retornantes": r["retornantes"]}
         for r in rows
     ]
 

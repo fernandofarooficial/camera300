@@ -344,7 +344,8 @@
     const [ano, mes, dia] = d.dia.split('-');
     return `${dia}/${mes}`;
   });
-  const valores = dados.map(d => d.total);
+  const valoresNovos = dados.map(d => d.novos);
+  const valoresRetornantes = dados.map(d => d.retornantes);
 
   const isMobile = window.innerWidth <= 600;
   // Configurações de eixo X adaptadas ao tamanho da tela
@@ -361,27 +362,43 @@
     type: 'bar',
     data: {
       labels,
-      datasets: [{
-        label: 'Ocorrências',
-        data: valores,
-        backgroundColor: '#7c86ff33',
-        borderColor: '#7c86ff',
-        borderWidth: 2,
-        borderRadius: 4,
-      }]
+      datasets: [
+        {
+          label: 'Novos',
+          data: valoresNovos,
+          backgroundColor: '#34d39933',
+          borderColor: '#34d399',
+          borderWidth: 2,
+          borderRadius: 0,
+          stack: 'clientes',
+        },
+        {
+          label: 'Retornantes',
+          data: valoresRetornantes,
+          backgroundColor: '#7c86ff55',
+          borderColor: '#7c86ff',
+          borderWidth: 2,
+          borderRadius: 4,
+          stack: 'clientes',
+        }
+      ]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: { display: false },
+        legend: { display: true, labels: { color: '#94a3b8', font: { size: 12 } } },
         datalabels: {
-          anchor: 'start',
+          display: (ctx) => !isMobile && ctx.dataset.label === 'Retornantes',
+          anchor: 'end',
           align: 'end',
-          display: !isMobile,
           color: '#94a3b8',
           font: { size: 11, weight: '600' },
-          formatter: (value) => value,
+          formatter: (value, ctx) => {
+            const idx = ctx.dataIndex;
+            const total = valoresNovos[idx] + valoresRetornantes[idx];
+            return total;
+          },
         },
         tooltip: {
           callbacks: {
@@ -389,16 +406,23 @@
               const idx = items[0].dataIndex;
               return dados[idx].dia;
             },
-            label: (item) => ` ${item.raw} ocorrência${item.raw !== 1 ? 's' : ''}`,
+            label: (item) => ` ${item.dataset.label}: ${item.raw}`,
+            footer: (items) => {
+              const idx = items[0].dataIndex;
+              const total = valoresNovos[idx] + valoresRetornantes[idx];
+              return `Total: ${total}`;
+            }
           }
         }
       },
       scales: {
         x: {
+          stacked: true,
           ticks: xTicks(11),
           grid: { color: '#1e2130' },
         },
         y: {
+          stacked: true,
           beginAtZero: true,
           ticks: { color: '#64748b', precision: 0, font: { size: 11 } },
           grid: { color: '#2d3148' },
