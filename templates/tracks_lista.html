@@ -461,6 +461,24 @@
       white-space: nowrap;
     }
     .btn-filter:hover { background: #7c86ff44; }
+    .btn-clientes {
+      background: #22c55e22;
+      border: 1px solid #22c55e66;
+      color: #22c55e;
+      border-radius: 6px;
+      padding: 0.45rem 1rem;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+      white-space: nowrap;
+      text-decoration: none;
+    }
+    .btn-clientes:hover { background: #22c55e44; }
+    .btn-clientes.active {
+      background: #22c55e44;
+      border-color: #22c55e;
+    }
     .btn-filter-clear {
       background: transparent;
       border: 1px solid #2d3148;
@@ -720,9 +738,14 @@
              placeholder="ex: 1, 5, 12, 30" />
     </div>
     <button type="submit" class="btn-filter">&#128269; Filtrar</button>
-    {% if ids_raw %}
+    {% if flag_filter == 'C' %}
+      <a href="?{% if ids_raw %}ids={{ ids_raw }}{% endif %}" class="btn-clientes active">&#10003; Clientes</a>
+    {% else %}
+      <a href="?flag=C{% if ids_raw %}&ids={{ ids_raw }}{% endif %}" class="btn-clientes">Clientes</a>
+    {% endif %}
+    {% if ids_raw or flag_filter %}
       <a href="?" class="btn-filter-clear">&#10005; Limpar</a>
-      <span class="filter-active-badge">Filtro ativo</span>
+      {% if ids_raw %}<span class="filter-active-badge">Filtro ativo</span>{% endif %}
     {% endif %}
   </form>
 

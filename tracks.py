@@ -257,23 +257,54 @@ def tracks_lista():
             if part.isdigit():
                 ids_filter.append(int(part))
 
+    # Filtro por flag (ex: flag=C para clientes)
+    flag_filter = request.args.get('flag', '').strip().upper()
+
     offset = (page - 1) * per_page
 
     conn = get_conn()
     cursor = conn.cursor(dictionary=True)
 
-    if ids_filter:
+    if ids_filter and flag_filter:
+        ph = ",".join(["%s"] * len(ids_filter))
+        cursor.execute(
+            f"""SELECT COUNT(DISTINCT r.id_unico) AS total
+                FROM registros r
+                JOIN pessoas p ON r.id_unico = p.id_unico
+                WHERE r.id_unico IS NOT NULL AND r.id_unico IN ({ph}) AND p.flag = %s""",
+            ids_filter + [flag_filter],
+        )
+    elif ids_filter:
         ph = ",".join(["%s"] * len(ids_filter))
         cursor.execute(
             f"SELECT COUNT(DISTINCT id_unico) AS total FROM registros WHERE id_unico IS NOT NULL AND id_unico IN ({ph})",
             ids_filter,
+        )
+    elif flag_filter:
+        cursor.execute(
+            """SELECT COUNT(DISTINCT r.id_unico) AS total
+               FROM registros r
+               JOIN pessoas p ON r.id_unico = p.id_unico
+               WHERE r.id_unico IS NOT NULL AND p.flag = %s""",
+            (flag_filter,),
         )
     else:
         cursor.execute("SELECT COUNT(DISTINCT id_unico) AS total FROM registros WHERE id_unico IS NOT NULL")
     total = cursor.fetchone()["total"]
     total_pages = max(1, (total + per_page - 1) // per_page)
 
-    if ids_filter:
+    if ids_filter and flag_filter:
+        ph = ",".join(["%s"] * len(ids_filter))
+        cursor.execute(f"""
+            SELECT r.id_unico
+            FROM registros r
+            JOIN pessoas p ON r.id_unico = p.id_unico
+            WHERE r.id_unico IS NOT NULL AND r.id_unico IN ({ph}) AND p.flag = %s
+            GROUP BY r.id_unico
+            ORDER BY MAX(r.created_at) DESC
+            LIMIT %s OFFSET %s
+        """, ids_filter + [flag_filter, per_page, offset])
+    elif ids_filter:
         ph = ",".join(["%s"] * len(ids_filter))
         cursor.execute(f"""
             SELECT id_unico
@@ -283,6 +314,16 @@ def tracks_lista():
             ORDER BY MAX(created_at) DESC
             LIMIT %s OFFSET %s
         """, ids_filter + [per_page, offset])
+    elif flag_filter:
+        cursor.execute("""
+            SELECT r.id_unico
+            FROM registros r
+            JOIN pessoas p ON r.id_unico = p.id_unico
+            WHERE r.id_unico IS NOT NULL AND p.flag = %s
+            GROUP BY r.id_unico
+            ORDER BY MAX(r.created_at) DESC
+            LIMIT %s OFFSET %s
+        """, (flag_filter, per_page, offset))
     else:
         cursor.execute("""
             SELECT id_unico
@@ -343,7 +384,7 @@ def tracks_lista():
 
     cameras_map = {c["id_camera"]: c.get("camera") or str(c["id_camera"]) for c in CAMERAS_COMPLETO if c.get("id_camera") is not None}
     return render_template("tracks_lista.html", groups=groups, page=page, total_pages=total_pages,
-                           cameras_map=cameras_map, ids_raw=ids_raw)
+                           cameras_map=cameras_map, ids_raw=ids_raw, flag_filter=flag_filter)
 
 
 @tracks_bp.route("/tracks/permanencia")
