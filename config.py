@@ -31,15 +31,23 @@ DB_CONFIG = {
     'time_zone': '-03:00',
 }
 
-_pool = mysql.connector.pooling.MySQLConnectionPool(
-    pool_name="app_pool",
-    pool_size=10,
-    **DB_CONFIG
-)
+import threading
+
+_pool = None
+_pool_lock = threading.Lock()
 
 
 def get_conn():
-    """Retorna uma conexão do pool. Chamar .close() devolve ao pool."""
+    """Retorna uma conexão do pool MySQL. Cria o pool na primeira chamada."""
+    global _pool
+    if _pool is None:
+        with _pool_lock:
+            if _pool is None:
+                _pool = mysql.connector.pooling.MySQLConnectionPool(
+                    pool_name="app_pool",
+                    pool_size=10,
+                    **DB_CONFIG,
+                )
     return _pool.get_connection()
 
 
@@ -49,11 +57,17 @@ PG_DSN = os.environ.get(
     "postgresql://fefa_dev:Fd7493dt@72.60.58.241:5432/lojas",
 )
 
-_pg_pool = psycopg2.pool.ThreadedConnectionPool(1, 5, PG_DSN)
+_pg_pool = None
+_pg_pool_lock = threading.Lock()
 
 
 def get_pg_conn():
-    """Retorna uma conexão PostgreSQL do pool. Chamar .close() devolve ao pool."""
+    """Retorna uma conexão PostgreSQL do pool. Cria o pool na primeira chamada."""
+    global _pg_pool
+    if _pg_pool is None:
+        with _pg_pool_lock:
+            if _pg_pool is None:
+                _pg_pool = psycopg2.pool.ThreadedConnectionPool(1, 5, PG_DSN)
     return _pg_pool.getconn()
 
 
