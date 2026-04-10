@@ -329,7 +329,7 @@
   </div>
 
   <div class="chart-card">
-    <h2>Top 10 Clientes — Faturamento do Período</h2>
+    <h2>Top 10 Produtos — Faturamento do Período</h2>
     <form id="form-top" class="date-filter" method="get" action="">
       <input type="hidden" id="hd8-d_ini" name="d_ini" value="{{ d_ini }}">
       <input type="hidden" id="hd8-d_fim" name="d_fim" value="{{ d_fim }}">
@@ -909,8 +909,8 @@
     }
   });
 
-  // Gráfico Top 10 Clientes por Faturamento
-  const dadosTop10 = {{ top10_clientes | tojson }};
+  // Gráfico Top 10 Produtos por Faturamento
+  const dadosTop10 = {{ top10_produtos | tojson }};
   new Chart(document.getElementById('chartTop10Clientes'), {
     type: 'bar',
     data: {
