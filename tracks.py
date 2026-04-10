@@ -709,6 +709,7 @@ def tracks_quadro():
             WHERE cod_natureza_operacao = '10030'
               AND cancelado = 'N'
               AND excluido = 'N'
+              AND tipo_transacao = 'V'
               AND data_lancamento::date BETWEEN %s AND %s
             GROUP BY data_lancamento::date
             ORDER BY data_lancamento::date ASC
