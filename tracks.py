@@ -691,6 +691,8 @@ def tracks_quadro():
     gd_fim = request.args.get('gd_fim', today.isoformat())
     fat_ini = request.args.get('fat_ini', week_ago.isoformat())
     fat_fim = request.args.get('fat_fim', today.isoformat())
+    top_ini = request.args.get('top_ini', week_ago.isoformat())
+    top_fim = request.args.get('top_fim', today.isoformat())
 
     # ── Faturamento diário (PostgreSQL) ───────────────────────────────────────
     faturamento_por_dia = []
@@ -747,7 +749,7 @@ def tracks_quadro():
             GROUP BY m.codigo_cliente, c.nome_cliente
             ORDER BY soma_valor DESC
             LIMIT 10
-        """, (fat_ini, fat_fim))
+        """, (top_ini, top_fim))
         for row in pg_cur2.fetchall():
             top10_clientes.append({
                 "nome": row[1] or f"Cód. {row[0]}",
@@ -961,7 +963,8 @@ def tracks_quadro():
                            perm_ini=perm_ini, perm_fim=perm_fim,
                            genero_por_dia=genero_por_dia,
                            gd_ini=gd_ini, gd_fim=gd_fim,
-                           fat_ini=fat_ini, fat_fim=fat_fim)
+                           fat_ini=fat_ini, fat_fim=fat_fim,
+                           top_ini=top_ini, top_fim=top_fim)
 
 
 @tracks_bp.route("/tracks/dados")
