@@ -317,6 +317,13 @@
   </div>
 
   <div class="chart-card">
+    <h2>Top 10 Clientes — Faturamento do Período</h2>
+    <div class="chart-wrap" style="height: 340px;">
+      <canvas id="chartTop10Clientes"></canvas>
+    </div>
+  </div>
+
+  <div class="chart-card">
     <h2>Tempo Médio de Permanência</h2>
     <form id="form-perm" class="date-filter" method="get" action="">
       <input type="hidden" id="hd5-d_ini" name="d_ini" value="{{ d_ini }}">
@@ -862,6 +869,65 @@
             callback: (v) => `${v}%`,
           },
           grid: { color: '#2d3148' },
+        }
+      }
+    }
+  });
+
+  // Gráfico Top 10 Clientes por Faturamento
+  const dadosTop10 = {{ top10_clientes | tojson }};
+  new Chart(document.getElementById('chartTop10Clientes'), {
+    type: 'bar',
+    data: {
+      labels: dadosTop10.map(d => d.nome),
+      datasets: [{
+        label: 'Valor Faturado (R$)',
+        data: dadosTop10.map(d => d.soma_valor),
+        backgroundColor: '#7c86ff33',
+        borderColor: '#7c86ff',
+        borderWidth: 2,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        datalabels: {
+          display: !isMobile,
+          anchor: 'end',
+          align: 'end',
+          color: '#94a3b8',
+          font: { size: 11, weight: '600' },
+          formatter: (value) => 'R$ ' + value.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
+        },
+        tooltip: {
+          callbacks: {
+            label: (item) => {
+              const d = dadosTop10[item.dataIndex];
+              return [
+                ` R$ ${d.soma_valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+                ` ${d.qtd_notas} nota${d.qtd_notas !== 1 ? 's' : ''}`,
+              ];
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          beginAtZero: true,
+          ticks: {
+            color: '#64748b',
+            font: { size: 11 },
+            callback: (v) => 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 0 }),
+          },
+          grid: { color: '#2d3148' },
+        },
+        y: {
+          ticks: { color: '#94a3b8', font: { size: 11 } },
+          grid: { color: '#1e2130' },
         }
       }
     }

@@ -725,6 +725,42 @@ def tracks_quadro():
         if pg_conn:
             release_pg_conn(pg_conn)
 
+    # ── Top 10 clientes por faturamento (PostgreSQL) ─────────────────────────
+    top10_clientes = []
+    pg_conn2 = None
+    try:
+        pg_conn2 = get_pg_conn()
+        pg_cur2 = pg_conn2.cursor()
+        pg_cur2.execute("""
+            SELECT
+                m.codigo_cliente,
+                c.nome_cliente,
+                COUNT(DISTINCT m.documento) AS qtd_notas,
+                SUM(m.valor_total) AS soma_valor
+            FROM microvix_movimento m
+            LEFT JOIN microvix_clientes_fornecedores c
+                   ON m.codigo_cliente = c.cod_cliente
+            WHERE m.cod_natureza_operacao = '10030'
+              AND m.cancelado = 'N'
+              AND m.excluido = 'N'
+              AND m.data_lancamento::date BETWEEN %s AND %s
+            GROUP BY m.codigo_cliente, c.nome_cliente
+            ORDER BY soma_valor DESC
+            LIMIT 10
+        """, (fat_ini, fat_fim))
+        for row in pg_cur2.fetchall():
+            top10_clientes.append({
+                "nome": row[1] or f"Cód. {row[0]}",
+                "qtd_notas": int(row[2]),
+                "soma_valor": float(row[3]) if row[3] is not None else 0.0,
+            })
+        pg_cur2.close()
+    except Exception as e:
+        print(f"[quadro] Erro PostgreSQL top10 clientes: {e}")
+    finally:
+        if pg_conn2:
+            release_pg_conn(pg_conn2)
+
     # ── Clientes por dia no intervalo do faturamento (MySQL) ─────────────────
     if faturamento_por_dia:
         try:
@@ -917,6 +953,7 @@ def tracks_quadro():
                            ocorrencias_por_faixa_etaria=ocorrencias_por_faixa_etaria,
                            permanencia_media=permanencia_media,
                            faturamento_por_dia=faturamento_por_dia,
+                           top10_clientes=top10_clientes,
                            d_ini=d_ini, d_fim=d_fim,
                            h_ini=h_ini, h_fim=h_fim,
                            p_ini=p_ini, p_fim=p_fim,
