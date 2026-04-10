@@ -310,6 +310,13 @@
   </div>
 
   <div class="chart-card">
+    <h2>Taxa de Conversão (Notas/Clientes)</h2>
+    <div class="chart-wrap">
+      <canvas id="chartTaxaConversao"></canvas>
+    </div>
+  </div>
+
+  <div class="chart-card">
     <h2>Tempo Médio de Permanência</h2>
     <form id="form-perm" class="date-filter" method="get" action="">
       <input type="hidden" id="hd5-d_ini" name="d_ini" value="{{ d_ini }}">
@@ -789,6 +796,73 @@
           ticks: { color: '#f59e0b', font: { size: 11 }, precision: 0 },
           grid: { drawOnChartArea: false },
         },
+      }
+    }
+  });
+
+  // Gráfico de Taxa de Conversão (Notas / Clientes) — usa os mesmos dados do faturamento
+  const taxaConversao = dadosFat.map(d => {
+    if (!d.qtd_clientes || d.qtd_clientes === 0) return 0;
+    return Math.round(Math.min(1, d.qtd_notas / d.qtd_clientes) * 100);
+  });
+  new Chart(document.getElementById('chartTaxaConversao'), {
+    type: 'bar',
+    data: {
+      labels: fatLabels,
+      datasets: [{
+        label: 'Taxa de Conversão (%)',
+        data: taxaConversao,
+        backgroundColor: '#38bdf833',
+        borderColor: '#38bdf8',
+        borderWidth: 2,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        datalabels: {
+          display: !isMobile,
+          anchor: 'end',
+          align: 'end',
+          color: '#94a3b8',
+          font: { size: 11, weight: '600' },
+          formatter: (value) => value ? `${value}%` : '',
+        },
+        tooltip: {
+          callbacks: {
+            title: (items) => {
+              const idx = items[0].dataIndex;
+              return dadosFat[idx].dia;
+            },
+            label: (item) => {
+              const d = dadosFat[item.dataIndex];
+              return [
+                ` Taxa: ${item.raw}%`,
+                ` Notas: ${d.qtd_notas}`,
+                ` Clientes: ${d.qtd_clientes}`,
+              ];
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: xTicks(11),
+          grid: { color: '#1e2130' },
+        },
+        y: {
+          beginAtZero: true,
+          max: 100,
+          ticks: {
+            color: '#38bdf8',
+            font: { size: 11 },
+            callback: (v) => `${v}%`,
+          },
+          grid: { color: '#2d3148' },
+        }
       }
     }
   });
