@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tracks — Caixa</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #1a1d27;
+      border-bottom: 1px solid #2d3148;
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    header h1 { font-size: 1.2rem; font-weight: 600; color: #7c86ff; }
+
+    .badge-count {
+      font-size: 0.75rem;
+      background: #7c86ff22;
+      border: 1px solid #7c86ff44;
+      color: #7c86ff;
+      border-radius: 999px;
+      padding: 0.2rem 0.7rem;
+      margin-left: 0.75rem;
+      font-weight: 600;
+    }
+
+    .nav { display: flex; gap: 0.6rem; }
+    .nav a {
+      color: #7c86ff;
+      text-decoration: none;
+      font-size: 0.82rem;
+      border: 1px solid #7c86ff44;
+      padding: 0.3rem 0.8rem;
+      border-radius: 6px;
+      transition: background 0.2s;
+    }
+    .nav a:hover { background: #7c86ff22; }
+
+    main { max-width: 1400px; margin: 0 auto; padding: 1.5rem; }
+
+    .empty-state { text-align: center; padding: 4rem 2rem; color: #475569; }
+
+    /* ---- Grid ---- */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 1rem;
+    }
+
+    .card {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 10px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .card:hover {
+      border-color: #7c86ff55;
+      transform: translateY(-2px);
+    }
+
+    .card-photo {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      object-fit: cover;
+      display: block;
+      background: #0f1117;
+    }
+
+    .card-placeholder {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #0f1117;
+      color: #334155;
+      font-size: 0.65rem;
+    }
+
+    .card-body {
+      padding: 0.6rem 0.75rem 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+
+    .card-id {
+      font-size: 0.7rem;
+      font-weight: 700;
+      color: #7c86ff;
+    }
+
+    .card-nome {
+      font-size: 0.8rem;
+      color: #e2e8f0;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .card-apelido {
+      font-size: 0.72rem;
+      color: #94a3b8;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .card-meta {
+      display: flex;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+      margin-top: 0.15rem;
+    }
+
+    .chip {
+      font-size: 0.62rem;
+      font-weight: 600;
+      padding: 0.12rem 0.4rem;
+      border-radius: 999px;
+    }
+
+    .chip-genero {
+      background: #3b82f622;
+      color: #60a5fa;
+      border: 1px solid #3b82f644;
+    }
+    .chip-genero.F {
+      background: #ec489922;
+      color: #f472b6;
+      border: 1px solid #ec489944;
+    }
+    .chip-genero.A {
+      background: #64748b22;
+      color: #94a3b8;
+      border: 1px solid #64748b44;
+    }
+
+    .chip-idade {
+      background: #10b98122;
+      color: #34d399;
+      border: 1px solid #10b98144;
+    }
+
+    .card-ts {
+      font-size: 0.62rem;
+      color: #475569;
+      margin-top: 0.2rem;
+    }
+
+    .card-camera {
+      font-size: 0.62rem;
+      color: #475569;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>
+    Tracks — Caixa
+    <span class="badge-count">{{ registros | length }} registros</span>
+  </h1>
+  <nav class="nav">
+    <a href="/camera300/tracks/caixa">&#8635; Atualizar</a>
+    <a href="/camera300/tracks/tabuleiro">Tabuleiro</a>
+    <a href="/camera300/tracks/lista">Lista</a>
+    <a href="/camera300/">&#8592; Checkin</a>
+  </nav>
+</header>
+
+<main>
+
+  {% if not registros %}
+    <div class="empty-state">Nenhuma ocorrência de câmera Caixa encontrada.</div>
+  {% else %}
+
+    <div class="grid">
+      {% for r in registros %}
+        <div class="card">
+          {% if r.foto %}
+            <img class="card-photo" src="{{ r.foto }}"
+                 onerror="this.outerHTML='<div class=card-placeholder>sem foto</div>'"
+                 alt="ID {{ r.id_unico or r.track_id }}" />
+          {% else %}
+            <div class="card-placeholder">sem foto</div>
+          {% endif %}
+
+          <div class="card-body">
+            {% if r.id_unico %}
+              <span class="card-id">ID {{ r.id_unico }}</span>
+            {% else %}
+              <span class="card-id" style="color:#475569">sem ID</span>
+            {% endif %}
+
+            <span class="card-nome" title="{{ r.nome or '' }}">{{ r.nome or '—' }}</span>
+            {% if r.apelido %}
+              <span class="card-apelido">{{ r.apelido }}</span>
+            {% endif %}
+
+            <div class="card-meta">
+              {% if r.genero %}
+                <span class="chip chip-genero {{ r.genero }}">
+                  {% if r.genero == 'M' %}Masc
+                  {% elif r.genero == 'F' %}Fem
+                  {% else %}Anôn{% endif %}
+                </span>
+              {% endif %}
+              {% if r.idade %}
+                <span class="chip chip-idade">{{ r.idade }} anos</span>
+              {% endif %}
+            </div>
+
+            <span class="card-camera">{{ r.camera or r.camera_id }}</span>
+            <span class="card-ts">{{ r.created_at.strftime('%d/%m/%Y %H:%M') if r.created_at else '—' }}</span>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+  {% endif %}
+
+</main>
+
+</body>
+</html>

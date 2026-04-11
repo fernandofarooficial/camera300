@@ -1114,6 +1114,42 @@ def tracks_export_download():
     return resp
 
 
+@tracks_bp.route("/tracks/caixa")
+def tracks_caixa():
+    conn = get_conn()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT
+            r.id,
+            r.track_id,
+            r.camera_id,
+            r.image_path,
+            r.created_at,
+            r.id_unico,
+            p.nome,
+            p.apelido,
+            p.genero,
+            p.idade,
+            c.camera,
+            tc.tipo_camera
+        FROM registros r
+        JOIN cameras c ON c.id_camera = r.camera_id
+        JOIN tipos_camera tc ON tc.id_tipo_camera = c.id_tipo_camera
+        LEFT JOIN pessoas p ON p.id_unico = r.id_unico
+        WHERE LOWER(tc.tipo_camera) = 'caixa'
+        ORDER BY r.created_at DESC
+        LIMIT 100
+    """)
+    registros = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    for r in registros:
+        r["foto"] = HEIMDALL_IMAGE_BASE + r["image_path"] if r["image_path"] else None
+
+    return render_template("tracks_caixa.html", registros=registros)
+
+
 @tracks_bp.route("/tracks/logs")
 def tracks_logs():
     error = None
