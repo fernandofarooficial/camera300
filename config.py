@@ -72,7 +72,9 @@ def get_pg_conn():
     if _pg_pool is None:
         with _pg_pool_lock:
             if _pg_pool is None:
-                _pg_pool = psycopg2.pool.ThreadedConnectionPool(1, 5, PG_DSN)
+                _pg_pool = psycopg2.pool.ThreadedConnectionPool(
+                    1, 5, PG_DSN, options="-c timezone=America/Sao_Paulo"
+                )
     return _pg_pool.getconn()
 
 
