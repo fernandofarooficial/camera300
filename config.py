@@ -24,9 +24,9 @@ ZIONS_API_URL = os.environ.get("ZIONS_API_URL", "http://187.17.228.160:6500/api"
 ZIONS_TOKEN   = os.environ.get("ZIONS_TOKEN",   "")
 
 # ── Linx Microvix ──────────────────────────────────────────────────────────────
-MICROVIX_CHAVE=8F4DD752-CEED-4296-BB3B-7F9C6D9E2ED5
-MICROVIX_CNPJ=49104467000170
-MICROVIX_GRUPO=ECOVILLE
+MICROVIX_CHAVE = os.environ.get("MICROVIX_CHAVE", "8F4DD752-CEED-4296-BB3B-7F9C6D9E2ED5")
+MICROVIX_CNPJ  = os.environ.get("MICROVIX_CNPJ",  "49104467000170")
+MICROVIX_GRUPO = os.environ.get("MICROVIX_GRUPO", "ECOVILLE")
 
 DB_CONFIG = {
     'user':     os.environ.get("DB_USER",     "fefa_dev"),
