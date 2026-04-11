@@ -1205,6 +1205,65 @@ def tracks_caixa():
     return render_template("tracks_caixa.html", notas=notas)
 
 
+@tracks_bp.route("/tracks/carga")
+def tracks_carga():
+    cargas = []
+    pg_conn = None
+    try:
+        pg_conn = get_pg_conn()
+        pg_cur = pg_conn.cursor()
+        pg_cur.execute("""
+            SELECT
+                id_carga,
+                microvix_grupo_lojas,
+                microvix_lojas,
+                microvix_clientes_fornecedores,
+                microvix_movimento,
+                microvix_produtos,
+                microvix_produtos_detalhes,
+                created_at
+            FROM microvix_carga
+            ORDER BY created_at DESC
+            LIMIT 20
+        """)
+        for row in pg_cur.fetchall():
+            cargas.append({
+                "id_carga":                      row[0],
+                "microvix_grupo_lojas":           row[1],
+                "microvix_lojas":                 row[2],
+                "microvix_clientes_fornecedores": row[3],
+                "microvix_movimento":             row[4],
+                "microvix_produtos":              row[5],
+                "microvix_produtos_detalhes":     row[6],
+                "created_at":                     row[7],
+            })
+        pg_cur.close()
+    except Exception as e:
+        print(f"[carga] Erro PostgreSQL: {e}")
+    finally:
+        if pg_conn:
+            release_pg_conn(pg_conn)
+    return render_template("tracks_carga.html", cargas=cargas)
+
+
+@tracks_bp.route("/tracks/carga/sync", methods=["POST"])
+def tracks_carga_sync():
+    import threading as _threading
+    from microvix_ingest import run_incremental, get_status
+    st = get_status()
+    if st["running"]:
+        return jsonify({"ok": False, "error": "Sincronização já em andamento."})
+    t = _threading.Thread(target=run_incremental, daemon=True)
+    t.start()
+    return jsonify({"ok": True})
+
+
+@tracks_bp.route("/tracks/carga/status")
+def tracks_carga_status():
+    from microvix_ingest import get_status
+    return jsonify(get_status())
+
+
 @tracks_bp.route("/tracks/logs")
 def tracks_logs():
     error = None

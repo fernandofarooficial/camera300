@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tracks — Carga Microvix</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #1a1d27;
+      border-bottom: 1px solid #2d3148;
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    header h1 { font-size: 1.2rem; font-weight: 600; color: #7c86ff; }
+
+    .nav { display: flex; gap: 0.6rem; align-items: center; }
+    .nav a {
+      color: #7c86ff;
+      text-decoration: none;
+      font-size: 0.82rem;
+      border: 1px solid #7c86ff44;
+      padding: 0.3rem 0.8rem;
+      border-radius: 6px;
+      transition: background 0.2s;
+    }
+    .nav a:hover { background: #7c86ff22; }
+
+    main { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
+
+    /* ---- Painel de status ---- */
+    .status-panel {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 12px;
+      padding: 1.1rem 1.5rem;
+      margin-bottom: 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .status-info { display: flex; flex-direction: column; gap: 0.3rem; }
+
+    .status-label {
+      font-size: 0.65rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: #475569;
+    }
+
+    #status-text {
+      font-size: 0.9rem;
+      color: #e2e8f0;
+    }
+
+    #status-detail {
+      font-size: 0.78rem;
+      color: #94a3b8;
+      min-height: 1.1em;
+    }
+
+    .btn-sync {
+      background: #7c86ff33;
+      border: 1px solid #7c86ff66;
+      color: #7c86ff;
+      border-radius: 8px;
+      padding: 0.55rem 1.4rem;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+    .btn-sync:hover { background: #7c86ff44; }
+    .btn-sync:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ---- Tabela ---- */
+    .table-wrap {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+    }
+
+    thead th {
+      background: #12141e;
+      padding: 0.65rem 0.9rem;
+      text-align: left;
+      font-size: 0.65rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: #475569;
+      white-space: nowrap;
+    }
+
+    tbody tr { border-top: 1px solid #1e2235; transition: background 0.15s; }
+    tbody tr:hover { background: #ffffff06; }
+
+    tbody td {
+      padding: 0.6rem 0.9rem;
+      color: #cbd5e1;
+      white-space: nowrap;
+    }
+
+    td.id   { color: #475569; font-size: 0.75rem; }
+    td.num  { text-align: right; color: #7c86ff; font-weight: 600; }
+    td.num.zero { color: #334155; }
+    td.ts   { color: #94a3b8; font-size: 0.78rem; }
+
+    .empty-state { text-align: center; padding: 3rem; color: #475569; }
+
+    /* ---- Spinner ---- */
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid #7c86ff44;
+      border-top-color: #7c86ff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Tracks — Carga Microvix</h1>
+  <nav class="nav">
+    <a href="/camera300/tracks/carga">&#8635; Atualizar</a>
+    <a href="/camera300/tracks/quadro">Quadro</a>
+    <a href="/camera300/tracks/caixa">Caixa</a>
+    <a href="/camera300/">&#8592; Checkin</a>
+  </nav>
+</header>
+
+<main>
+
+  <!-- Painel de controle / status -->
+  <div class="status-panel">
+    <div class="status-info">
+      <span class="status-label">Status da sincronização</span>
+      <span id="status-text">Verificando…</span>
+      <span id="status-detail"></span>
+    </div>
+    <button class="btn-sync" id="btn-sync" onclick="iniciarSync()">
+      &#9654; Sincronizar Agora
+    </button>
+  </div>
+
+  <!-- Histórico de cargas -->
+  {% if not cargas %}
+    <div class="table-wrap">
+      <div class="empty-state">Nenhuma carga registrada ainda.</div>
+    </div>
+  {% else %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Grupo Lojas</th>
+            <th>Lojas</th>
+            <th>Clientes</th>
+            <th>Movimento</th>
+            <th>Produtos</th>
+            <th>Prod. Detalhes</th>
+            <th>Data / Hora</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in cargas %}
+            <tr>
+              <td class="id">{{ c.id_carga }}</td>
+              <td class="num {% if not c.microvix_grupo_lojas %}zero{% endif %}">
+                {{ c.microvix_grupo_lojas if c.microvix_grupo_lojas is not none else '—' }}
+              </td>
+              <td class="num {% if not c.microvix_lojas %}zero{% endif %}">
+                {{ c.microvix_lojas if c.microvix_lojas is not none else '—' }}
+              </td>
+              <td class="num {% if not c.microvix_clientes_fornecedores %}zero{% endif %}">
+                {{ c.microvix_clientes_fornecedores if c.microvix_clientes_fornecedores is not none else '—' }}
+              </td>
+              <td class="num {% if not c.microvix_movimento %}zero{% endif %}">
+                {{ c.microvix_movimento if c.microvix_movimento is not none else '—' }}
+              </td>
+              <td class="num {% if not c.microvix_produtos %}zero{% endif %}">
+                {{ c.microvix_produtos if c.microvix_produtos is not none else '—' }}
+              </td>
+              <td class="num {% if not c.microvix_produtos_detalhes %}zero{% endif %}">
+                {{ c.microvix_produtos_detalhes if c.microvix_produtos_detalhes is not none else '—' }}
+              </td>
+              <td class="ts">
+                {{ c.created_at.strftime('%d/%m/%Y %H:%M:%S') if c.created_at else '—' }}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+</main>
+
+<script>
+  const btnSync  = document.getElementById('btn-sync');
+  const txtStatus = document.getElementById('status-text');
+  const txtDetail = document.getElementById('status-detail');
+
+  const _LABEL = {
+    microvix_grupo_lojas:           'Grupo Lojas',
+    microvix_lojas:                 'Lojas',
+    microvix_clientes_fornecedores: 'Clientes',
+    microvix_movimento:             'Movimento',
+    microvix_produtos:              'Produtos',
+    microvix_produtos_detalhes:     'Prod. Detalhes',
+  };
+
+  function _metodLabel(m) {
+    return _LABEL[m] || m;
+  }
+
+  function aplicarStatus(st) {
+    if (st.running) {
+      btnSync.disabled = true;
+      const cur = st.current_method ? ` — ${_metodLabel(st.current_method)}…` : '';
+      txtStatus.innerHTML = `<span class="spinner"></span>Sincronizando${cur}`;
+      const counts = Object.entries(st.contagens || {})
+        .map(([k, v]) => `${_metodLabel(k)}: ${v}`)
+        .join(' &nbsp;|&nbsp; ');
+      txtDetail.innerHTML = counts || '';
+    } else {
+      btnSync.disabled = false;
+      if (st.error) {
+        txtStatus.textContent = '⚠ Erro na última sincronização';
+        txtDetail.textContent = st.error;
+      } else if (st.finished_at) {
+        const dt = new Date(st.finished_at);
+        txtStatus.textContent = '✓ Última sincronização concluída';
+        const counts = Object.entries(st.contagens || {})
+          .map(([k, v]) => `${_metodLabel(k)}: ${v}`)
+          .join('  |  ');
+        txtDetail.textContent = (counts ? counts + '  —  ' : '') +
+          dt.toLocaleString('pt-BR');
+      } else {
+        txtStatus.textContent = 'Aguardando sincronização.';
+        txtDetail.textContent = '';
+      }
+    }
+  }
+
+  async function pollStatus() {
+    try {
+      const resp = await fetch('/camera300/tracks/carga/status');
+      const st = await resp.json();
+      aplicarStatus(st);
+      if (st.running) {
+        setTimeout(pollStatus, 2000);
+      }
+    } catch (_) {}
+  }
+
+  async function iniciarSync() {
+    btnSync.disabled = true;
+    try {
+      const resp = await fetch('/camera300/tracks/carga/sync', { method: 'POST' });
+      const data = await resp.json();
+      if (!data.ok) {
+        alert(data.error || 'Não foi possível iniciar a sincronização.');
+        btnSync.disabled = false;
+        return;
+      }
+      txtStatus.innerHTML = '<span class="spinner"></span>Iniciando…';
+      txtDetail.textContent = '';
+      setTimeout(pollStatus, 1500);
+    } catch (err) {
+      alert('Falha na requisição.');
+      btnSync.disabled = false;
+    }
+  }
+
+  // Verifica status ao carregar a página
+  pollStatus();
+</script>
+
+</body>
+</html>
