@@ -1137,6 +1137,7 @@ def tracks_caixa():
         JOIN tipos_camera tc ON tc.id_tipo_camera = c.id_tipo_camera
         LEFT JOIN pessoas p ON p.id_unico = r.id_unico
         WHERE LOWER(tc.tipo_camera) = 'caixa'
+          AND p.flag = 'C'
         ORDER BY r.created_at DESC
         LIMIT 100
     """)
