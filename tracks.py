@@ -1116,39 +1116,93 @@ def tracks_export_download():
 
 @tracks_bp.route("/tracks/caixa")
 def tracks_caixa():
-    conn = get_conn()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("""
-        SELECT
-            r.id,
-            r.track_id,
-            r.camera_id,
-            r.image_path,
-            r.created_at,
-            r.id_unico,
-            p.nome,
-            p.apelido,
-            p.genero,
-            p.idade,
-            c.camera,
-            tc.tipo_camera
-        FROM registros r
-        JOIN cameras c ON c.id_camera = r.camera_id
-        JOIN tipos_camera tc ON tc.id_tipo_camera = c.id_tipo_camera
-        LEFT JOIN pessoas p ON p.id_unico = r.id_unico
-        WHERE LOWER(tc.tipo_camera) = 'caixa'
-          AND p.flag = 'C'
-        ORDER BY r.created_at DESC
-        LIMIT 100
-    """)
-    registros = cursor.fetchall()
-    cursor.close()
-    conn.close()
+    from datetime import timedelta
 
-    for r in registros:
-        r["foto"] = HEIMDALL_IMAGE_BASE + r["image_path"] if r["image_path"] else None
+    # 1. Buscar as 25 últimas notas fiscais (PostgreSQL)
+    notas = []
+    pg_conn = None
+    try:
+        pg_conn = get_pg_conn()
+        pg_cur = pg_conn.cursor()
+        pg_cur.execute("""
+            SELECT
+                documento,
+                COUNT(*)                                       AS itens,
+                ROUND(SUM(valor_total)::numeric, 2)            AS valor,
+                data_lancamento::date                          AS data,
+                hora_lancamento                                AS hora,
+                (data_lancamento::date + hora_lancamento::time) AS nf_dt
+            FROM microvix_movimento
+            WHERE cod_natureza_operacao = '10030'
+              AND cancelado = 'N'
+              AND excluido = 'N'
+              AND tipo_transacao = 'V'
+            GROUP BY documento, data_lancamento::date, hora_lancamento
+            ORDER BY data_lancamento::date DESC, hora_lancamento DESC
+            LIMIT 25
+        """)
+        for row in pg_cur.fetchall():
+            notas.append({
+                "documento": row[0],
+                "itens":     int(row[1]),
+                "valor":     float(row[2]) if row[2] is not None else 0.0,
+                "data":      row[3],
+                "hora":      (row[4] or "").strip(),
+                "nf_dt":     row[5],
+                "clientes":  [],
+            })
+        pg_cur.close()
+    except Exception as e:
+        print(f"[caixa] Erro PostgreSQL: {e}")
+    finally:
+        if pg_conn:
+            release_pg_conn(pg_conn)
 
-    return render_template("tracks_caixa.html", registros=registros)
+    # 2. Buscar registros MySQL (câmera Caixa, flag='C') no intervalo total ±2 min
+    if notas:
+        dts = [n["nf_dt"] for n in notas if n["nf_dt"] is not None]
+        if dts:
+            dt_min = min(dts) - timedelta(minutes=2)
+            dt_max = max(dts) + timedelta(minutes=2)
+            try:
+                conn = get_conn()
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute("""
+                    SELECT
+                        r.id, r.id_unico, r.image_path, r.created_at,
+                        p.nome, p.apelido, p.genero, p.idade
+                    FROM registros r
+                    JOIN cameras c        ON c.id_camera       = r.camera_id
+                    JOIN tipos_camera tc  ON tc.id_tipo_camera = c.id_tipo_camera
+                    JOIN pessoas p        ON p.id_unico        = r.id_unico
+                    WHERE LOWER(tc.tipo_camera) = 'caixa'
+                      AND p.flag = 'C'
+                      AND r.created_at BETWEEN %s AND %s
+                    ORDER BY r.created_at DESC
+                """, (dt_min, dt_max))
+                registros = cursor.fetchall()
+                cursor.close()
+                conn.close()
+
+                for reg in registros:
+                    reg["foto"] = HEIMDALL_IMAGE_BASE + reg["image_path"] if reg["image_path"] else None
+
+                # Associar cada registro à nota dentro da janela de ±2 min (1 vez por id_unico por nota)
+                for nota in notas:
+                    if nota["nf_dt"] is None:
+                        continue
+                    janela_ini = nota["nf_dt"] - timedelta(minutes=2)
+                    janela_fim = nota["nf_dt"] + timedelta(minutes=2)
+                    seen = set()
+                    for reg in registros:
+                        if janela_ini <= reg["created_at"] <= janela_fim:
+                            if reg["id_unico"] not in seen:
+                                seen.add(reg["id_unico"])
+                                nota["clientes"].append(reg)
+            except Exception as e:
+                print(f"[caixa] Erro MySQL: {e}")
+
+    return render_template("tracks_caixa.html", notas=notas)
 
 
 @tracks_bp.route("/tracks/logs")

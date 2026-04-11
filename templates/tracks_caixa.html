@@ -27,17 +27,6 @@
     }
     header h1 { font-size: 1.2rem; font-weight: 600; color: #7c86ff; }
 
-    .badge-count {
-      font-size: 0.75rem;
-      background: #7c86ff22;
-      border: 1px solid #7c86ff44;
-      color: #7c86ff;
-      border-radius: 999px;
-      padding: 0.2rem 0.7rem;
-      margin-left: 0.75rem;
-      font-weight: 600;
-    }
-
     .nav { display: flex; gap: 0.6rem; }
     .nav a {
       color: #7c86ff;
@@ -50,138 +39,181 @@
     }
     .nav a:hover { background: #7c86ff22; }
 
-    main { max-width: 1400px; margin: 0 auto; padding: 1.5rem; }
-
-    .empty-state { text-align: center; padding: 4rem 2rem; color: #475569; }
-
-    /* ---- Grid ---- */
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
       gap: 1rem;
     }
 
-    .card {
+    .empty-state { text-align: center; padding: 4rem 2rem; color: #475569; }
+
+    /* ---- Cartão de nota fiscal ---- */
+    .nf-card {
       background: #1a1d27;
       border: 1px solid #2d3148;
-      border-radius: 10px;
+      border-radius: 12px;
       overflow: hidden;
+    }
+
+    .nf-header {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+      padding: 0.85rem 1.25rem;
+      border-bottom: 1px solid #2d3148;
+      flex-wrap: wrap;
+    }
+
+    .nf-doc {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #7c86ff;
+      min-width: 90px;
+    }
+
+    .nf-info {
+      display: flex;
+      gap: 1.25rem;
+      flex-wrap: wrap;
+      flex: 1;
+    }
+
+    .nf-field {
       display: flex;
       flex-direction: column;
-      transition: border-color 0.2s, transform 0.2s;
-    }
-    .card:hover {
-      border-color: #7c86ff55;
-      transform: translateY(-2px);
+      gap: 0.15rem;
     }
 
-    .card-photo {
-      width: 100%;
-      aspect-ratio: 1 / 1;
-      object-fit: cover;
-      display: block;
+    .nf-label {
+      font-size: 0.6rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: #475569;
+    }
+
+    .nf-value {
+      font-size: 0.88rem;
+      color: #e2e8f0;
+      font-weight: 600;
+    }
+
+    .nf-value.valor { color: #34d399; }
+
+    .nf-body {
+      padding: 0.85rem 1.25rem;
+      min-height: 3rem;
+    }
+
+    .clientes-lista {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
+
+    .nenhum {
+      font-size: 0.78rem;
+      color: #334155;
+      font-style: italic;
+    }
+
+    /* ---- Mini-card de cliente ---- */
+    .cli-card {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
       background: #0f1117;
+      border: 1px solid #2d3148;
+      border-radius: 8px;
+      padding: 0.4rem 0.75rem 0.4rem 0.4rem;
+      min-width: 180px;
+      max-width: 240px;
     }
 
-    .card-placeholder {
-      width: 100%;
-      aspect-ratio: 1 / 1;
+    .cli-foto {
+      width: 44px;
+      height: 44px;
+      border-radius: 6px;
+      object-fit: cover;
+      background: #1a1d27;
+      flex-shrink: 0;
+    }
+
+    .cli-foto-placeholder {
+      width: 44px;
+      height: 44px;
+      border-radius: 6px;
+      background: #1a1d27;
       display: flex;
       align-items: center;
       justify-content: center;
-      background: #0f1117;
       color: #334155;
-      font-size: 0.65rem;
+      font-size: 0.6rem;
+      flex-shrink: 0;
     }
 
-    .card-body {
-      padding: 0.6rem 0.75rem 0.75rem;
+    .cli-info {
       display: flex;
       flex-direction: column;
-      gap: 0.3rem;
+      gap: 0.1rem;
+      min-width: 0;
     }
 
-    .card-id {
-      font-size: 0.7rem;
+    .cli-id {
+      font-size: 0.65rem;
       font-weight: 700;
       color: #7c86ff;
     }
 
-    .card-nome {
-      font-size: 0.8rem;
-      color: #e2e8f0;
+    .cli-nome {
+      font-size: 0.75rem;
       font-weight: 600;
+      color: #e2e8f0;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
 
-    .card-apelido {
-      font-size: 0.72rem;
+    .cli-apelido {
+      font-size: 0.68rem;
       color: #94a3b8;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
 
-    .card-meta {
+    .cli-meta {
       display: flex;
-      gap: 0.4rem;
+      gap: 0.3rem;
       flex-wrap: wrap;
-      margin-top: 0.15rem;
+      margin-top: 0.1rem;
     }
 
     .chip {
-      font-size: 0.62rem;
+      font-size: 0.58rem;
       font-weight: 600;
-      padding: 0.12rem 0.4rem;
+      padding: 0.1rem 0.35rem;
       border-radius: 999px;
     }
+    .chip-g-M { background:#3b82f622; color:#60a5fa; border:1px solid #3b82f644; }
+    .chip-g-F { background:#ec489922; color:#f472b6; border:1px solid #ec489944; }
+    .chip-g-A { background:#64748b22; color:#94a3b8; border:1px solid #64748b44; }
+    .chip-idade { background:#10b98122; color:#34d399; border:1px solid #10b98144; }
 
-    .chip-genero {
-      background: #3b82f622;
-      color: #60a5fa;
-      border: 1px solid #3b82f644;
-    }
-    .chip-genero.F {
-      background: #ec489922;
-      color: #f472b6;
-      border: 1px solid #ec489944;
-    }
-    .chip-genero.A {
-      background: #64748b22;
-      color: #94a3b8;
-      border: 1px solid #64748b44;
-    }
-
-    .chip-idade {
-      background: #10b98122;
-      color: #34d399;
-      border: 1px solid #10b98144;
-    }
-
-    .card-ts {
-      font-size: 0.62rem;
+    .cli-ts {
+      font-size: 0.6rem;
       color: #475569;
-      margin-top: 0.2rem;
-    }
-
-    .card-camera {
-      font-size: 0.62rem;
-      color: #475569;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      margin-top: 0.15rem;
     }
   </style>
 </head>
 <body>
 
 <header>
-  <h1>
-    Tracks — Caixa
-    <span class="badge-count">{{ registros | length }} registros</span>
-  </h1>
+  <h1>Tracks — Caixa</h1>
   <nav class="nav">
     <a href="/camera300/tracks/caixa">&#8635; Atualizar</a>
     <a href="/camera300/tracks/tabuleiro">Tabuleiro</a>
@@ -192,52 +224,82 @@
 
 <main>
 
-  {% if not registros %}
-    <div class="empty-state">Nenhuma ocorrência de câmera Caixa encontrada.</div>
+  {% if not notas %}
+    <div class="empty-state">Nenhuma nota fiscal encontrada.</div>
   {% else %}
 
-    <div class="grid">
-      {% for r in registros %}
-        <div class="card">
-          {% if r.foto %}
-            <img class="card-photo" src="{{ r.foto }}"
-                 onerror="this.outerHTML='<div class=card-placeholder>sem foto</div>'"
-                 alt="ID {{ r.id_unico or r.track_id }}" />
-          {% else %}
-            <div class="card-placeholder">sem foto</div>
-          {% endif %}
+    {% for nf in notas %}
+      <div class="nf-card">
 
-          <div class="card-body">
-            {% if r.id_unico %}
-              <span class="card-id">ID {{ r.id_unico }}</span>
-            {% else %}
-              <span class="card-id" style="color:#475569">sem ID</span>
-            {% endif %}
-
-            <span class="card-nome" title="{{ r.nome or '' }}">{{ r.nome or '—' }}</span>
-            {% if r.apelido %}
-              <span class="card-apelido">{{ r.apelido }}</span>
-            {% endif %}
-
-            <div class="card-meta">
-              {% if r.genero %}
-                <span class="chip chip-genero {{ r.genero }}">
-                  {% if r.genero == 'M' %}Masc
-                  {% elif r.genero == 'F' %}Fem
-                  {% else %}Anôn{% endif %}
-                </span>
-              {% endif %}
-              {% if r.idade %}
-                <span class="chip chip-idade">{{ r.idade }} anos</span>
-              {% endif %}
+        <div class="nf-header">
+          <span class="nf-doc">NF #{{ nf.documento }}</span>
+          <div class="nf-info">
+            <div class="nf-field">
+              <span class="nf-label">Data</span>
+              <span class="nf-value">{{ nf.data.strftime('%d/%m/%Y') if nf.data else '—' }}</span>
             </div>
-
-            <span class="card-camera">{{ r.camera or r.camera_id }}</span>
-            <span class="card-ts">{{ r.created_at.strftime('%d/%m/%Y %H:%M') if r.created_at else '—' }}</span>
+            <div class="nf-field">
+              <span class="nf-label">Hora</span>
+              <span class="nf-value">{{ nf.hora or '—' }}</span>
+            </div>
+            <div class="nf-field">
+              <span class="nf-label">Itens</span>
+              <span class="nf-value">{{ nf.itens }}</span>
+            </div>
+            <div class="nf-field">
+              <span class="nf-label">Valor</span>
+              <span class="nf-value valor">R$ {{ '%.2f'|format(nf.valor) | replace('.', ',') }}</span>
+            </div>
+            <div class="nf-field">
+              <span class="nf-label">Clientes detectados</span>
+              <span class="nf-value">{{ nf.clientes | length }}</span>
+            </div>
           </div>
         </div>
-      {% endfor %}
-    </div>
+
+        <div class="nf-body">
+          {% if nf.clientes %}
+            <div class="clientes-lista">
+              {% for cli in nf.clientes %}
+                <div class="cli-card">
+                  {% if cli.foto %}
+                    <img class="cli-foto" src="{{ cli.foto }}"
+                         onerror="this.outerHTML='<div class=cli-foto-placeholder>sem foto</div>'"
+                         alt="ID {{ cli.id_unico }}" />
+                  {% else %}
+                    <div class="cli-foto-placeholder">sem foto</div>
+                  {% endif %}
+
+                  <div class="cli-info">
+                    <span class="cli-id">ID {{ cli.id_unico }}</span>
+                    <span class="cli-nome" title="{{ cli.nome or '' }}">{{ cli.nome or '—' }}</span>
+                    {% if cli.apelido %}
+                      <span class="cli-apelido">{{ cli.apelido }}</span>
+                    {% endif %}
+                    <div class="cli-meta">
+                      {% if cli.genero %}
+                        <span class="chip chip-g-{{ cli.genero }}">
+                          {%- if cli.genero == 'M' %}Masc
+                          {%- elif cli.genero == 'F' %}Fem
+                          {%- else %}Anôn{%- endif %}
+                        </span>
+                      {% endif %}
+                      {% if cli.idade %}
+                        <span class="chip chip-idade">{{ cli.idade }}a</span>
+                      {% endif %}
+                    </div>
+                    <span class="cli-ts">{{ cli.created_at.strftime('%H:%M:%S') if cli.created_at else '' }}</span>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <span class="nenhum">Nenhum cliente detectado na câmera Caixa neste horário (±2 min).</span>
+          {% endif %}
+        </div>
+
+      </div>
+    {% endfor %}
 
   {% endif %}
 
