@@ -1205,6 +1205,48 @@ def tracks_caixa():
     return render_template("tracks_caixa.html", notas=notas)
 
 
+@tracks_bp.route("/tracks/caixa/nf/<documento>")
+def tracks_caixa_nf_itens(documento):
+    pg_conn = None
+    try:
+        pg_conn = get_pg_conn()
+        pg_cur = pg_conn.cursor()
+        pg_cur.execute("""
+            SELECT
+                m.cod_produto,
+                p.nome AS produto_nome,
+                m.quantidade,
+                m.valor_total
+            FROM microvix_movimento m
+            LEFT JOIN microvix_produtos p ON m.cod_produto = p.cod_produto
+            WHERE m.documento = %s
+              AND m.cod_natureza_operacao = '10030'
+              AND m.cancelado = 'N'
+              AND m.excluido = 'N'
+              AND m.tipo_transacao = 'V'
+            ORDER BY m.cod_produto
+        """, (documento,))
+        rows = pg_cur.fetchall()
+        pg_cur.close()
+    except Exception as e:
+        print(f"[caixa/nf] Erro PostgreSQL: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if pg_conn:
+            release_pg_conn(pg_conn)
+
+    itens = [
+        {
+            "cod_produto":   row[0],
+            "produto_nome":  row[1] or "—",
+            "quantidade":    float(row[2]) if row[2] is not None else 0,
+            "valor_unitario": float(row[3]) if row[3] is not None else 0.0,
+        }
+        for row in rows
+    ]
+    return jsonify(itens)
+
+
 @tracks_bp.route("/tracks/carga")
 def tracks_carga():
     cargas = []

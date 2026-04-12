@@ -208,6 +208,59 @@
       color: #cbd5e1;
       margin-top: 0.15rem;
     }
+
+    /* ---- Botão itens NF ---- */
+    .btn-itens {
+      margin-left: auto;
+      background: none;
+      border: 1px solid #7c86ff55;
+      color: #7c86ff;
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 0.3rem 0.75rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+    .btn-itens:hover { background: #7c86ff22; }
+
+    /* ---- Painel de itens ---- */
+    .nf-itens-panel {
+      display: none;
+      border-top: 1px solid #2d3148;
+      padding: 0.75rem 1.25rem;
+    }
+    .nf-itens-panel.open { display: block; }
+
+    .itens-loading { font-size: 0.78rem; color: #475569; }
+    .itens-error   { font-size: 0.78rem; color: #f87171; }
+
+    .itens-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+    .itens-table th {
+      text-align: left;
+      font-size: 0.62rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #475569;
+      padding: 0 0.5rem 0.4rem 0;
+      border-bottom: 1px solid #2d3148;
+    }
+    .itens-table td {
+      padding: 0.35rem 0.5rem 0.35rem 0;
+      border-bottom: 1px solid #1a2230;
+      color: #e2e8f0;
+      vertical-align: top;
+    }
+    .itens-table tr:last-child td { border-bottom: none; }
+    .itens-table td.cod  { color: #7c86ff; font-weight: 700; white-space: nowrap; }
+    .itens-table td.num  { text-align: right; white-space: nowrap; }
+    .itens-table td.val  { text-align: right; color: #34d399; white-space: nowrap; }
   </style>
 </head>
 <body>
@@ -255,7 +308,14 @@
               <span class="nf-value">{{ nf.clientes | length }}</span>
             </div>
           </div>
+          <button class="btn-itens"
+                  onclick="toggleItens(this, '{{ nf.documento }}')"
+                  data-doc="{{ nf.documento }}">
+            Itens
+          </button>
         </div>
+
+        <div class="nf-itens-panel" id="itens-{{ nf.documento }}"></div>
 
         <div class="nf-body">
           {% if nf.clientes %}
@@ -305,5 +365,47 @@
 
 </main>
 
+<script>
+  function fmtNum(n) {
+    return Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function toggleItens(btn, doc) {
+    const panel = document.getElementById('itens-' + doc);
+    const open  = panel.classList.toggle('open');
+    btn.textContent = open ? 'Fechar' : 'Itens';
+    if (!open) return;
+
+    // já carregou
+    if (panel.dataset.loaded) return;
+
+    panel.innerHTML = '<span class="itens-loading">Carregando…</span>';
+    fetch('/camera300/tracks/caixa/nf/' + encodeURIComponent(doc))
+      .then(r => r.json())
+      .then(itens => {
+        panel.dataset.loaded = '1';
+        if (!itens.length) {
+          panel.innerHTML = '<span class="itens-loading">Nenhum item encontrado.</span>';
+          return;
+        }
+        let html = '<table class="itens-table"><thead><tr>'
+          + '<th>Cód.</th><th>Produto</th><th style="text-align:right">Qtd.</th><th style="text-align:right">Vl. Unit.</th>'
+          + '</tr></thead><tbody>';
+        itens.forEach(i => {
+          html += `<tr>
+            <td class="cod">${i.cod_produto || '—'}</td>
+            <td>${i.produto_nome}</td>
+            <td class="num">${fmtNum(i.quantidade)}</td>
+            <td class="val">R$ ${fmtNum(i.valor_unitario)}</td>
+          </tr>`;
+        });
+        html += '</tbody></table>';
+        panel.innerHTML = html;
+      })
+      .catch(() => {
+        panel.innerHTML = '<span class="itens-error">Erro ao carregar itens.</span>';
+      });
+  }
+</script>
 </body>
 </html>
