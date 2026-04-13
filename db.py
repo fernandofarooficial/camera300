@@ -47,6 +47,10 @@ def admin_people(track_id, data=None):
         id_unico = obter_id_unico_legado(track_careta)
         if id_unico is not None:
             atualizar_id_unico_em_registro(id_unico, track_id)
+            recgn_score = caretas.get('face_recgn_score')
+            if recgn_score is not None:
+                atualizar_face_recgn_score(track_id, recgn_score)
+                trace(track_id, f"admin_people: face_recgn_score={recgn_score:.4f} atualizado para track_id={track_id}")
             trace(track_id, f"admin_people: id_unico={id_unico} vinculado ao track_id={track_id}")
             telegram_cliente_chegou(track_id, id_unico)
             break
@@ -71,10 +75,16 @@ def listar_matches_simples(track_id, data=None):
                     continue
             except (ValueError, TypeError):
                 continue
+            recgn_raw = face.get("face_recgn_score")
+            try:
+                recgn_score = float(recgn_raw) if recgn_raw is not None else None
+            except (ValueError, TypeError):
+                recgn_score = None
             faces.append({
                 "track_id": face.get("track_id", track_id),
                 "image_path": face.get("image_path"),
                 "timestamp": fmt_timestamp(face.get("timestamp")),
+                "face_recgn_score": recgn_score,
             })
     return faces
 
@@ -103,6 +113,20 @@ def atualizar_id_unico_em_registro(id_unico, track_id):
         cursor.execute(
             "UPDATE registros SET id_unico = %s WHERE track_id = %s",
             (id_unico, track_id),
+        )
+        conn.commit()
+        cursor.close()
+    finally:
+        conn.close()
+
+
+def atualizar_face_recgn_score(track_id, face_recgn_score):
+    conn = get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE registros SET face_recgn_score = %s WHERE track_id = %s",
+            (face_recgn_score, track_id),
         )
         conn.commit()
         cursor.close()

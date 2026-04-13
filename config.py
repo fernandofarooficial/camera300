@@ -3,7 +3,7 @@ import mysql.connector.pooling
 import psycopg2
 import psycopg2.pool
 
-HEIMDALL_URL       = os.environ.get("HEIMDALL_URL",        "http://187.17.228.160:6500/api/facial/recognize-by-track")
+HEIMDALL_URL        = os.environ.get("HEIMDALL_URL",        "http://187.17.228.160:6500/api/facial/recognize-by-track")
 HEIMDALL_IMAGE_BASE = os.environ.get("HEIMDALL_IMAGE_BASE", "http://187.17.228.160:6500/api/facial/images")
 
 # Data de início das consultas ao Heimdall. Pode ser sobrescrita via variável de ambiente.
