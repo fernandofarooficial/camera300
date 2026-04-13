@@ -1,4 +1,6 @@
+import atexit
 import json
+import os
 import queue
 import threading
 import time
@@ -111,6 +113,72 @@ def broadcaster():
 
 
 threading.Thread(target=broadcaster, daemon=True).start()
+
+
+def _iniciar_scheduler():
+    """
+    Inicia o APScheduler com a agenda de sincronização Microvix.
+
+    Agenda:
+      - Seg-Sex: 07:35 às 18:35 (12 execuções por dia)
+      - Sáb:     07:35 às 13:35  (7 execuções)
+
+    Usa um lock de arquivo para garantir que apenas UM processo inicie o
+    scheduler, evitando disparos duplicados em ambientes gunicorn multi-worker.
+    """
+    import tempfile
+
+    lock_path = os.path.join(tempfile.gettempdir(), 'toma_na_cara_scheduler.lock')
+    try:
+        fd = open(lock_path, 'w')
+        if os.name == 'nt':
+            import msvcrt
+            msvcrt.locking(fd.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (IOError, OSError):
+        # Outro worker gunicorn já iniciou o scheduler.
+        return
+
+    from apscheduler.schedulers.background import BackgroundScheduler
+    from apscheduler.triggers.cron import CronTrigger
+    from microvix_ingest import run_incremental, get_status
+
+    def _disparar_sync():
+        st = get_status()
+        if st['running']:
+            tracer.trace("SCHEDULER", "Microvix sync ignorado — já em andamento")
+            return
+        tracer.trace("SCHEDULER", "Microvix sync iniciado pelo agendador")
+        threading.Thread(target=run_incremental, daemon=True).start()
+
+    scheduler = BackgroundScheduler(timezone='America/Sao_Paulo')
+
+    # Segunda a sexta: 07:35 até 18:35
+    scheduler.add_job(
+        _disparar_sync,
+        CronTrigger(day_of_week='mon-fri', hour='7-18', minute=35,
+                    timezone='America/Sao_Paulo'),
+        id='microvix_seg_sex',
+        name='Microvix Seg-Sex',
+    )
+
+    # Sábado: 07:35 até 13:35
+    scheduler.add_job(
+        _disparar_sync,
+        CronTrigger(day_of_week='sat', hour='7-13', minute=35,
+                    timezone='America/Sao_Paulo'),
+        id='microvix_sab',
+        name='Microvix Sab',
+    )
+
+    scheduler.start()
+    atexit.register(scheduler.shutdown)
+    tracer.trace("SCHEDULER", "APScheduler iniciado (Seg-Sex 07:35-18:35 | Sáb 07:35-13:35)")
+
+
+_iniciar_scheduler()
 
 
 @app.route('/')

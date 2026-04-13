@@ -6,3 +6,4 @@ requests-toolbelt
 gunicorn
 opencv-python-headless
 openpyxl
+APScheduler>=3.10
