@@ -196,7 +196,7 @@ def _upsert(conn, tabela: str, registros: list[dict], pk_cols: list[str]) -> int
         return 0
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT column_name FROM information_schema.columns WHERE table_name = %s",
+            "SELECT column_name FROM information_schema.columns WHERE table_schema = 'microvix' AND table_name = %s",
             (tabela,),
         )
         colunas_banco = {row[0] for row in cur.fetchall()}
