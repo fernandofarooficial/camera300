@@ -8,8 +8,9 @@ import time
 from flask import Flask, jsonify, render_template, request, Response
 
 from tracks import tracks_bp, query_heimdall, HEIMDALL_IMAGE_BASE, get_best_face
+import psycopg2.extras
 from db import adequar_bases, admin_people
-from config import get_conn, SCORE_MINIMO
+from config import get_faciais_conn, release_faciais_conn, SCORE_MINIMO
 import tracer
 
 
@@ -44,7 +45,7 @@ def get_best_match(track_id):
 _RETRY_DELAYS = [3, 6, 12]  # segundos entre tentativas (total: até 3 tentativas)
 
 
-def salvar_rosto(track_id, camera_id=None):
+def salvar_rosto(track_id, camera_id=None, log_id=None, json_record_id=None):
     tracer.trace(track_id, f"salvar_rosto: iniciado (camera_id={camera_id})")
     conn = None
     cursor = None
@@ -66,11 +67,13 @@ def salvar_rosto(track_id, camera_id=None):
 
         # camera_id do match tem prioridade; usa o do payload como fallback
         camera_id = cam_from_match or camera_id
-        conn = get_conn()
+        conn = get_faciais_conn()
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO registros (track_id, camera_id, image_path, face_det_score, face_recgn_score) VALUES (%s, %s, %s, %s, %s)",
-            (track_id, camera_id, image_path, face_det_score, face_recgn_score),
+            """INSERT INTO detection_records
+               (track_id, camera_id, image_path, detection_score, recognition_score, log_id, json_record_id)
+               VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+            (track_id, camera_id, image_path, face_det_score, face_recgn_score, log_id, json_record_id),
         )
         conn.commit()
         admin_people(track_id, data=heimdall_data)
@@ -78,11 +81,16 @@ def salvar_rosto(track_id, camera_id=None):
     except Exception as e:
         tracer.trace(track_id, f"salvar_rosto: ERRO → {e}")
         print(f"Erro ao salvar no banco: {e}")
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
     finally:
         if cursor:
             cursor.close()
         if conn:
-            conn.close()
+            release_faciais_conn(conn)
 
 
 app = Flask(__name__)
@@ -202,20 +210,26 @@ def receive_facial_recognition():
     if payload is None:
         return jsonify({'error': 'Invalid or missing JSON body'}), 400
 
+    log_id = payload.get('log_id') or payload.get('data', {}).get('log_id')
+    json_record_id = None
     try:
-        _conn = get_conn()
+        _conn = get_faciais_conn()
         _cur = _conn.cursor()
         payload_to_save = {**payload}
         if 'image_base64' in payload_to_save:
             payload_to_save['image_base64'] = 'foto'
         if 'data' in payload_to_save and isinstance(payload_to_save['data'], dict) and 'image_base64' in payload_to_save['data']:
             payload_to_save['data'] = {**payload_to_save['data'], 'image_base64': 'foto'}
-        _cur.execute("INSERT INTO registros_json (dados) VALUES (%s)", (json.dumps(payload_to_save),))
+        _cur.execute(
+            "INSERT INTO json_records (log_id, payload) VALUES (%s, %s) RETURNING json_record_id",
+            (log_id, json.dumps(payload_to_save)),
+        )
+        json_record_id = _cur.fetchone()[0]
         _conn.commit()
         _cur.close()
-        _conn.close()
+        release_faciais_conn(_conn)
     except Exception as _e:
-        print(f"Erro ao salvar registros_json: {_e}")
+        print(f"Erro ao salvar json_records: {_e}")
 
     track_id = payload.get('data', {}).get('track_id')
     camera_id = payload.get('data', {}).get('camera_id')
@@ -243,7 +257,7 @@ def receive_facial_recognition():
     event_queue.put(json.dumps(event))
 
     if track_id is not None:
-        threading.Thread(target=salvar_rosto, args=(track_id, camera_id), daemon=True).start()
+        threading.Thread(target=salvar_rosto, args=(track_id, camera_id, log_id, json_record_id), daemon=True).start()
 
     return jsonify({'success': True, 'message': 'Data received'}), 200
 
@@ -277,26 +291,32 @@ def stream():
 @app.route('/api/track_image/<track_id>')
 def get_track_image(track_id):
     # Verifica banco primeiro
+    conn = None
     try:
-        conn = get_conn()
-        cursor = conn.cursor(dictionary=True)
+        conn = get_faciais_conn()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cursor.execute(
-            "SELECT image_path, camera_id, face_det_score FROM registros WHERE track_id = %s ORDER BY id DESC LIMIT 1",
+            """SELECT image_path, camera_id, detection_score
+               FROM detection_records
+               WHERE track_id = %s
+               ORDER BY detection_record_id DESC LIMIT 1""",
             (track_id,),
         )
         row = cursor.fetchone()
         cursor.close()
-        conn.close()
         if row and row['image_path']:
             return jsonify({
                 'image_url': HEIMDALL_IMAGE_BASE + row['image_path'],
                 'camera_id': row['camera_id'],
-                'face_det_score': row.get('face_det_score'),
+                'face_det_score': row.get('detection_score'),
             })
         if row and row['camera_id']:
-            return jsonify({'image_url': None, 'camera_id': row['camera_id'], 'face_det_score': row.get('face_det_score')})
+            return jsonify({'image_url': None, 'camera_id': row['camera_id'], 'face_det_score': row.get('detection_score')})
     except Exception as e:
         print(f"Erro ao buscar do banco: {e}")
+    finally:
+        if conn:
+            release_faciais_conn(conn)
 
     # Fallback: consulta Heimdall
     image_path, camera_id, face_det_score = get_best_match(track_id)

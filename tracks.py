@@ -2,29 +2,56 @@ import io
 import cv2
 import requests
 import openpyxl
+import psycopg2.extras
 from openpyxl.styles import Font, PatternFill, Alignment
 from flask import Blueprint, render_template, jsonify, request, Response, send_file, make_response
 from requests_toolbelt import MultipartEncoder
 from datetime import datetime, timedelta, date
 
-from config import get_conn, get_pg_conn, release_pg_conn, HEIMDALL_URL, HEIMDALL_IMAGE_BASE, HEIMDALL_START_DATE, HEIMDALL_END_DATE, ZIONS_API_URL, ZIONS_TOKEN
+from config import get_faciais_conn, release_faciais_conn, get_pg_conn, release_pg_conn, HEIMDALL_URL, HEIMDALL_IMAGE_BASE, HEIMDALL_START_DATE, HEIMDALL_END_DATE, ZIONS_API_URL, ZIONS_TOKEN
 from tracer import trace
 
 
 def _carregar_cameras():
-    """Carrega câmeras válidas da view vw_cameras_completo.
-
-    Retorna:
-        camera_ids   — lista de str com os id_camera
-        cameras_list — lista completa de dicts retornados pela view
-    """
+    """Carrega câmeras válidas com aliases compatíveis com o código legado."""
     try:
-        conn = get_conn()
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM vw_cameras_completo")
-        rows = cursor.fetchall()
-        cursor.close()
-        conn.close()
+        conn = get_faciais_conn()
+        try:
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cursor.execute("""
+                SELECT
+                    c.camera_id                     AS id_camera,
+                    c.camera_name                   AS camera,
+                    c.rtsp_url                      AS rstp,
+                    c.created_at                    AS camera_criada_em,
+                    ct.camera_type_id               AS id_tipo_camera,
+                    ct.camera_type_name             AS tipo_camera,
+                    s.store_id                      AS id_local,
+                    s.cep,
+                    s.address_number                AS numero,
+                    s.address_complement            AS complemento,
+                    co.company_id                   AS id_empresa,
+                    co.company_name                 AS empresa,
+                    cg.company_group_id             AS id_grupo,
+                    cg.company_group_name           AS grupo,
+                    cot.company_type_id             AS id_tipo_empresa,
+                    cot.company_type_name           AS tipo_empresa,
+                    rg.retailer_group_id            AS id_dono,
+                    rg.retailer_group_name          AS dono
+                FROM cameras c
+                LEFT JOIN camera_types  ct  ON ct.camera_type_id  = c.camera_type_id
+                LEFT JOIN stores        s   ON s.store_id          = c.store_id
+                LEFT JOIN companies     co  ON co.company_id       = s.company_id
+                LEFT JOIN company_groups cg ON cg.company_group_id = co.company_group_id
+                LEFT JOIN company_types  cot ON cot.company_type_id = co.company_type_id
+                LEFT JOIN retailer_groups rg ON rg.retailer_group_id = s.retailer_group_id
+                ORDER BY c.camera_id
+            """)
+            rows = cursor.fetchall()
+            cursor.close()
+            conn.rollback()
+        finally:
+            release_faciais_conn(conn)
         ids = [str(r["id_camera"]) for r in rows if r.get("id_camera") is not None]
         return ids, rows
     except Exception as e:
@@ -39,16 +66,25 @@ tracks_bp = Blueprint("tracks", __name__)
 
 
 def get_last_track_ids(limit=5):
-    conn = get_conn()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute(
-        "SELECT track_id, id, created_at, id_unico, image_path FROM registros ORDER BY id DESC LIMIT %s",
-        (limit,),
-    )
-    rows = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    return rows
+    conn = get_faciais_conn()
+    try:
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor.execute(
+            """SELECT track_id,
+                      detection_record_id AS id,
+                      created_at,
+                      person_id           AS id_unico,
+                      image_path
+               FROM detection_records
+               ORDER BY detection_record_id DESC LIMIT %s""",
+            (limit,),
+        )
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.rollback()
+        return rows
+    finally:
+        release_faciais_conn(conn)
 
 
 def query_heimdall(track_id):
@@ -177,17 +213,21 @@ def get_pessoas_by_ids(id_unicos):
     ids = [i for i in id_unicos if i is not None]
     if not ids:
         return {}
-    conn = get_conn()
-    cursor = conn.cursor(dictionary=True)
-    placeholders = ",".join(["%s"] * len(ids))
-    cursor.execute(
-        f"SELECT id_unico, nome, apelido FROM pessoas WHERE id_unico IN ({placeholders})",
-        ids,
-    )
-    pessoas = {p["id_unico"]: p for p in cursor.fetchall()}
-    cursor.close()
-    conn.close()
-    return pessoas
+    conn = get_faciais_conn()
+    try:
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        placeholders = ",".join(["%s"] * len(ids))
+        cursor.execute(
+            f"""SELECT person_id AS id_unico, full_name AS nome, nickname AS apelido
+                FROM people WHERE person_id IN ({placeholders})""",
+            ids,
+        )
+        pessoas = {p["id_unico"]: p for p in cursor.fetchall()}
+        cursor.close()
+        conn.rollback()
+        return pessoas
+    finally:
+        release_faciais_conn(conn)
 
 
 @tracks_bp.route("/tracks/resumo")
@@ -248,7 +288,6 @@ def tracks_lista():
     if page < 1:
         page = 1
 
-    # Filtro por id_unico (lista separada por vírgulas, espaços ou quebras de linha)
     ids_raw = request.args.get('ids', '').strip()
     ids_filter = []
     if ids_raw:
@@ -257,130 +296,144 @@ def tracks_lista():
             if part.isdigit():
                 ids_filter.append(int(part))
 
-    # Filtro por flag (ex: flag=C para clientes)
     flag_filter = request.args.get('flag', '').strip().upper()
 
     offset = (page - 1) * per_page
 
-    conn = get_conn()
-    cursor = conn.cursor(dictionary=True)
+    conn = get_faciais_conn()
+    try:
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    if ids_filter and flag_filter:
-        ph = ",".join(["%s"] * len(ids_filter))
-        cursor.execute(
-            f"""SELECT COUNT(DISTINCT r.id_unico) AS total
-                FROM registros r
-                JOIN pessoas p ON r.id_unico = p.id_unico
-                WHERE r.id_unico IS NOT NULL AND r.id_unico IN ({ph}) AND p.flag = %s""",
-            ids_filter + [flag_filter],
-        )
-    elif ids_filter:
-        ph = ",".join(["%s"] * len(ids_filter))
-        cursor.execute(
-            f"SELECT COUNT(DISTINCT id_unico) AS total FROM registros WHERE id_unico IS NOT NULL AND id_unico IN ({ph})",
-            ids_filter,
-        )
-    elif flag_filter:
-        cursor.execute(
-            """SELECT COUNT(DISTINCT r.id_unico) AS total
-               FROM registros r
-               JOIN pessoas p ON r.id_unico = p.id_unico
-               WHERE r.id_unico IS NOT NULL AND p.flag = %s""",
-            (flag_filter,),
-        )
-    else:
-        cursor.execute("SELECT COUNT(DISTINCT id_unico) AS total FROM registros WHERE id_unico IS NOT NULL")
-    total = cursor.fetchone()["total"]
-    total_pages = max(1, (total + per_page - 1) // per_page)
+        if ids_filter and flag_filter:
+            ph = ",".join(["%s"] * len(ids_filter))
+            cursor.execute(
+                f"""SELECT COUNT(DISTINCT r.person_id) AS total
+                    FROM detection_records r
+                    JOIN people p ON r.person_id = p.person_id
+                    WHERE r.person_id IS NOT NULL AND r.person_id IN ({ph}) AND p.person_type_id = %s""",
+                ids_filter + [flag_filter],
+            )
+        elif ids_filter:
+            ph = ",".join(["%s"] * len(ids_filter))
+            cursor.execute(
+                f"SELECT COUNT(DISTINCT person_id) AS total FROM detection_records WHERE person_id IS NOT NULL AND person_id IN ({ph})",
+                ids_filter,
+            )
+        elif flag_filter:
+            cursor.execute(
+                """SELECT COUNT(DISTINCT r.person_id) AS total
+                   FROM detection_records r
+                   JOIN people p ON r.person_id = p.person_id
+                   WHERE r.person_id IS NOT NULL AND p.person_type_id = %s""",
+                (flag_filter,),
+            )
+        else:
+            cursor.execute("SELECT COUNT(DISTINCT person_id) AS total FROM detection_records WHERE person_id IS NOT NULL")
+        total = cursor.fetchone()["total"]
+        total_pages = max(1, (total + per_page - 1) // per_page)
 
-    if ids_filter and flag_filter:
-        ph = ",".join(["%s"] * len(ids_filter))
-        cursor.execute(f"""
-            SELECT r.id_unico
-            FROM registros r
-            JOIN pessoas p ON r.id_unico = p.id_unico
-            WHERE r.id_unico IS NOT NULL AND r.id_unico IN ({ph}) AND p.flag = %s
-            GROUP BY r.id_unico
-            ORDER BY MAX(r.created_at) DESC
-            LIMIT %s OFFSET %s
-        """, ids_filter + [flag_filter, per_page, offset])
-    elif ids_filter:
-        ph = ",".join(["%s"] * len(ids_filter))
-        cursor.execute(f"""
-            SELECT id_unico
-            FROM registros
-            WHERE id_unico IS NOT NULL AND id_unico IN ({ph})
-            GROUP BY id_unico
-            ORDER BY MAX(created_at) DESC
-            LIMIT %s OFFSET %s
-        """, ids_filter + [per_page, offset])
-    elif flag_filter:
-        cursor.execute("""
-            SELECT r.id_unico
-            FROM registros r
-            JOIN pessoas p ON r.id_unico = p.id_unico
-            WHERE r.id_unico IS NOT NULL AND p.flag = %s
-            GROUP BY r.id_unico
-            ORDER BY MAX(r.created_at) DESC
-            LIMIT %s OFFSET %s
-        """, (flag_filter, per_page, offset))
-    else:
-        cursor.execute("""
-            SELECT id_unico
-            FROM registros
-            WHERE id_unico IS NOT NULL
-            GROUP BY id_unico
-            ORDER BY MAX(created_at) DESC
-            LIMIT %s OFFSET %s
-        """, (per_page, offset))
-    id_unicos = [row["id_unico"] for row in cursor.fetchall()]
+        if ids_filter and flag_filter:
+            ph = ",".join(["%s"] * len(ids_filter))
+            cursor.execute(f"""
+                SELECT r.person_id AS id_unico
+                FROM detection_records r
+                JOIN people p ON r.person_id = p.person_id
+                WHERE r.person_id IS NOT NULL AND r.person_id IN ({ph}) AND p.person_type_id = %s
+                GROUP BY r.person_id
+                ORDER BY MAX(r.created_at) DESC
+                LIMIT %s OFFSET %s
+            """, ids_filter + [flag_filter, per_page, offset])
+        elif ids_filter:
+            ph = ",".join(["%s"] * len(ids_filter))
+            cursor.execute(f"""
+                SELECT person_id AS id_unico
+                FROM detection_records
+                WHERE person_id IS NOT NULL AND person_id IN ({ph})
+                GROUP BY person_id
+                ORDER BY MAX(created_at) DESC
+                LIMIT %s OFFSET %s
+            """, ids_filter + [per_page, offset])
+        elif flag_filter:
+            cursor.execute("""
+                SELECT r.person_id AS id_unico
+                FROM detection_records r
+                JOIN people p ON r.person_id = p.person_id
+                WHERE r.person_id IS NOT NULL AND p.person_type_id = %s
+                GROUP BY r.person_id
+                ORDER BY MAX(r.created_at) DESC
+                LIMIT %s OFFSET %s
+            """, (flag_filter, per_page, offset))
+        else:
+            cursor.execute("""
+                SELECT person_id AS id_unico
+                FROM detection_records
+                WHERE person_id IS NOT NULL
+                GROUP BY person_id
+                ORDER BY MAX(created_at) DESC
+                LIMIT %s OFFSET %s
+            """, (per_page, offset))
+        id_unicos = [row["id_unico"] for row in cursor.fetchall()]
 
-    groups = []
-    if id_unicos:
-        placeholders = ",".join(["%s"] * len(id_unicos))
-        cursor.execute(f"""
-            SELECT
-                r.id, r.track_id, r.id_unico, r.image_path, r.created_at, r.camera_id,
-                r.face_det_score,
-                p.nome, p.apelido, p.flag, p.genero, p.track_id_base, p.doc, p.idade, p.notas
-            FROM registros r
-            LEFT JOIN pessoas p ON r.id_unico = p.id_unico
-            WHERE r.id_unico IN ({placeholders})
-            ORDER BY r.created_at DESC
-        """, id_unicos)
-        rows = cursor.fetchall()
+        groups = []
+        if id_unicos:
+            placeholders = ",".join(["%s"] * len(id_unicos))
+            cursor.execute(f"""
+                SELECT
+                    r.detection_record_id       AS id,
+                    r.track_id,
+                    r.person_id                 AS id_unico,
+                    r.image_path,
+                    r.created_at,
+                    r.camera_id,
+                    r.detection_score           AS face_det_score,
+                    p.full_name                 AS nome,
+                    p.nickname                  AS apelido,
+                    p.person_type_id            AS flag,
+                    p.gender_id                 AS genero,
+                    p.reference_track_id        AS track_id_base,
+                    p.document                  AS doc,
+                    p.age                       AS idade,
+                    p.notes                     AS notas
+                FROM detection_records r
+                LEFT JOIN people p ON r.person_id = p.person_id
+                WHERE r.person_id IN ({placeholders})
+                ORDER BY r.created_at DESC
+            """, id_unicos)
+            rows = cursor.fetchall()
 
-        groups_dict = {}
-        for row in rows:
-            key = row["id_unico"]
-            if key not in groups_dict:
-                groups_dict[key] = {
-                    "id_unico":      key,
-                    "nome":          row["nome"],
-                    "apelido":       row["apelido"],
-                    "flag":          row["flag"],
-                    "genero":        row["genero"],
-                    "doc":           row["doc"],
-                    "idade":         row["idade"],
-                    "notas":         row["notas"],
-                    "track_id_base": row["track_id_base"],
-                    "foto":          None,
-                    "ocorrencias":   [],
-                }
-            if groups_dict[key]["foto"] is None and row["image_path"] and row["track_id"] == groups_dict[key]["track_id_base"]:
-                groups_dict[key]["foto"] = HEIMDALL_IMAGE_BASE + row["image_path"]
-            groups_dict[key]["ocorrencias"].append({
-                "id":             row["id"],
-                "track_id":       row["track_id"],
-                "image_url":      HEIMDALL_IMAGE_BASE + row["image_path"] if row["image_path"] else None,
-                "created_at":     fmt_timestamp(row["created_at"]),
-                "camera_id":      row["camera_id"],
-                "face_det_score": fmt_score(row["face_det_score"]) if row.get("face_det_score") is not None else None,
-            })
-        groups = [groups_dict[k] for k in id_unicos if k in groups_dict]
+            groups_dict = {}
+            for row in rows:
+                key = row["id_unico"]
+                if key not in groups_dict:
+                    groups_dict[key] = {
+                        "id_unico":      key,
+                        "nome":          row["nome"],
+                        "apelido":       row["apelido"],
+                        "flag":          row["flag"],
+                        "genero":        row["genero"],
+                        "doc":           row["doc"],
+                        "idade":         row["idade"],
+                        "notas":         row["notas"],
+                        "track_id_base": row["track_id_base"],
+                        "foto":          None,
+                        "ocorrencias":   [],
+                    }
+                if groups_dict[key]["foto"] is None and row["image_path"] and row["track_id"] == groups_dict[key]["track_id_base"]:
+                    groups_dict[key]["foto"] = HEIMDALL_IMAGE_BASE + row["image_path"]
+                groups_dict[key]["ocorrencias"].append({
+                    "id":             row["id"],
+                    "track_id":       row["track_id"],
+                    "image_url":      HEIMDALL_IMAGE_BASE + row["image_path"] if row["image_path"] else None,
+                    "created_at":     fmt_timestamp(row["created_at"]),
+                    "camera_id":      row["camera_id"],
+                    "face_det_score": fmt_score(row["face_det_score"]) if row.get("face_det_score") is not None else None,
+                })
+            groups = [groups_dict[k] for k in id_unicos if k in groups_dict]
 
-    cursor.close()
-    conn.close()
+        cursor.close()
+        conn.rollback()
+    finally:
+        release_faciais_conn(conn)
 
     cameras_map = {c["id_camera"]: c.get("camera") or str(c["id_camera"]) for c in CAMERAS_COMPLETO if c.get("id_camera") is not None}
     return render_template("tracks_lista.html", groups=groups, page=page, total_pages=total_pages,
@@ -395,103 +448,129 @@ def tracks_permanencia():
         page = 1
     offset = (page - 1) * per_page
 
-    conn = get_conn()
-    cursor = conn.cursor(dictionary=True)
+    conn = get_faciais_conn()
+    try:
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    cursor.execute("SELECT COUNT(DISTINCT id_unico) AS total FROM registros WHERE id_unico IS NOT NULL")
-    total = cursor.fetchone()["total"]
-    total_pages = max(1, (total + per_page - 1) // per_page)
+        cursor.execute("SELECT COUNT(DISTINCT person_id) AS total FROM detection_records WHERE person_id IS NOT NULL")
+        total = cursor.fetchone()["total"]
+        total_pages = max(1, (total + per_page - 1) // per_page)
 
-    cursor.execute("""
-        SELECT id_unico
-        FROM registros
-        WHERE id_unico IS NOT NULL
-        GROUP BY id_unico
-        ORDER BY MAX(created_at) DESC
-        LIMIT %s OFFSET %s
-    """, (per_page, offset))
-    id_unicos = [row["id_unico"] for row in cursor.fetchall()]
+        cursor.execute("""
+            SELECT person_id AS id_unico
+            FROM detection_records
+            WHERE person_id IS NOT NULL
+            GROUP BY person_id
+            ORDER BY MAX(created_at) DESC
+            LIMIT %s OFFSET %s
+        """, (per_page, offset))
+        id_unicos = [row["id_unico"] for row in cursor.fetchall()]
 
-    groups = []
-    if id_unicos:
-        placeholders = ",".join(["%s"] * len(id_unicos))
-        cursor.execute(f"""
-            SELECT
-                r.id, r.track_id, r.id_unico, r.image_path, r.created_at,
-                p.nome, p.apelido, p.flag, p.genero, p.doc, p.idade, p.notas, p.track_id_base
-            FROM registros r
-            LEFT JOIN pessoas p ON r.id_unico = p.id_unico
-            WHERE r.id_unico IN ({placeholders})
-            ORDER BY r.created_at ASC
-        """, id_unicos)
-        rows = cursor.fetchall()
+        groups = []
+        if id_unicos:
+            placeholders = ",".join(["%s"] * len(id_unicos))
+            cursor.execute(f"""
+                SELECT
+                    r.detection_record_id       AS id,
+                    r.track_id,
+                    r.person_id                 AS id_unico,
+                    r.image_path,
+                    r.created_at,
+                    p.full_name                 AS nome,
+                    p.nickname                  AS apelido,
+                    p.person_type_id            AS flag,
+                    p.gender_id                 AS genero,
+                    p.document                  AS doc,
+                    p.age                       AS idade,
+                    p.notes                     AS notas,
+                    p.reference_track_id        AS track_id_base
+                FROM detection_records r
+                LEFT JOIN people p ON r.person_id = p.person_id
+                WHERE r.person_id IN ({placeholders})
+                ORDER BY r.created_at ASC
+            """, id_unicos)
+            rows = cursor.fetchall()
 
-        groups_dict = {}
-        for row in rows:
-            key = row["id_unico"]
-            dia = row["created_at"].date() if row["created_at"] else None
+            groups_dict = {}
+            for row in rows:
+                key = row["id_unico"]
+                dia = row["created_at"].date() if row["created_at"] else None
 
-            if key not in groups_dict:
-                groups_dict[key] = {
-                    "id_unico":      key,
-                    "nome":          row["nome"],
-                    "apelido":       row["apelido"],
-                    "flag":          row["flag"],
-                    "genero":        row["genero"],
-                    "doc":           row["doc"],
-                    "idade":         row["idade"],
-                    "notas":         row["notas"],
-                    "track_id_base": row["track_id_base"],
-                    "foto":          None,
-                    "dias":          {},
-                }
+                if key not in groups_dict:
+                    groups_dict[key] = {
+                        "id_unico":      key,
+                        "nome":          row["nome"],
+                        "apelido":       row["apelido"],
+                        "flag":          row["flag"],
+                        "genero":        row["genero"],
+                        "doc":           row["doc"],
+                        "idade":         row["idade"],
+                        "notas":         row["notas"],
+                        "track_id_base": row["track_id_base"],
+                        "foto":          None,
+                        "dias":          {},
+                    }
 
-            g = groups_dict[key]
-            if g["foto"] is None and row["image_path"] and row["track_id"] == g["track_id_base"]:
-                g["foto"] = HEIMDALL_IMAGE_BASE + row["image_path"]
+                g = groups_dict[key]
+                if g["foto"] is None and row["image_path"] and row["track_id"] == g["track_id_base"]:
+                    g["foto"] = HEIMDALL_IMAGE_BASE + row["image_path"]
 
-            if dia not in g["dias"]:
-                g["dias"][dia] = []
-            g["dias"][dia].append(row)
+                if dia not in g["dias"]:
+                    g["dias"][dia] = []
+                g["dias"][dia].append(row)
 
-        for key, g in groups_dict.items():
-            dias_list = []
-            for dia in sorted(g["dias"].keys(), reverse=True):
-                regs = g["dias"][dia]  # já ordenados por created_at ASC
-                primeira = regs[0]
-                ultima = regs[-1]
+            for key, g in groups_dict.items():
+                dias_list = []
+                for dia in sorted(g["dias"].keys(), reverse=True):
+                    regs = g["dias"][dia]
+                    primeira = regs[0]
+                    ultima = regs[-1]
 
-                if len(regs) == 1 or (ultima["created_at"] - primeira["created_at"]) < timedelta(minutes=2):
-                    duracao = timedelta(minutes=30)
-                    estimado = True
-                else:
-                    duracao = ultima["created_at"] - primeira["created_at"]
-                    estimado = False
+                    if len(regs) == 1 or (ultima["created_at"] - primeira["created_at"]) < timedelta(minutes=2):
+                        duracao = timedelta(minutes=30)
+                        estimado = True
+                    else:
+                        duracao = ultima["created_at"] - primeira["created_at"]
+                        estimado = False
 
-                total_secs = int(duracao.total_seconds())
-                horas = total_secs // 3600
-                mins = (total_secs % 3600) // 60
-                if horas > 0:
-                    perm_str = f"{horas}h {mins:02d}min"
-                else:
-                    perm_str = f"{mins}min"
+                    total_secs = int(duracao.total_seconds())
+                    horas = total_secs // 3600
+                    mins = (total_secs % 3600) // 60
+                    if horas > 0:
+                        perm_str = f"{horas}h {mins:02d}min"
+                    else:
+                        perm_str = f"{mins}min"
 
-                dias_list.append({
-                    "dia":       str(dia),
-                    "hora_ini":  fmt_timestamp(primeira["created_at"]),
-                    "hora_fim":  fmt_timestamp(ultima["created_at"]) if not estimado else None,
-                    "permanencia": perm_str,
-                    "estimado":  estimado,
-                    "image_url": HEIMDALL_IMAGE_BASE + primeira["image_path"] if primeira["image_path"] else None,
-                })
-            g["dias"] = dias_list
+                    dias_list.append({
+                        "dia":       str(dia),
+                        "hora_ini":  fmt_timestamp(primeira["created_at"]),
+                        "hora_fim":  fmt_timestamp(ultima["created_at"]) if not estimado else None,
+                        "permanencia": perm_str,
+                        "estimado":  estimado,
+                        "image_url": HEIMDALL_IMAGE_BASE + primeira["image_path"] if primeira["image_path"] else None,
+                    })
+                g["dias"] = dias_list
 
-        groups = [groups_dict[k] for k in id_unicos if k in groups_dict]
+            groups = [groups_dict[k] for k in id_unicos if k in groups_dict]
 
-    cursor.close()
-    conn.close()
+        cursor.close()
+        conn.rollback()
+    finally:
+        release_faciais_conn(conn)
 
     return render_template("tracks_permanencia.html", groups=groups, page=page, total_pages=total_pages)
+
+
+# Mapeamento de campos do frontend (nomes legados) para colunas do schema faciais
+_CAMPO_MAP = {
+    "nome":    "full_name",
+    "apelido": "nickname",
+    "doc":     "document",
+    "idade":   "age",
+    "genero":  "gender_id",
+    "flag":    "person_type_id",
+    "notas":   "notes",
+}
 
 
 @tracks_bp.route("/tracks/api/pessoa/<int:id_unico>", methods=["POST"])
@@ -499,20 +578,22 @@ def atualizar_pessoa(id_unico):
     data = request.get_json(silent=True)
     if not data:
         return jsonify({"error": "JSON inválido"}), 400
-    campos_permitidos = {"nome", "apelido", "doc", "idade", "genero", "flag", "notas"}
-    updates = {k: (v if v != "" else None) for k, v in data.items() if k in campos_permitidos}
+    updates = {_CAMPO_MAP[k]: (v if v != "" else None) for k, v in data.items() if k in _CAMPO_MAP}
     if not updates:
         return jsonify({"error": "Nenhum campo válido"}), 400
-    set_clause = ", ".join(f"{k} = %s" for k in updates)
+    set_clause = ", ".join(f"{col} = %s" for col in updates)
     values = list(updates.values()) + [id_unico]
-    conn = get_conn()
+    conn = get_faciais_conn()
     try:
         cursor = conn.cursor()
-        cursor.execute(f"UPDATE pessoas SET {set_clause} WHERE id_unico = %s", values)
+        cursor.execute(f"UPDATE people SET {set_clause} WHERE person_id = %s", values)
         conn.commit()
         cursor.close()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
-        conn.close()
+        release_faciais_conn(conn)
     return jsonify({"success": True})
 
 
@@ -522,53 +603,62 @@ def atualizar_base_pessoa(id_unico):
     if not data or "track_id_base" not in data:
         return jsonify({"error": "track_id_base obrigatório"}), 400
     track_id_base = data["track_id_base"]
-    conn = get_conn()
+    conn = get_faciais_conn()
     try:
         cursor = conn.cursor()
-        cursor.execute("UPDATE pessoas SET track_id_base = %s WHERE id_unico = %s", (track_id_base, id_unico))
+        cursor.execute("UPDATE people SET reference_track_id = %s WHERE person_id = %s", (track_id_base, id_unico))
         conn.commit()
         cursor.close()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
-        conn.close()
+        release_faciais_conn(conn)
     return jsonify({"success": True})
 
 
 @tracks_bp.route("/tracks/api/pessoa/<int:id_unico>", methods=["DELETE"])
 def excluir_pessoa(id_unico):
-    conn = get_conn()
+    conn = get_faciais_conn()
     try:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM registros WHERE id_unico = %s", (id_unico,))
-        cursor.execute("DELETE FROM pessoas WHERE id_unico = %s", (id_unico,))
+        cursor.execute("DELETE FROM detection_records WHERE person_id = %s", (id_unico,))
+        cursor.execute("DELETE FROM people WHERE person_id = %s", (id_unico,))
         conn.commit()
         cursor.close()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
-        conn.close()
+        release_faciais_conn(conn)
     return jsonify({"success": True})
 
 
 @tracks_bp.route("/tracks/api/pessoa/<int:id_unico>", methods=["GET"])
 def buscar_pessoa(id_unico):
-    conn = get_conn()
+    conn = get_faciais_conn()
     try:
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cursor.execute(
             """
-            SELECT p.id_unico, p.nome, p.apelido, p.flag,
-                   (SELECT r.image_path FROM registros r
-                    WHERE r.track_id = p.track_id_base AND r.image_path IS NOT NULL
-                    ORDER BY r.face_det_score DESC LIMIT 1) AS image_path
-            FROM pessoas p
-            WHERE p.id_unico = %s
+            SELECT p.person_id AS id_unico, p.full_name AS nome, p.nickname AS apelido,
+                   p.person_type_id AS flag,
+                   (SELECT r.image_path FROM detection_records r
+                    WHERE r.track_id = p.reference_track_id AND r.image_path IS NOT NULL
+                    ORDER BY r.detection_score DESC LIMIT 1) AS image_path
+            FROM people p
+            WHERE p.person_id = %s
             """,
             (id_unico,),
         )
         pessoa = cursor.fetchone()
         cursor.close()
+        conn.rollback()
     finally:
-        conn.close()
+        release_faciais_conn(conn)
     if pessoa is None:
         return jsonify({"error": f"Pessoa {id_unico} não encontrada"}), 404
+    pessoa = dict(pessoa)
     pessoa["foto"] = HEIMDALL_IMAGE_BASE + pessoa["image_path"] if pessoa.get("image_path") else None
     del pessoa["image_path"]
     return jsonify(pessoa)
@@ -576,14 +666,17 @@ def buscar_pessoa(id_unico):
 
 @tracks_bp.route("/tracks/api/registro/<int:reg_id>", methods=["DELETE"])
 def excluir_registro(reg_id):
-    conn = get_conn()
+    conn = get_faciais_conn()
     try:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM registros WHERE id = %s", (reg_id,))
+        cursor.execute("DELETE FROM detection_records WHERE detection_record_id = %s", (reg_id,))
         conn.commit()
         cursor.close()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
-        conn.close()
+        release_faciais_conn(conn)
     return jsonify({"success": True})
 
 
@@ -593,33 +686,35 @@ def mover_registro(reg_id):
     if not data or "id_unico" not in data:
         return jsonify({"error": "id_unico obrigatório"}), 400
     id_unico = data["id_unico"]
-    conn = get_conn()
+    conn = get_faciais_conn()
     try:
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT id_unico FROM pessoas WHERE id_unico = %s", (id_unico,))
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor.execute("SELECT person_id FROM people WHERE person_id = %s", (id_unico,))
         if cursor.fetchone() is None:
             cursor.close()
+            release_faciais_conn(conn)
             return jsonify({"error": f"Pessoa {id_unico} não encontrada"}), 404
 
-        # descobre o id_unico original do registro antes de mover
-        cursor.execute("SELECT id_unico FROM registros WHERE id = %s", (reg_id,))
+        cursor.execute("SELECT person_id AS id_unico FROM detection_records WHERE detection_record_id = %s", (reg_id,))
         row = cursor.fetchone()
         id_unico_original = row["id_unico"] if row else None
 
-        cursor.execute("UPDATE registros SET id_unico = %s WHERE id = %s", (id_unico, reg_id))
+        cursor.execute("UPDATE detection_records SET person_id = %s WHERE detection_record_id = %s", (id_unico, reg_id))
 
-        # se havia um dono original, verifica se ainda tem registros; se não, exclui a pessoa
         pessoa_excluida = False
         if id_unico_original and id_unico_original != id_unico:
-            cursor.execute("SELECT COUNT(*) AS total FROM registros WHERE id_unico = %s", (id_unico_original,))
+            cursor.execute("SELECT COUNT(*) AS total FROM detection_records WHERE person_id = %s", (id_unico_original,))
             if cursor.fetchone()["total"] == 0:
-                cursor.execute("DELETE FROM pessoas WHERE id_unico = %s", (id_unico_original,))
+                cursor.execute("DELETE FROM people WHERE person_id = %s", (id_unico_original,))
                 pessoa_excluida = True
 
         conn.commit()
         cursor.close()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
-        conn.close()
+        release_faciais_conn(conn)
     return jsonify({"success": True, "pessoa_excluida": pessoa_excluida})
 
 
@@ -631,35 +726,39 @@ def tracks_tabuleiro():
         page = 1
     offset = (page - 1) * per_page
 
-    conn = get_conn()
-    cursor = conn.cursor(dictionary=True)
+    conn = get_faciais_conn()
+    try:
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    cursor.execute("SELECT COUNT(*) AS total FROM pessoas")
-    total = cursor.fetchone()["total"]
-    total_pages = max(1, (total + per_page - 1) // per_page)
+        cursor.execute("SELECT COUNT(*) AS total FROM people")
+        total = cursor.fetchone()["total"]
+        total_pages = max(1, (total + per_page - 1) // per_page)
 
-    cursor.execute("""
-        SELECT
-            p.id_unico,
-            p.nome,
-            p.apelido,
-            p.flag,
-            p.genero,
-            p.doc,
-            p.idade,
-            p.notas,
-            (SELECT r.image_path FROM registros r
-             WHERE r.track_id = p.track_id_base AND r.image_path IS NOT NULL
-             ORDER BY r.face_det_score DESC LIMIT 1) AS image_path
-        FROM pessoas p
-        ORDER BY p.id_unico DESC
-        LIMIT %s OFFSET %s
-    """, (per_page, offset))
-    pessoas = cursor.fetchall()
+        cursor.execute("""
+            SELECT
+                p.person_id                 AS id_unico,
+                p.full_name                 AS nome,
+                p.nickname                  AS apelido,
+                p.person_type_id            AS flag,
+                p.gender_id                 AS genero,
+                p.document                  AS doc,
+                p.age                       AS idade,
+                p.notes                     AS notas,
+                (SELECT r.image_path FROM detection_records r
+                 WHERE r.track_id = p.reference_track_id AND r.image_path IS NOT NULL
+                 ORDER BY r.detection_score DESC LIMIT 1) AS image_path
+            FROM people p
+            ORDER BY p.person_id DESC
+            LIMIT %s OFFSET %s
+        """, (per_page, offset))
+        pessoas = cursor.fetchall()
 
-    cursor.close()
-    conn.close()
+        cursor.close()
+        conn.rollback()
+    finally:
+        release_faciais_conn(conn)
 
+    pessoas = [dict(p) for p in pessoas]
     for p in pessoas:
         p["foto"] = HEIMDALL_IMAGE_BASE + p["image_path"] if p["image_path"] else None
 
@@ -672,11 +771,6 @@ def tracks_quadro():
     today = date.today()
     week_ago = today - timedelta(days=7)
 
-    # Cada seção do quadro tem seu próprio filtro de período de data:
-    #   d_ini/d_fim → gráfico de ocorrências por dia
-    #   h_ini/h_fim → gráfico de ocorrências por hora (filtro de datas, não de horas)
-    #   p_ini/p_fim → gráfico de ocorrências por pessoa
-    #   e_ini/e_fim → gráfico de ocorrências por faixa etária (clientes)
     d_ini = request.args.get('d_ini', week_ago.isoformat())
     d_fim = request.args.get('d_fim', today.isoformat())
     h_ini = request.args.get('h_ini', week_ago.isoformat())
@@ -694,7 +788,7 @@ def tracks_quadro():
     top_ini = request.args.get('top_ini', week_ago.isoformat())
     top_fim = request.args.get('top_fim', today.isoformat())
 
-    # ── Faturamento diário (PostgreSQL) ───────────────────────────────────────
+    # ── Faturamento diário (PostgreSQL microvix) ──────────────────────────────
     faturamento_por_dia = []
     pg_conn = None
     try:
@@ -728,7 +822,7 @@ def tracks_quadro():
         if pg_conn:
             release_pg_conn(pg_conn)
 
-    # ── Top 10 produtos por faturamento (PostgreSQL) ──────────────────────────
+    # ── Top 10 produtos por faturamento (PostgreSQL microvix) ─────────────────
     top10_produtos = []
     pg_conn2 = None
     try:
@@ -765,129 +859,135 @@ def tracks_quadro():
         if pg_conn2:
             release_pg_conn(pg_conn2)
 
-    # ── Clientes por dia no intervalo do faturamento (MySQL) ─────────────────
+    # ── Clientes por dia no intervalo do faturamento (PostgreSQL faciais) ─────
     if faturamento_por_dia:
         try:
-            _conn_fat = get_conn()
-            _cur_fat = _conn_fat.cursor(dictionary=True)
-            _cur_fat.execute("""
-                SELECT DATE(r.created_at) AS dia, COUNT(DISTINCT r.id_unico) AS total
-                FROM registros r
-                JOIN pessoas p ON r.id_unico = p.id_unico
-                WHERE DATE(r.created_at) BETWEEN %s AND %s
-                  AND p.flag IN ('C', 'A')
-                GROUP BY DATE(r.created_at)
-            """, (fat_ini, fat_fim))
-            clientes_map = {str(row["dia"]): row["total"] for row in _cur_fat.fetchall()}
-            _cur_fat.close()
-            _conn_fat.close()
-            for entry in faturamento_por_dia:
-                entry["qtd_clientes"] = clientes_map.get(entry["dia"], 0)
+            _conn_fat = get_faciais_conn()
+            try:
+                _cur_fat = _conn_fat.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                _cur_fat.execute("""
+                    SELECT DATE(r.created_at) AS dia, COUNT(DISTINCT r.person_id) AS total
+                    FROM detection_records r
+                    JOIN people p ON r.person_id = p.person_id
+                    WHERE DATE(r.created_at) BETWEEN %s AND %s
+                      AND p.person_type_id IN ('C', 'A')
+                    GROUP BY DATE(r.created_at)
+                """, (fat_ini, fat_fim))
+                clientes_map = {str(row["dia"]): row["total"] for row in _cur_fat.fetchall()}
+                _cur_fat.close()
+                _conn_fat.rollback()
+                for entry in faturamento_por_dia:
+                    entry["qtd_clientes"] = clientes_map.get(entry["dia"], 0)
+            finally:
+                release_faciais_conn(_conn_fat)
         except Exception as e:
-            print(f"[quadro] Erro MySQL clientes/faturamento: {e}")
+            print(f"[quadro] Erro faciais clientes/faturamento: {e}")
 
-    conn = get_conn()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("""
-        SELECT
-            DATE(r.created_at) AS dia,
-            COUNT(DISTINCT CASE WHEN mg.primeira = DATE(r.created_at) THEN r.id_unico END) AS novos,
-            COUNT(DISTINCT CASE WHEN mg.primeira < DATE(r.created_at) THEN r.id_unico END) AS retornantes
-        FROM registros r
-        JOIN pessoas p ON r.id_unico = p.id_unico
-        JOIN (
-            SELECT id_unico, MIN(DATE(created_at)) AS primeira
-            FROM registros
-            GROUP BY id_unico
-        ) mg ON r.id_unico = mg.id_unico
-        WHERE DATE(r.created_at) BETWEEN %s AND %s
-          AND p.flag IN ('C', 'A')
-        GROUP BY DATE(r.created_at)
-        ORDER BY dia ASC
-    """, (d_ini, d_fim))
-    rows = cursor.fetchall()
-    ocorrencias_por_dia = [
-        {"dia": str(r["dia"]), "novos": r["novos"], "retornantes": r["retornantes"]}
-        for r in rows
-    ]
+    conn = get_faciais_conn()
+    try:
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    cursor.execute("""
-        SELECT HOUR(primeira.created_at) AS hora, COUNT(*) AS total
-        FROM (
-            SELECT r.id_unico, DATE(r.created_at) AS dia, MIN(r.created_at) AS created_at
-            FROM registros r
-            JOIN pessoas p ON r.id_unico = p.id_unico
+        cursor.execute("""
+            SELECT
+                DATE(r.created_at) AS dia,
+                COUNT(DISTINCT CASE WHEN mg.primeira = DATE(r.created_at) THEN r.person_id END) AS novos,
+                COUNT(DISTINCT CASE WHEN mg.primeira < DATE(r.created_at) THEN r.person_id END) AS retornantes
+            FROM detection_records r
+            JOIN people p ON r.person_id = p.person_id
+            JOIN (
+                SELECT person_id, MIN(DATE(created_at)) AS primeira
+                FROM detection_records
+                GROUP BY person_id
+            ) mg ON r.person_id = mg.person_id
             WHERE DATE(r.created_at) BETWEEN %s AND %s
-              AND p.flag IN ('C', 'A')
-            GROUP BY r.id_unico, DATE(r.created_at)
-        ) AS primeira
-        GROUP BY HOUR(primeira.created_at)
-        ORDER BY hora ASC
-    """, (h_ini, h_fim))
-    rows_hora = cursor.fetchall()
+              AND p.person_type_id IN ('C', 'A')
+            GROUP BY DATE(r.created_at)
+            ORDER BY dia ASC
+        """, (d_ini, d_fim))
+        rows = cursor.fetchall()
+        ocorrencias_por_dia = [
+            {"dia": str(r["dia"]), "novos": r["novos"], "retornantes": r["retornantes"]}
+            for r in rows
+        ]
 
-    cursor.execute("""
-        SELECT p.apelido, COUNT(DISTINCT DATE(r.created_at)) AS total
-        FROM registros r
-        JOIN pessoas p ON r.id_unico = p.id_unico
-        WHERE DATE(r.created_at) BETWEEN %s AND %s
-          AND p.flag IN ('C', 'A')
-        GROUP BY r.id_unico, p.apelido
-        HAVING COUNT(DISTINCT DATE(r.created_at)) >= 3
-        ORDER BY total DESC
-    """, (p_ini, p_fim))
-    rows_pessoa = cursor.fetchall()
+        cursor.execute("""
+            SELECT EXTRACT(HOUR FROM primeira.created_at)::int AS hora, COUNT(*) AS total
+            FROM (
+                SELECT r.person_id, DATE(r.created_at) AS dia, MIN(r.created_at) AS created_at
+                FROM detection_records r
+                JOIN people p ON r.person_id = p.person_id
+                WHERE DATE(r.created_at) BETWEEN %s AND %s
+                  AND p.person_type_id IN ('C', 'A')
+                GROUP BY r.person_id, DATE(r.created_at)
+            ) AS primeira
+            GROUP BY EXTRACT(HOUR FROM primeira.created_at)::int
+            ORDER BY hora ASC
+        """, (h_ini, h_fim))
+        rows_hora = cursor.fetchall()
 
-    cursor.execute("""
-        SELECT
-          CASE
-            WHEN p.idade BETWEEN 0  AND 25 THEN '00-25'
-            WHEN p.idade BETWEEN 26 AND 35 THEN '26-35'
-            WHEN p.idade BETWEEN 36 AND 45 THEN '36-45'
-            WHEN p.idade BETWEEN 46 AND 55 THEN '46-55'
-            WHEN p.idade BETWEEN 56 AND 65 THEN '56-65'
-            WHEN p.idade > 65              THEN '65+'
-          END AS faixa,
-          COUNT(*) AS total
-        FROM (
-            SELECT DISTINCT r.id_unico, DATE(r.created_at) AS dia
-            FROM registros r
-            JOIN pessoas p ON r.id_unico = p.id_unico
+        cursor.execute("""
+            SELECT p.nickname AS apelido, COUNT(DISTINCT DATE(r.created_at)) AS total
+            FROM detection_records r
+            JOIN people p ON r.person_id = p.person_id
             WHERE DATE(r.created_at) BETWEEN %s AND %s
-              AND p.flag = 'C'
-              AND p.idade IS NOT NULL
-        ) AS uniq
-        JOIN pessoas p ON uniq.id_unico = p.id_unico
-        GROUP BY faixa
-        ORDER BY FIELD(faixa, '00-25', '26-35', '36-45', '46-55', '56-65', '65+')
-    """, (e_ini, e_fim))
-    rows_etaria = cursor.fetchall()
+              AND p.person_type_id IN ('C', 'A')
+            GROUP BY r.person_id, p.nickname
+            HAVING COUNT(DISTINCT DATE(r.created_at)) >= 3
+            ORDER BY total DESC
+        """, (p_ini, p_fim))
+        rows_pessoa = cursor.fetchall()
 
-    cursor.execute("""
-        SELECT r.id_unico, p.genero,
-               MIN(r.created_at) AS primeira, MAX(r.created_at) AS ultima
-        FROM registros r
-        JOIN pessoas p ON r.id_unico = p.id_unico
-        WHERE DATE(r.created_at) BETWEEN %s AND %s
-          AND p.flag IN ('C', 'A')
-        GROUP BY r.id_unico, DATE(r.created_at), p.genero
-    """, (perm_ini, perm_fim))
-    rows_perm = cursor.fetchall()
+        cursor.execute("""
+            SELECT
+              CASE
+                WHEN p.age BETWEEN 0  AND 25 THEN '00-25'
+                WHEN p.age BETWEEN 26 AND 35 THEN '26-35'
+                WHEN p.age BETWEEN 36 AND 45 THEN '36-45'
+                WHEN p.age BETWEEN 46 AND 55 THEN '46-55'
+                WHEN p.age BETWEEN 56 AND 65 THEN '56-65'
+                WHEN p.age > 65              THEN '65+'
+              END AS faixa,
+              COUNT(*) AS total
+            FROM (
+                SELECT DISTINCT r.person_id, DATE(r.created_at) AS dia
+                FROM detection_records r
+                JOIN people p ON r.person_id = p.person_id
+                WHERE DATE(r.created_at) BETWEEN %s AND %s
+                  AND p.person_type_id = 'C'
+                  AND p.age IS NOT NULL
+            ) AS uniq
+            JOIN people p ON uniq.person_id = p.person_id
+            GROUP BY faixa
+        """, (e_ini, e_fim))
+        rows_etaria = cursor.fetchall()
 
-    cursor.execute("""
-        SELECT DATE(r.created_at) AS dia, p.genero, COUNT(DISTINCT r.id_unico) AS total
-        FROM registros r
-        JOIN pessoas p ON r.id_unico = p.id_unico
-        WHERE DATE(r.created_at) BETWEEN %s AND %s
-          AND p.flag IN ('C', 'A')
-          AND p.genero IN ('M', 'F')
-        GROUP BY DATE(r.created_at), p.genero
-        ORDER BY dia ASC
-    """, (gd_ini, gd_fim))
-    rows_genero_dia = cursor.fetchall()
+        cursor.execute("""
+            SELECT r.person_id AS id_unico, p.gender_id AS genero,
+                   MIN(r.created_at) AS primeira, MAX(r.created_at) AS ultima
+            FROM detection_records r
+            JOIN people p ON r.person_id = p.person_id
+            WHERE DATE(r.created_at) BETWEEN %s AND %s
+              AND p.person_type_id IN ('C', 'A')
+            GROUP BY r.person_id, DATE(r.created_at), p.gender_id
+        """, (perm_ini, perm_fim))
+        rows_perm = cursor.fetchall()
 
-    cursor.close()
-    conn.close()
+        cursor.execute("""
+            SELECT DATE(r.created_at) AS dia, p.gender_id AS genero, COUNT(DISTINCT r.person_id) AS total
+            FROM detection_records r
+            JOIN people p ON r.person_id = p.person_id
+            WHERE DATE(r.created_at) BETWEEN %s AND %s
+              AND p.person_type_id IN ('C', 'A')
+              AND p.gender_id IN ('M', 'F')
+            GROUP BY DATE(r.created_at), p.gender_id
+            ORDER BY dia ASC
+        """, (gd_ini, gd_fim))
+        rows_genero_dia = cursor.fetchall()
+
+        cursor.close()
+        conn.rollback()
+    finally:
+        release_faciais_conn(conn)
 
     def _perm_minutos(primeira, ultima):
         diff = ultima - primeira
@@ -1032,36 +1132,37 @@ def tracks_export_download():
     data_fim = request.args.get("data_fim", today.isoformat())
 
     try:
-        conn = get_conn()
+        conn = get_faciais_conn()
         try:
-            cursor = conn.cursor(dictionary=True)
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cursor.execute("""
                 SELECT
-                    r.id,
+                    r.detection_record_id       AS id,
                     r.camera_id,
                     r.created_at,
-                    r.id_unico,
-                    p.nome,
-                    p.apelido,
-                    p.idade,
-                    p.genero,
-                    p.flag,
-                    tc.tipo_camera,
-                    c.camera,
-                    e.empresa
-                FROM registros r
-                LEFT JOIN pessoas      p  ON p.id_unico       = r.id_unico
-                LEFT JOIN cameras      c  ON c.id_camera       = r.camera_id
-                LEFT JOIN tipos_camera tc ON tc.id_tipo_camera = c.id_tipo_camera
-                LEFT JOIN locais       l  ON l.id_local        = c.id_local
-                LEFT JOIN empresas     e  ON e.id_empresa      = l.id_empresa
+                    r.person_id                 AS id_unico,
+                    p.full_name                 AS nome,
+                    p.nickname                  AS apelido,
+                    p.age                       AS idade,
+                    p.gender_id                 AS genero,
+                    p.person_type_id            AS flag,
+                    tc.camera_type_name         AS tipo_camera,
+                    c.camera_name               AS camera,
+                    e.company_name              AS empresa
+                FROM detection_records r
+                LEFT JOIN people        p  ON p.person_id         = r.person_id
+                LEFT JOIN cameras       c  ON c.camera_id          = r.camera_id
+                LEFT JOIN camera_types  tc ON tc.camera_type_id    = c.camera_type_id
+                LEFT JOIN stores        l  ON l.store_id           = c.store_id
+                LEFT JOIN companies     e  ON e.company_id         = l.company_id
                 WHERE DATE(r.created_at) BETWEEN %s AND %s
                 ORDER BY r.created_at
             """, (data_ini, data_fim))
             rows = cursor.fetchall()
             cursor.close()
+            conn.rollback()
         finally:
-            conn.close()
+            release_faciais_conn(conn)
     except Exception as e:
         print(f"[export] Erro no banco: {e}")
         return Response(f"Erro ao consultar banco de dados: {e}", status=500, mimetype="text/plain")
@@ -1118,7 +1219,7 @@ def tracks_export_download():
 def tracks_caixa():
     from datetime import timedelta
 
-    # 1. Buscar as 25 últimas notas fiscais (PostgreSQL)
+    # 1. Buscar as 25 últimas notas fiscais (PostgreSQL microvix)
     notas = []
     pg_conn = None
     try:
@@ -1158,36 +1259,45 @@ def tracks_caixa():
         if pg_conn:
             release_pg_conn(pg_conn)
 
-    # 2. Buscar registros MySQL (câmera Caixa, flag='C') no intervalo total ±2 min
+    # 2. Buscar registros faciais (câmera Caixa, person_type_id='C') no intervalo total ±2 min
     if notas:
         dts = [n["nf_dt"] for n in notas if n["nf_dt"] is not None]
         if dts:
             dt_min = min(dts) - timedelta(minutes=2)
             dt_max = max(dts) + timedelta(minutes=2)
             try:
-                conn = get_conn()
-                cursor = conn.cursor(dictionary=True)
-                cursor.execute("""
-                    SELECT
-                        r.id, r.id_unico, r.image_path, r.created_at,
-                        p.nome, p.apelido, p.genero, p.idade
-                    FROM registros r
-                    JOIN cameras c        ON c.id_camera       = r.camera_id
-                    JOIN tipos_camera tc  ON tc.id_tipo_camera = c.id_tipo_camera
-                    JOIN pessoas p        ON p.id_unico        = r.id_unico
-                    WHERE LOWER(tc.tipo_camera) = 'caixa'
-                      AND p.flag = 'C'
-                      AND r.created_at BETWEEN %s AND %s
-                    ORDER BY r.created_at DESC
-                """, (dt_min, dt_max))
-                registros = cursor.fetchall()
-                cursor.close()
-                conn.close()
+                conn = get_faciais_conn()
+                try:
+                    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                    cursor.execute("""
+                        SELECT
+                            r.detection_record_id   AS id,
+                            r.person_id             AS id_unico,
+                            r.image_path,
+                            r.created_at,
+                            p.full_name             AS nome,
+                            p.nickname              AS apelido,
+                            p.gender_id             AS genero,
+                            p.age                   AS idade
+                        FROM detection_records r
+                        JOIN cameras c        ON c.camera_id       = r.camera_id
+                        JOIN camera_types tc  ON tc.camera_type_id = c.camera_type_id
+                        JOIN people p         ON p.person_id        = r.person_id
+                        WHERE LOWER(tc.camera_type_name) = 'caixa'
+                          AND p.person_type_id = 'C'
+                          AND r.created_at BETWEEN %s AND %s
+                        ORDER BY r.created_at DESC
+                    """, (dt_min, dt_max))
+                    registros = cursor.fetchall()
+                    cursor.close()
+                    conn.rollback()
+                finally:
+                    release_faciais_conn(conn)
 
+                registros = [dict(r) for r in registros]
                 for reg in registros:
                     reg["foto"] = HEIMDALL_IMAGE_BASE + reg["image_path"] if reg["image_path"] else None
 
-                # Associar cada registro à nota dentro da janela de ±2 min (1 vez por id_unico por nota)
                 for nota in notas:
                     if nota["nf_dt"] is None:
                         continue
@@ -1200,7 +1310,7 @@ def tracks_caixa():
                                 seen.add(reg["id_unico"])
                                 nota["clientes"].append(reg)
             except Exception as e:
-                print(f"[caixa] Erro MySQL: {e}")
+                print(f"[caixa] Erro faciais: {e}")
 
     return render_template("tracks_caixa.html", notas=notas)
 
@@ -1237,9 +1347,9 @@ def tracks_caixa_nf_itens(documento):
 
     itens = [
         {
-            "cod_produto":   row[0],
-            "produto_nome":  row[1] or "—",
-            "quantidade":    float(row[2]) if row[2] is not None else 0,
+            "cod_produto":    row[0],
+            "produto_nome":   row[1] or "—",
+            "quantidade":     float(row[2]) if row[2] is not None else 0,
             "valor_unitario": float(row[3]) if row[3] is not None else 0.0,
         }
         for row in rows

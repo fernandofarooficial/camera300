@@ -82,3 +82,25 @@ def release_pg_conn(conn):
     """Devolve a conexão PostgreSQL ao pool."""
     _pg_pool.putconn(conn)
 
+
+# ── PostgreSQL (faciais) ───────────────────────────────────────────────────────
+_faciais_pool = None
+_faciais_pool_lock = threading.Lock()
+
+
+def get_faciais_conn():
+    """Retorna uma conexão PostgreSQL do pool (schema faciais)."""
+    global _faciais_pool
+    if _faciais_pool is None:
+        with _faciais_pool_lock:
+            if _faciais_pool is None:
+                _faciais_pool = psycopg2.pool.ThreadedConnectionPool(
+                    1, 10, PG_DSN, options="-c timezone=America/Sao_Paulo -c search_path=faciais"
+                )
+    return _faciais_pool.getconn()
+
+
+def release_faciais_conn(conn):
+    """Devolve a conexão PostgreSQL (faciais) ao pool."""
+    _faciais_pool.putconn(conn)
+
