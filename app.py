@@ -205,7 +205,12 @@ def receive_facial_recognition():
     try:
         _conn = get_conn()
         _cur = _conn.cursor()
-        _cur.execute("INSERT INTO registros_json (dados) VALUES (%s)", (json.dumps(payload),))
+        payload_to_save = {**payload}
+        if 'image_base64' in payload_to_save:
+            payload_to_save['image_base64'] = 'foto'
+        if 'data' in payload_to_save and isinstance(payload_to_save['data'], dict) and 'image_base64' in payload_to_save['data']:
+            payload_to_save['data'] = {**payload_to_save['data'], 'image_base64': 'foto'}
+        _cur.execute("INSERT INTO registros_json (dados) VALUES (%s)", (json.dumps(payload_to_save),))
         _conn.commit()
         _cur.close()
         _conn.close()
