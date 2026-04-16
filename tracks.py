@@ -798,7 +798,7 @@ def tracks_quadro():
             SELECT
                 data_lancamento::date AS data_doc,
                 COUNT(DISTINCT documento) AS qtd_notas,
-                SUM(valor_total) AS soma
+                SUM(valor_liquido) AS soma
             FROM microvix_movimento
             WHERE cod_natureza_operacao = '10030'
               AND cancelado = 'N'
@@ -833,7 +833,7 @@ def tracks_quadro():
                 m.cod_produto,
                 p.nome AS nome_produto,
                 COUNT(DISTINCT m.documento) AS qtd_notas,
-                ROUND(SUM(m.valor_total)::numeric, 2) AS soma_valor
+                ROUND(SUM(m.valor_liquido)::numeric, 2) AS soma_valor
             FROM microvix_movimento m
             LEFT JOIN microvix_produtos p
                    ON m.cod_produto = p.cod_produto
@@ -1229,7 +1229,7 @@ def tracks_caixa():
             SELECT
                 documento,
                 COUNT(*)                                       AS itens,
-                ROUND(SUM(valor_total)::numeric, 2)            AS valor,
+                ROUND(SUM(valor_liquido)::numeric, 2)            AS valor,
                 data_lancamento::date                          AS data,
                 hora_lancamento                                AS hora,
                 (data_lancamento::date + hora_lancamento::time) AS nf_dt
@@ -1326,7 +1326,7 @@ def tracks_caixa_nf_itens(documento):
                 m.cod_produto,
                 p.nome AS produto_nome,
                 m.quantidade,
-                m.valor_total
+                m.valor_liquido
             FROM microvix_movimento m
             LEFT JOIN microvix_produtos p ON m.cod_produto = p.cod_produto
             WHERE m.documento = %s
