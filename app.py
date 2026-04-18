@@ -71,9 +71,9 @@ def salvar_rosto(track_id, camera_id=None, log_id=None, json_record_id=None):
         cursor = conn.cursor()
         cursor.execute(
             """INSERT INTO detection_records
-               (track_id, camera_id, image_path, detection_score, recognition_score, log_id, json_record_id)
-               VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-            (track_id, camera_id, image_path, face_det_score, face_recgn_score, log_id, json_record_id),
+               (track_id, camera_id, image_path, detection_score, recognition_score, log_id, json_record_id, store_id)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+            (track_id, camera_id, image_path, face_det_score, face_recgn_score, log_id, json_record_id, 1),
         )
         conn.commit()
         admin_people(track_id, data=heimdall_data)
