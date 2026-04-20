@@ -1263,8 +1263,8 @@ def tracks_caixa():
     if notas:
         dts = [n["nf_dt"] for n in notas if n["nf_dt"] is not None]
         if dts:
-            dt_min = min(dts) - timedelta(minutes=2)
-            dt_max = max(dts) + timedelta(minutes=2)
+            dt_min = min(dts) - timedelta(minutes=1)
+            dt_max = max(dts) + timedelta(minutes=1)
             try:
                 conn = get_faciais_conn()
                 try:
@@ -1301,8 +1301,8 @@ def tracks_caixa():
                 for nota in notas:
                     if nota["nf_dt"] is None:
                         continue
-                    janela_ini = nota["nf_dt"] - timedelta(minutes=2)
-                    janela_fim = nota["nf_dt"] + timedelta(minutes=2)
+                    janela_ini = nota["nf_dt"] - timedelta(minutes=1)
+                    janela_fim = nota["nf_dt"] + timedelta(minutes=1)
                     seen = set()
                     for reg in registros:
                         if janela_ini <= reg["created_at"] <= janela_fim:
