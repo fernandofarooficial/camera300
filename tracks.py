@@ -164,6 +164,13 @@ def fmt_score(value):
         return value
 
 
+def fmt_score_nd(value):
+    try:
+        return f"{float(value) * 100:.0f}%"
+    except (ValueError, TypeError):
+        return value
+
+
 GENDER_MAP = {0: "F", 1: "M"}
 
 
@@ -386,6 +393,7 @@ def tracks_lista():
                     r.created_at,
                     r.camera_id,
                     r.detection_score           AS face_det_score,
+                    r.recognition_score,
                     p.full_name                 AS nome,
                     p.nickname                  AS apelido,
                     p.person_type_id            AS flag,
@@ -426,7 +434,8 @@ def tracks_lista():
                     "image_url":      HEIMDALL_IMAGE_BASE + row["image_path"] if row["image_path"] else None,
                     "created_at":     fmt_timestamp(row["created_at"]),
                     "camera_id":      row["camera_id"],
-                    "face_det_score": fmt_score(row["face_det_score"]) if row.get("face_det_score") is not None else None,
+                    "face_det_score":    fmt_score_nd(row["face_det_score"])    if row.get("face_det_score")    is not None else None,
+                    "recognition_score": fmt_score_nd(row["recognition_score"]) if row.get("recognition_score") is not None else None,
                 })
             groups = [groups_dict[k] for k in id_unicos if k in groups_dict]
 

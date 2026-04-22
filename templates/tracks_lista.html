@@ -834,6 +834,7 @@
                data-reg-date="{{ oc.created_at or '' }}"
                data-reg-cam="{{ oc.camera_id or '' }}"
                data-reg-score="{{ oc.face_det_score or '' }}"
+               data-reg-recgn-score="{{ oc.recognition_score or '' }}"
                data-track-id="{{ oc.track_id or '' }}">
             {% if oc.image_url %}
               <img src="{{ oc.image_url }}"
@@ -847,8 +848,12 @@
             {% if oc.camera_id %}
               <span class="occurrence-date" style="color:#7c86ff">{{ cameras_map.get(oc.camera_id) or ('Câm. ' ~ oc.camera_id) }}</span>
             {% endif %}
-            {% if oc.face_det_score %}
-              <span class="occurrence-date" style="color:#22c55e;font-weight:700">{{ oc.face_det_score }}</span>
+            {% if oc.face_det_score or oc.recognition_score %}
+              <span class="occurrence-date" style="color:#22c55e;font-weight:700">
+                {%- if oc.face_det_score %}D:{{ oc.face_det_score }}{% endif %}
+                {%- if oc.face_det_score and oc.recognition_score %} {% endif %}
+                {%- if oc.recognition_score %}<span style="color:#60a5fa">R:{{ oc.recognition_score }}</span>{% endif %}
+              </span>
             {% endif %}
             <div class="oc-actions">
               <button class="oc-btn oc-btn-move" title="Mover para outra pessoa"
@@ -1143,7 +1148,12 @@
 
     document.getElementById('mover-info-date').textContent  = oc.dataset.regDate  || '—';
     document.getElementById('mover-info-cam').textContent   = oc.dataset.regCam   ? `Câm. ${oc.dataset.regCam}` : '—';
-    document.getElementById('mover-info-score').textContent = oc.dataset.regScore || '—';
+    const detScore   = oc.dataset.regScore     || null;
+    const recgnScore = oc.dataset.regRecgnScore || null;
+    const scoreParts = [];
+    if (detScore)   scoreParts.push('D:' + detScore);
+    if (recgnScore) scoreParts.push('R:' + recgnScore);
+    document.getElementById('mover-info-score').textContent = scoreParts.length ? scoreParts.join('  ') : '—';
 
     document.getElementById('mover-id-unico').value = '';
     document.getElementById('mover-pessoa-info').classList.remove('visible');
@@ -1358,13 +1368,14 @@
     const trackBase = d.trackIdBase || null;
 
     // Dados da ocorrência (só quando clicado em foto de ocorrência)
-    let ocDate = null, ocCam = null, ocScore = null, ocTrack = null;
+    let ocDate = null, ocCam = null, ocScore = null, ocRecgnScore = null, ocTrack = null;
     if (tipo === 'ocorrencia') {
       const oc = imgEl.closest('.occurrence');
-      ocDate  = oc.dataset.regDate  || null;
-      ocCam   = oc.dataset.regCam   || null;
-      ocScore = oc.dataset.regScore || null;
-      ocTrack = oc.dataset.trackId  || null;
+      ocDate      = oc.dataset.regDate      || null;
+      ocCam       = oc.dataset.regCam       || null;
+      ocScore     = oc.dataset.regScore     || null;
+      ocRecgnScore = oc.dataset.regRecgnScore || null;
+      ocTrack     = oc.dataset.trackId      || null;
     }
 
     // Título
@@ -1408,12 +1419,13 @@
     }
 
     // — Ocorrência
-    if (tipo === 'ocorrencia' && (ocDate || ocCam || ocScore || ocTrack)) {
+    if (tipo === 'ocorrencia' && (ocDate || ocCam || ocScore || ocRecgnScore || ocTrack)) {
       html += '<div class="lb-section">Ocorrência</div>';
-      if (ocDate)  html += row('Data',    ocDate);
-      if (ocCam)   html += row('Câmera',  CAMERAS_MAP[parseInt(ocCam)] || ('Câm. ' + ocCam));
-      if (ocScore) html += row('Score',   ocScore);
-      if (ocTrack) html += row('Track ID', ocTrack);
+      if (ocDate)       html += row('Data',      ocDate);
+      if (ocCam)        html += row('Câmera',    CAMERAS_MAP[parseInt(ocCam)] || ('Câm. ' + ocCam));
+      if (ocScore)      html += row('Det.',      ocScore);
+      if (ocRecgnScore) html += row('Recgn.',    ocRecgnScore);
+      if (ocTrack)      html += row('Track ID',  ocTrack);
     }
 
     info.innerHTML = html;
