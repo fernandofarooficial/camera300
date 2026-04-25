@@ -54,15 +54,15 @@ def salvar_rosto(track_id, camera_id=None, log_id=None, json_record_id=None):
         heimdall_data = None
         for tentativa, delay in enumerate([0] + _RETRY_DELAYS, start=1):
             if delay:
-                tracer.trace(track_id, f"salvar_rosto: aguardando {delay}s antes da tentativa {tentativa}")
+                # tracer.trace(track_id, f"salvar_rosto: aguardando {delay}s antes da tentativa {tentativa}")
                 time.sleep(delay)
             heimdall_data, _ = query_heimdall(str(track_id))
             image_path, cam_from_match, face_det_score, face_recgn_score = get_best_face(track_id, data=heimdall_data)
-            tracer.trace(track_id, f"salvar_rosto: tentativa {tentativa} → image_path={image_path} score={face_det_score} recgn={face_recgn_score}")
+            # tracer.trace(track_id, f"salvar_rosto: tentativa {tentativa} → image_path={image_path} score={face_det_score} recgn={face_recgn_score}")
             if face_det_score is not None and face_det_score >= SCORE_MINIMO:
                 break
         else:
-            tracer.trace(track_id, f"salvar_rosto: todas as tentativas esgotadas — score {face_det_score} abaixo de SCORE_MINIMO, ignorado")
+            # tracer.trace(track_id, f"salvar_rosto: todas as tentativas esgotadas — score {face_det_score} abaixo de SCORE_MINIMO, ignorado")
             return
 
         # camera_id do match tem prioridade; usa o do payload como fallback

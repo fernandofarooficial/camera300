@@ -17,11 +17,11 @@ def adequar_bases():
     cursor.close()
     release_faciais_conn(conn)
     total = len(linhas)
-    trace("SISTEMA", f"adequar_bases: {total} registro(s) encontrado(s) para tratar")
+    # trace("SISTEMA", f"adequar_bases: {total} registro(s) encontrado(s) para tratar")
     for e, lin in enumerate(linhas):
         track_id = lin["track_id"]
         idreg = lin["detection_record_id"]
-        trace("SISTEMA", f"adequar_bases: [{e + 1}/{total}] track_id={track_id} id={idreg}")
+        # trace("SISTEMA", f"adequar_bases: [{e + 1}/{total}] track_id={track_id} id={idreg}")
         atualizar_path_camera(track_id, idreg)
         admin_people(track_id)
     trace("SISTEMA", f"adequar_bases: concluído — {total} registro(s) tratado(s)")
@@ -59,12 +59,12 @@ def admin_people(track_id, data=None):
             recgn_score = caretas.get('face_recgn_score')
             if recgn_score is not None:
                 atualizar_recognition_score(track_id, recgn_score)
-                trace(track_id, f"admin_people: recognition_score={recgn_score:.4f} atualizado para track_id={track_id}")
-            trace(track_id, f"admin_people: person_id={person_id} vinculado ao track_id={track_id}")
+                # trace(track_id, f"admin_people: recognition_score={recgn_score:.4f} atualizado para track_id={track_id}")
+            # trace(track_id, f"admin_people: person_id={person_id} vinculado ao track_id={track_id}")
             telegram_cliente_chegou(track_id, person_id)
             break
     if person_id is None:
-        trace(track_id, "admin_people: nenhum person_id encontrado — criando nova pessoa")
+        # trace(track_id, "admin_people: nenhum person_id encontrado — criando nova pessoa")
         criar_pessoa(track_id, data=data)
     return True
 
@@ -164,7 +164,7 @@ def criar_pessoa(track_id, data=None):
                     pass
             if gender_id is not None and idade is not None:
                 break
-        trace(track_id, f"criar_pessoa: gender_id={gender_id} idade={idade} extraídos do Heimdall")
+        # trace(track_id, f"criar_pessoa: gender_id={gender_id} idade={idade} extraídos do Heimdall")
 
     conn = get_faciais_conn()
     try:
@@ -181,7 +181,7 @@ def criar_pessoa(track_id, data=None):
         iu = res['person_id']
         full_name = f"Anônimo{iu:03}"
         nickname = f"A{iu:03}"
-        trace(track_id, f"criar_pessoa: nova pessoa criada → person_id={iu} nome={full_name}")
+        # trace(track_id, f"criar_pessoa: nova pessoa criada → person_id={iu} nome={full_name}")
         cursor.execute(
             "UPDATE people SET full_name = %s, nickname = %s, gender_id = %s, age = %s WHERE person_id = %s",
             (full_name, nickname, gender_id, idade, iu),
