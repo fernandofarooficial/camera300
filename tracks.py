@@ -107,18 +107,18 @@ def query_heimdall(track_id):
             timeout=15,
         )
         if resp.status_code == 404:
-            trace(track_id, "query_heimdall: track_id não encontrado no Heimdall (404) — sem matches")
+            # trace(track_id, "query_heimdall: track_id não encontrado no Heimdall (404) — sem matches")
             return {}, None
         if not resp.ok:
-            trace(track_id, f"query_heimdall: ERRO HTTP {resp.status_code}")
+            # trace(track_id, f"query_heimdall: ERRO HTTP {resp.status_code}")
             return None, f"HTTP {resp.status_code} — {resp.text[:500]}"
-        trace(track_id, f"query_heimdall: resposta OK ({resp.status_code})")
+        # trace(track_id, f"query_heimdall: resposta OK ({resp.status_code})")
         return resp.json(), None
     except requests.exceptions.RequestException as e:
-        trace(track_id, f"query_heimdall: ERRO de rede → {e}")
+        # trace(track_id, f"query_heimdall: ERRO de rede → {e}")
         return None, str(e)
     except ValueError as e:
-        trace(track_id, f"query_heimdall: JSON inválido → {e}")
+        # trace(track_id, f"query_heimdall: JSON inválido → {e}")
         return None, f"JSON inválido: {e}"
 
 
@@ -134,7 +134,7 @@ def tracks_page():
     results = []
     for row in rows:
         track_id = row["track_id"]
-        trace(track_id,"Chamando query_heimdall a partir de tracks_page")
+        # trace(track_id,"Chamando query_heimdall a partir de tracks_page")
         data, error = query_heimdall(track_id)
         results.append({
             "track_id": track_id,
@@ -177,15 +177,15 @@ GENDER_MAP = {0: "F", 1: "M"}
 def get_best_face(track_id, data=None):
     """Retorna (image_path, camera_id, face_det_score) da face com maior score do Heimdall."""
     if data is None:
-        trace(track_id, "get_best_face: iniciado e já chamando query_heimdall")
+        # trace(track_id, "get_best_face: iniciado e já chamando query_heimdall")
         data, error = query_heimdall(str(track_id))
         if error or not data:
-            trace(track_id, f"get_best_face: sem dados do Heimdall → {error}")
+            # trace(track_id, f"get_best_face: sem dados do Heimdall → {error}")
             return None, None, None
     else:
         trace(track_id, "get_best_face: iniciado com dados já disponíveis")
     caras = (data.get("track") or {}).get("faces", [])
-    trace(track_id, f"get_best_face: {len(caras)} face(s) encontrada(s) em track.faces")
+    # trace(track_id, f"get_best_face: {len(caras)} face(s) encontrada(s) em track.faces")
     best = None
     best_score = -1
     for face in caras:

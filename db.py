@@ -7,7 +7,7 @@ from telegram import enviar_mensagem_telegram
 
 
 def adequar_bases():
-    trace("SISTEMA", "adequar_bases: iniciado — buscando registros sem image_path")
+    # trace("SISTEMA", "adequar_bases: iniciado — buscando registros sem image_path")
     conn = get_faciais_conn()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cursor.execute(
@@ -24,7 +24,7 @@ def adequar_bases():
         # trace("SISTEMA", f"adequar_bases: [{e + 1}/{total}] track_id={track_id} id={idreg}")
         atualizar_path_camera(track_id, idreg)
         admin_people(track_id)
-    trace("SISTEMA", f"adequar_bases: concluído — {total} registro(s) tratado(s)")
+    # trace("SISTEMA", f"adequar_bases: concluído — {total} registro(s) tratado(s)")
 
 
 def atualizar_path_camera(track_id, idreg):
@@ -192,7 +192,7 @@ def criar_pessoa(track_id, data=None):
             (iu, track_id),
         )
         conn.commit()
-        trace(track_id, f"criar_pessoa: detection_records atualizado com person_id={iu}")
+        # trace(track_id, f"criar_pessoa: detection_records atualizado com person_id={iu}")
         cursor.close()
     except Exception:
         conn.rollback()

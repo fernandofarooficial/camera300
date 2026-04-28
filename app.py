@@ -16,7 +16,7 @@ import tracer
 
 def get_best_match(track_id):
     """Retorna (image_path, camera_id, face_det_score) do melhor match do Heimdall."""
-    tracer.trace(track_id, 'chamando query_heimdall a partir de get_best_match')
+    # tracer.trace(track_id, 'chamando query_heimdall a partir de get_best_match')
     data, error = query_heimdall(str(track_id))
     if error or not data:
         return None, None, None
@@ -77,9 +77,9 @@ def salvar_rosto(track_id, camera_id=None, log_id=None, json_record_id=None):
         )
         conn.commit()
         admin_people(track_id, data=heimdall_data)
-        tracer.trace(track_id, "salvar_rosto: foi chamada a função administrar pessoas")
+        # tracer.trace(track_id, "salvar_rosto: foi chamada a função administrar pessoas")
     except Exception as e:
-        tracer.trace(track_id, f"salvar_rosto: ERRO → {e}")
+        # tracer.trace(track_id, f"salvar_rosto: ERRO → {e}")
         print(f"Erro ao salvar no banco: {e}")
         if conn:
             try:
@@ -205,7 +205,7 @@ def service_worker():
 
 @app.route('/api/data/facial_recognition', methods=['POST'])
 def receive_facial_recognition():
-    tracer.trace("receive_facial_recognition", "Iniciado tratamento do evento, json gravado")
+    # tracer.trace("receive_facial_recognition", "Iniciado tratamento do evento, json gravado")
     payload = request.get_json(silent=True, force=True)
     if payload is None:
         return jsonify({'error': 'Invalid or missing JSON body'}), 400
@@ -363,7 +363,7 @@ def run_adequar_bases():
         try:
             adequar_bases()
         except Exception as e:
-            tracer.trace("SISTEMA", f"adequar_bases: ERRO inesperado → {e}")
+            # tracer.trace("SISTEMA", f"adequar_bases: ERRO inesperado → {e}")
         finally:
             _adequar_rodando = False
 
