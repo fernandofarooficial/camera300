@@ -363,7 +363,7 @@ def run_adequar_bases():
         try:
             adequar_bases()
         except Exception as e:
-            # tracer.trace("SISTEMA", f"adequar_bases: ERRO inesperado → {e}")
+            tracer.trace("SISTEMA", f"adequar_bases: ERRO inesperado → {e}")
         finally:
             _adequar_rodando = False
 
