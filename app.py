@@ -211,7 +211,10 @@ def receive_facial_recognition():
         return jsonify({'error': 'Invalid or missing JSON body'}), 400
 
     log_id = payload.get('log_id') or payload.get('data', {}).get('log_id')
-    tracer.trace("Recebi Evento",log_id)
+    trk_id = payload.get('track_id') or payload.get('data', {}).get('track_id')
+    score_post = payload.get('score') or payload.get('data', {}).get('score')
+    tracer.trace("Recebi Evento",trk_id)
+    tracer.trace(trk_id, f"score post: {score_post*100:.1}%")
     json_record_id = None
     try:
         _conn = get_faciais_conn()
