@@ -42,7 +42,7 @@ def get_best_match(track_id):
     return None, None, None
 
 
-_RETRY_DELAYS = [3, 6, 12]  # segundos entre tentativas (total: até 3 tentativas)
+_RETRY_DELAYS = [3, 12, 20]  # segundos entre tentativas (total: até 3 tentativas)
 
 
 def salvar_rosto(track_id, camera_id=None, log_id=None, json_record_id=None):
@@ -58,7 +58,7 @@ def salvar_rosto(track_id, camera_id=None, log_id=None, json_record_id=None):
                 time.sleep(delay)
             heimdall_data, _ = query_heimdall(str(track_id))
             image_path, cam_from_match, face_det_score, face_recgn_score = get_best_face(track_id, data=heimdall_data)
-            # tracer.trace(track_id, f"salvar_rosto: tentativa {tentativa} → image_path={image_path} score={face_det_score} recgn={face_recgn_score}")
+            tracer.trace(track_id, f"salvar_rosto: tentativa {tentativa} → image_path={image_path} score={face_det_score} recgn={face_recgn_score}")
             if face_det_score is not None and face_det_score >= SCORE_MINIMO:
                 break
         else:
