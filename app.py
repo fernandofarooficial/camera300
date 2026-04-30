@@ -211,6 +211,7 @@ def receive_facial_recognition():
         return jsonify({'error': 'Invalid or missing JSON body'}), 400
 
     log_id = payload.get('log_id') or payload.get('data', {}).get('log_id')
+    tracer.trace("Recebi Evento",log_id)
     json_record_id = None
     try:
         _conn = get_faciais_conn()
