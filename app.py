@@ -213,10 +213,10 @@ def receive_facial_recognition():
     log_id = payload.get('log_id') or payload.get('data', {}).get('log_id')
     trk_id = payload.get('track_id') or payload.get('data', {}).get('track_id')
     score_post = payload.get('score') or payload.get('data', {}).get('score')
-    score_post = (score_post if score_post > 0 else -1)*100
+    score_post = score_post if score_post > 0 else -1
 
     tracer.trace("Recebi Evento",trk_id)
-    tracer.trace(trk_id, f"score post: {score_post:.1}%")
+    tracer.trace(trk_id, f"score post: {score_post*100:.1}%")
 
     json_record_id = None
     try:
