@@ -57,12 +57,12 @@ def salvar_rosto(track_id, camera_id=None, log_id=None, json_record_id=None):
                 # tracer.trace(track_id, f"salvar_rosto: aguardando {delay}s antes da tentativa {tentativa}")
                 time.sleep(delay)
             heimdall_data, _ = query_heimdall(str(track_id))
-            image_path, cam_from_match, face_det_score, face_recgn_score = get_best_face(track_id, data=heimdall_data)
+            image_path, cam_from_match, face_det_score, face_recgn_score = get_best_face(track_id, data=heimdall_data or {})
             tracer.trace(track_id, f"salvar_rosto: tentativa {tentativa} → image_path={image_path} score={face_det_score} recgn={face_recgn_score}")
             if face_det_score is not None and face_det_score >= SCORE_MINIMO:
                 break
         else:
-            # tracer.trace(track_id, f"salvar_rosto: todas as tentativas esgotadas — score {face_det_score} abaixo de SCORE_MINIMO, ignorado")
+            _processed_no_face.add(track_id)
             return
 
         # camera_id do match tem prioridade; usa o do payload como fallback
@@ -102,6 +102,7 @@ event_queue = queue.Queue()
 tracer.set_queue(event_queue)
 last_seen_track: dict = {}  # track_id -> timestamp do último evento exibido
 DEDUP_SECONDS = 5
+_processed_no_face: set = set()  # track_ids processados sem face válida
 
 _events_lock = threading.Lock()
 _listeners_lock = threading.Lock()
@@ -324,7 +325,9 @@ def get_track_image(track_id):
         if conn:
             release_faciais_conn(conn)
 
-    # Fallback: consulta Heimdall
+    # Fallback: consulta Heimdall (não tenta se já sabemos que não há face)
+    if track_id in _processed_no_face:
+        return jsonify({'image_url': None, 'camera_id': None, 'face_det_score': None})
     image_path, camera_id, face_det_score = get_best_match(track_id)
     return jsonify({
         'image_url': HEIMDALL_IMAGE_BASE + image_path if image_path else None,
