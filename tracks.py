@@ -1,4 +1,5 @@
 import io
+import threading
 import cv2
 import requests
 import openpyxl
@@ -10,6 +11,9 @@ from datetime import datetime, timedelta, date
 
 from config import get_faciais_conn, release_faciais_conn, get_pg_conn, release_pg_conn, HEIMDALL_URL, HEIMDALL_IMAGE_BASE, HEIMDALL_START_DATE, HEIMDALL_END_DATE, HEIMDALL_CONNECT_TIMEOUT, HEIMDALL_READ_TIMEOUT, ZIONS_API_URL, ZIONS_TOKEN
 from tracer import trace
+
+# Limita chamadas simultâneas ao Heimdall para evitar sobrecarga do servidor
+_heimdall_semaphore = threading.Semaphore(3)
 
 
 def _carregar_cameras():
@@ -100,12 +104,13 @@ def query_heimdall(track_id):
             fields.append(("camera_id", cam_id))
 
         m = MultipartEncoder(fields=fields)
-        resp = requests.post(
-            HEIMDALL_URL,
-            data=m,
-            headers={"Content-Type": m.content_type},
-            timeout=(HEIMDALL_CONNECT_TIMEOUT, HEIMDALL_READ_TIMEOUT),
-        )
+        with _heimdall_semaphore:
+            resp = requests.post(
+                HEIMDALL_URL,
+                data=m,
+                headers={"Content-Type": m.content_type},
+                timeout=(HEIMDALL_CONNECT_TIMEOUT, HEIMDALL_READ_TIMEOUT),
+            )
         if resp.status_code == 404:
             # trace(track_id, "query_heimdall: track_id não encontrado no Heimdall (404) — sem matches")
             return {}, None
