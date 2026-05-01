@@ -252,9 +252,15 @@ def receive_facial_recognition():
                 return jsonify({'success': True, 'message': 'Duplicate suppressed'}), 200
             last_seen_track[track_id] = now
 
+    payload_sem_foto = {**payload}
+    if 'image_base64' in payload_sem_foto:
+        payload_sem_foto['image_base64'] = 'foto'
+    if 'data' in payload_sem_foto and isinstance(payload_sem_foto['data'], dict) and 'image_base64' in payload_sem_foto['data']:
+        payload_sem_foto['data'] = {**payload_sem_foto['data'], 'image_base64': 'foto'}
+
     event = {
         'received_at': time.strftime('%Y-%m-%d %H:%M:%S'),
-        'payload': payload,
+        'payload': payload_sem_foto,
     }
     with _events_lock:
         events.insert(0, event)
