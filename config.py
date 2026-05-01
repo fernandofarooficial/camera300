@@ -3,8 +3,10 @@ import mysql.connector.pooling
 import psycopg2
 import psycopg2.pool
 
-HEIMDALL_URL        = os.environ.get("HEIMDALL_URL",        "http://187.17.228.160:6500/api/facial/recognize-by-track")
-HEIMDALL_IMAGE_BASE = os.environ.get("HEIMDALL_IMAGE_BASE", "http://187.17.228.160:6500/api/facial/images")
+HEIMDALL_URL             = os.environ.get("HEIMDALL_URL",             "http://187.17.228.160:6500/api/facial/recognize-by-track")
+HEIMDALL_IMAGE_BASE      = os.environ.get("HEIMDALL_IMAGE_BASE",      "http://187.17.228.160:6500/api/facial/images")
+HEIMDALL_CONNECT_TIMEOUT = int(os.environ.get("HEIMDALL_CONNECT_TIMEOUT", "5"))
+HEIMDALL_READ_TIMEOUT    = int(os.environ.get("HEIMDALL_READ_TIMEOUT",    "30"))
 
 # Data de início das consultas ao Heimdall. Pode ser sobrescrita via variável de ambiente.
 # Formato ISO: YYYY-MM-DD

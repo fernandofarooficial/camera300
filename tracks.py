@@ -8,7 +8,7 @@ from flask import Blueprint, render_template, jsonify, request, Response, send_f
 from requests_toolbelt import MultipartEncoder
 from datetime import datetime, timedelta, date
 
-from config import get_faciais_conn, release_faciais_conn, get_pg_conn, release_pg_conn, HEIMDALL_URL, HEIMDALL_IMAGE_BASE, HEIMDALL_START_DATE, HEIMDALL_END_DATE, ZIONS_API_URL, ZIONS_TOKEN
+from config import get_faciais_conn, release_faciais_conn, get_pg_conn, release_pg_conn, HEIMDALL_URL, HEIMDALL_IMAGE_BASE, HEIMDALL_START_DATE, HEIMDALL_END_DATE, HEIMDALL_CONNECT_TIMEOUT, HEIMDALL_READ_TIMEOUT, ZIONS_API_URL, ZIONS_TOKEN
 from tracer import trace
 
 
@@ -104,7 +104,7 @@ def query_heimdall(track_id):
             HEIMDALL_URL,
             data=m,
             headers={"Content-Type": m.content_type},
-            timeout=15,
+            timeout=(HEIMDALL_CONNECT_TIMEOUT, HEIMDALL_READ_TIMEOUT),
         )
         if resp.status_code == 404:
             # trace(track_id, "query_heimdall: track_id não encontrado no Heimdall (404) — sem matches")
@@ -114,6 +114,9 @@ def query_heimdall(track_id):
             return None, f"HTTP {resp.status_code} — {resp.text[:500]}"
         # trace(track_id, f"query_heimdall: resposta OK ({resp.status_code})")
         return resp.json(), None
+    except requests.exceptions.Timeout as e:
+        trace(track_id, f"query_heimdall: TIMEOUT ({HEIMDALL_CONNECT_TIMEOUT}s connect / {HEIMDALL_READ_TIMEOUT}s read) → {e}")
+        return None, f"Timeout: {e}"
     except requests.exceptions.RequestException as e:
         # trace(track_id, f"query_heimdall: ERRO de rede → {e}")
         return None, str(e)

@@ -56,7 +56,9 @@ def salvar_rosto(track_id, camera_id=None, log_id=None, json_record_id=None):
             if delay:
                 # tracer.trace(track_id, f"salvar_rosto: aguardando {delay}s antes da tentativa {tentativa}")
                 time.sleep(delay)
-            heimdall_data, _ = query_heimdall(str(track_id))
+            heimdall_data, heimdall_err = query_heimdall(str(track_id))
+            if heimdall_err:
+                tracer.trace(track_id, f"salvar_rosto: tentativa {tentativa} → erro Heimdall: {heimdall_err}")
             image_path, cam_from_match, face_det_score, face_recgn_score = get_best_face(track_id, data=heimdall_data or {})
             tracer.trace(track_id, f"salvar_rosto: tentativa {tentativa} → image_path={image_path} score={face_det_score} recgn={face_recgn_score}")
             if face_det_score is not None and face_det_score >= SCORE_MINIMO:
