@@ -436,15 +436,16 @@ def tracks_lista():
                     }
                 if groups_dict[key]["foto"] is None and row["image_path"] and row["track_id"] == groups_dict[key]["track_id_base"]:
                     groups_dict[key]["foto"] = HEIMDALL_IMAGE_BASE + row["image_path"]
-                groups_dict[key]["ocorrencias"].append({
-                    "id":             row["id"],
-                    "track_id":       row["track_id"],
-                    "image_url":      HEIMDALL_IMAGE_BASE + row["image_path"] if row["image_path"] else None,
-                    "created_at":     fmt_timestamp(row["created_at"]),
-                    "camera_id":      row["camera_id"],
-                    "face_det_score":    fmt_score_nd(row["face_det_score"])    if row.get("face_det_score")    is not None else None,
-                    "recognition_score": fmt_score_nd(row["recognition_score"]) if row.get("recognition_score") is not None else None,
-                })
+                if len(groups_dict[key]["ocorrencias"]) < 15:
+                    groups_dict[key]["ocorrencias"].append({
+                        "id":             row["id"],
+                        "track_id":       row["track_id"],
+                        "image_url":      HEIMDALL_IMAGE_BASE + row["image_path"] if row["image_path"] else None,
+                        "created_at":     fmt_timestamp(row["created_at"]),
+                        "camera_id":      row["camera_id"],
+                        "face_det_score":    fmt_score_nd(row["face_det_score"])    if row.get("face_det_score")    is not None else None,
+                        "recognition_score": fmt_score_nd(row["recognition_score"]) if row.get("recognition_score") is not None else None,
+                    })
             groups = [groups_dict[k] for k in id_unicos if k in groups_dict]
 
         cursor.close()
