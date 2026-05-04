@@ -239,6 +239,7 @@
     tbody tr:last-child { border-bottom: none; }
     tbody td { padding: 0.6rem 0.9rem; color: #cbd5e1; }
     tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    tbody td.pct { color: #7c86ff; font-size: 0.8rem; }
 
     .bar-wrap {
       display: flex;
@@ -369,16 +370,23 @@
         <tr>
           <th>Área</th>
           <th class="num">Pessoas Únicas</th>
+          <th class="num">% Pessoas</th>
           <th>Pontos (proporção)</th>
           <th class="num">Total de Pontos</th>
+          <th class="num">% Pontos</th>
         </tr>
       </thead>
       <tbody>
-        {% set max_pontos = resultado.resumo_por_area | map(attribute='total_pontos') | max %}
+        {% set max_pontos   = resultado.resumo_por_area | map(attribute='total_pontos')   | max %}
+        {% set total_pessoas = resultado.resumo_geral.pessoas_unicas %}
+        {% set total_pontos  = resultado.resumo_geral.total_pontos %}
         {% for area in resultado.resumo_por_area %}
+        {% set pct_pessoas = (area.pessoas_unicas / total_pessoas * 100) | round(1) if total_pessoas else 0 %}
+        {% set pct_pontos  = (area.total_pontos   / total_pontos  * 100) | round(1) if total_pontos  else 0 %}
         <tr>
           <td>{{ area.area_nome }}</td>
           <td class="num">{{ area.pessoas_unicas }}</td>
+          <td class="num pct">{{ pct_pessoas }}%</td>
           <td>
             <div class="bar-wrap">
               <div class="bar-bg">
@@ -388,6 +396,7 @@
             </div>
           </td>
           <td class="num">{{ area.total_pontos }}</td>
+          <td class="num pct">{{ pct_pontos }}%</td>
         </tr>
         {% endfor %}
       </tbody>
