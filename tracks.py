@@ -15,6 +15,10 @@ from tracer import trace
 # Limita chamadas simultâneas ao Heimdall para evitar sobrecarga do servidor
 _heimdall_semaphore = threading.Semaphore(3)
 
+HEATMAP_API_URL  = "http://201.71.234.84:5001/api/heatmap"
+HEATMAP_API_BASE = "http://201.71.234.84:5001"
+HEATMAP_AUTH     = ("admin", "Heat26@vision")
+
 
 def _carregar_cameras():
     """Carrega câmeras válidas com aliases compatíveis com o código legado."""
@@ -1091,6 +1095,69 @@ def tracks_quadro():
 def tracks_dados():
     _, cameras = _carregar_cameras()
     return render_template("tracks_dados.html", cameras=cameras)
+
+
+def _prefixar_urls_heatmap(resultado):
+    imagem = resultado.get("imagem", {})
+    for k in ("url", "download_url"):
+        if imagem.get(k, "").startswith("/"):
+            imagem[k] = HEATMAP_API_BASE + imagem[k]
+    for img in resultado.get("imagens", {}).values():
+        for k in ("url", "download_url", "frame_original_url", "planta_original_url"):
+            if img.get(k, "").startswith("/"):
+                img[k] = HEATMAP_API_BASE + img[k]
+
+
+@tracks_bp.route("/tracks/heatmap")
+def tracks_heatmap():
+    _, cameras = _carregar_cameras()
+    resultado  = None
+    erro       = None
+    hoje       = datetime.now()
+    data_ini_def  = hoje.strftime("%Y-%m-%dT00:00")
+    data_fim_def  = hoje.strftime("%Y-%m-%dT23:59")
+    camera_id_def = request.args.get("camera_id", "")
+
+    camera_id = request.args.get("camera_id", "")
+    data_ini  = request.args.get("data_ini", "")
+    data_fim  = request.args.get("data_fim", "")
+
+    if camera_id and data_ini and data_fim:
+        try:
+            dt_ini = datetime.strptime(data_ini, "%Y-%m-%dT%H:%M")
+            dt_fim = datetime.strptime(data_fim, "%Y-%m-%dT%H:%M")
+            payload = {
+                "camera_id": int(camera_id),
+                "data_ini":  dt_ini.strftime("%Y-%m-%d %H:%M:%S"),
+                "data_fim":  dt_fim.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+            resp = requests.post(
+                HEATMAP_API_URL, json=payload,
+                auth=HEATMAP_AUTH, timeout=60,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            if data.get("ok"):
+                resultado = data["resultado"]
+                _prefixar_urls_heatmap(resultado)
+            else:
+                erro = "A API retornou resposta negativa."
+        except ValueError as exc:
+            erro = f"Parâmetros inválidos: {exc}"
+        except requests.RequestException as exc:
+            erro = f"Erro ao consultar API de mapa de calor: {exc}"
+        data_ini_def  = data_ini
+        data_fim_def  = data_fim
+
+    return render_template(
+        "tracks_heatmap.html",
+        cameras=cameras,
+        resultado=resultado,
+        erro=erro,
+        data_ini_def=data_ini_def,
+        data_fim_def=data_fim_def,
+        camera_id_def=camera_id_def,
+    )
 
 
 @tracks_bp.route("/tracks/snapshot/<int:camera_id>")

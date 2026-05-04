@@ -171,6 +171,7 @@
 <header>
   <h1>Tracks &mdash; Dados das Câmeras</h1>
   <nav class="nav">
+    <a href="/camera300/tracks/heatmap" id="btn-heatmap">Mapa de Calor</a>
     <a href="/camera300/">&#8592; Checkin</a>
   </nav>
 </header>
@@ -265,6 +266,10 @@
     // highlight
     document.querySelectorAll('tbody tr.selected').forEach(r => r.classList.remove('selected'));
     row.classList.add('selected');
+
+    // atualiza link do mapa de calor com a câmera selecionada
+    const btnHeatmap = document.getElementById('btn-heatmap');
+    if (btnHeatmap) btnHeatmap.href = `/camera300/tracks/heatmap?camera_id=${id}`;
 
     if (!rstp) {
       setStatus('error', 'Esta câmera não possui URL RTSP cadastrada.');
