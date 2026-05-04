@@ -58,6 +58,22 @@
     }
     .chart-wrap { position: relative; height: 220px; }
 
+    /* Update banner */
+    .upd-banner {
+      display: none; position: fixed;
+      bottom: calc(52px + env(safe-area-inset-bottom) + 0.5rem);
+      left: 0.75rem; right: 0.75rem; z-index: 300;
+      background: #7c86ff; color: #fff; border-radius: 10px;
+      padding: 0.65rem 1rem;
+      align-items: center; justify-content: space-between; gap: 0.75rem;
+      box-shadow: 0 4px 20px #00000066; font-size: 0.85rem; font-weight: 500;
+    }
+    .upd-btn {
+      background: #fff; color: #7c86ff; border: none; border-radius: 6px;
+      padding: 0.4rem 0.85rem; font-size: 0.82rem; font-weight: 700;
+      cursor: pointer; white-space: nowrap; flex-shrink: 0;
+    }
+
     /* Bottom nav */
     .bn {
       position: fixed; bottom: 0; left: 0; right: 0;
@@ -274,6 +290,35 @@
     options: { ...defaults, plugins: { ...defaults.plugins, legend: { display: true, labels: { color: '#94a3b8', font: { size: 10 } } } } }
   });
   {% endif %}
+</script>
+
+<div class="upd-banner" id="upd-banner">
+  <span>&#8635; Nova versão disponível</span>
+  <button class="upd-btn" onclick="doUpdate()">Atualizar</button>
+</div>
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/service-worker.js').then(reg => {
+      if (reg.waiting) showUpdBanner();
+      reg.addEventListener('updatefound', () => {
+        reg.installing.addEventListener('statechange', function () {
+          if (this.state === 'installed' && navigator.serviceWorker.controller)
+            showUpdBanner();
+        });
+      });
+    });
+    navigator.serviceWorker.addEventListener('controllerchange', () => location.reload());
+  }
+  function showUpdBanner() {
+    const b = document.getElementById('upd-banner');
+    if (b) b.style.display = 'flex';
+  }
+  function doUpdate() {
+    navigator.serviceWorker.getRegistration().then(reg => {
+      if (reg && reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+      else location.reload();
+    });
+  }
 </script>
 </body>
 </html>

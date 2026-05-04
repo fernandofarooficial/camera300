@@ -26,7 +26,6 @@ self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => cache.addAll(PRECACHE))
-      .then(() => self.skipWaiting())
   );
 });
 
@@ -39,6 +38,11 @@ self.addEventListener('activate', event => {
       )
     ).then(() => self.clients.claim())
   );
+});
+
+// ── Mensagens da página (ex.: SKIP_WAITING) ──────────────────────────────────
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 // ── Fetch: network-first; cache só como fallback offline ─────────────────────
