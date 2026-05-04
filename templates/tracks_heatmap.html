@@ -288,19 +288,8 @@
     <div class="card-header">Consultar Mapa de Calor</div>
     <div class="card-body">
       <form method="get" action="" id="form-heatmap" onsubmit="showLoading()">
+        <input type="hidden" name="camera_id" value="1" />
         <div class="form-row">
-          <div class="form-group">
-            <label for="camera_id">Câmera</label>
-            <select name="camera_id" id="camera_id" required>
-              <option value="">— selecione —</option>
-              {% for cam in cameras %}
-              <option value="{{ cam.id_camera }}"
-                {% if cam.id_camera|string == camera_id_def|string %}selected{% endif %}>
-                {{ cam.id_camera }} – {{ cam.camera or 'Câmera ' ~ cam.id_camera }}
-              </option>
-              {% endfor %}
-            </select>
-          </div>
           <div class="form-group">
             <label for="data_ini">Data / Hora Inicial</label>
             <input type="datetime-local" name="data_ini" id="data_ini"
