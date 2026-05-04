@@ -1,15 +1,20 @@
-const CACHE_NAME = 'checkin-v1';
+const CACHE_NAME = 'checkin-m-v1';
 
-// Apenas recursos estáticos que valem a pena guardar em cache
 const PRECACHE = [
-  '/',
+  '/camera300/m/',
+  '/camera300/m/tracks/lista',
+  '/camera300/m/tracks/tabuleiro',
+  '/camera300/m/tracks/caixa',
+  '/camera300/m/tracks/quadro',
 ];
 
-// URLs que NUNCA devem ser interceptadas (tempo-real e APIs)
+// Rotas que NUNCA devem ser interceptadas (tempo-real e APIs)
 const BYPASS = [
   '/stream',
   '/api/',
   '/camera300/tracks/api/',
+  '/camera300/tracks/caixa/nf/',
+  '/camera300/tracks/snapshot/',
 ];
 
 function shouldBypass(url) {
@@ -40,13 +45,11 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const { request } = event;
 
-  // Ignora requisições não-GET e rotas em tempo real / API
   if (request.method !== 'GET' || shouldBypass(request.url)) return;
 
   event.respondWith(
     fetch(request)
       .then(response => {
-        // Armazena cópia no cache apenas para respostas válidas
         if (response && response.status === 200 && response.type === 'basic') {
           const clone = response.clone();
           caches.open(CACHE_NAME).then(cache => cache.put(request, clone));

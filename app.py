@@ -197,6 +197,11 @@ def index():
     return render_template('index.html')
 
 
+@app.route('/m/')
+def m_index():
+    return render_template('m_index.html')
+
+
 @app.route('/service-worker.js')
 def service_worker():
     response = app.send_static_file('service-worker.js')

@@ -302,6 +302,7 @@ def tracks_resumo():
 
 
 @tracks_bp.route("/tracks/lista")
+@tracks_bp.route("/m/tracks/lista")
 def tracks_lista():
     per_page = 5
     page = request.args.get('page', 1, type=int)
@@ -459,7 +460,8 @@ def tracks_lista():
         release_faciais_conn(conn)
 
     cameras_map = {c["id_camera"]: c.get("camera") or str(c["id_camera"]) for c in CAMERAS_COMPLETO if c.get("id_camera") is not None}
-    return render_template("tracks_lista.html", groups=groups, page=page, total_pages=total_pages,
+    tmpl = "m_lista.html" if "/m/" in request.path else "tracks_lista.html"
+    return render_template(tmpl, groups=groups, page=page, total_pages=total_pages,
                            cameras_map=cameras_map, ids_raw=ids_raw, flag_filter=flag_filter)
 
 
@@ -742,6 +744,7 @@ def mover_registro(reg_id):
 
 
 @tracks_bp.route("/tracks/tabuleiro")
+@tracks_bp.route("/m/tracks/tabuleiro")
 def tracks_tabuleiro():
     per_page = 30
     page = request.args.get('page', 1, type=int)
@@ -785,10 +788,12 @@ def tracks_tabuleiro():
     for p in pessoas:
         p["foto"] = HEIMDALL_IMAGE_BASE + p["image_path"] if p["image_path"] else None
 
-    return render_template("tracks_tabuleiro.html", pessoas=pessoas, page=page, total_pages=total_pages)
+    tmpl = "m_tabuleiro.html" if "/m/" in request.path else "tracks_tabuleiro.html"
+    return render_template(tmpl, pessoas=pessoas, page=page, total_pages=total_pages)
 
 
 @tracks_bp.route("/tracks/quadro")
+@tracks_bp.route("/m/tracks/quadro")
 def tracks_quadro():
     from datetime import date, timedelta
     today = date.today()
@@ -1073,7 +1078,8 @@ def tracks_quadro():
         for f in faixas_ordem
     ]
 
-    return render_template("tracks_quadro.html",
+    tmpl = "m_quadro.html" if "/m/" in request.path else "tracks_quadro.html"
+    return render_template(tmpl,
                            ocorrencias_por_dia=ocorrencias_por_dia,
                            ocorrencias_por_hora=ocorrencias_por_hora,
                            ocorrencias_por_pessoa=ocorrencias_por_pessoa,
@@ -1327,6 +1333,7 @@ def tracks_export_download():
 
 
 @tracks_bp.route("/tracks/caixa")
+@tracks_bp.route("/m/tracks/caixa")
 def tracks_caixa():
     from datetime import timedelta
 
@@ -1423,7 +1430,8 @@ def tracks_caixa():
             except Exception as e:
                 print(f"[caixa] Erro faciais: {e}")
 
-    return render_template("tracks_caixa.html", notas=notas)
+    tmpl = "m_caixa.html" if "/m/" in request.path else "tracks_caixa.html"
+    return render_template(tmpl, notas=notas)
 
 
 @tracks_bp.route("/tracks/caixa/nf/<documento>")

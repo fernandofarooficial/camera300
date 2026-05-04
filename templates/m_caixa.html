@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Caixa</title>
+  <link rel="manifest" href="/static/manifest.json" />
+  <meta name="theme-color" content="#1a1d27" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117; color: #e2e8f0; font-size: 16px; min-height: 100vh;
+      padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
+    }
+    .mh {
+      position: sticky; top: 0; z-index: 100;
+      background: #1a1d27; border-bottom: 1px solid #2d3148;
+      padding: 0.85rem 1rem;
+      padding-top: max(0.85rem, env(safe-area-inset-top));
+      display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+    }
+    .mh h1 { font-size: 1rem; font-weight: 600; color: #7c86ff; }
+    .mh-btn {
+      background: none; border: 1px solid #2d3148; color: #94a3b8;
+      padding: 0 0.85rem; border-radius: 8px; font-size: 0.82rem;
+      text-decoration: none; display: inline-flex; align-items: center; height: 38px;
+    }
+    .mh-btn:active { background: #2d3148; }
+
+    main { padding: 0.75rem; display: flex; flex-direction: column; gap: 0.75rem; }
+    .empty { text-align: center; color: #475569; padding: 3rem 1rem; }
+
+    /* NF Card */
+    .nf-card {
+      background: #1a1d27; border: 1px solid #2d3148; border-radius: 12px; overflow: hidden;
+    }
+    .nf-top {
+      padding: 0.75rem 1rem; display: flex; align-items: center; gap: 0.75rem;
+    }
+    .nf-doc { font-size: 0.85rem; font-weight: 700; color: #7c86ff; flex-shrink: 0; }
+    .nf-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.15rem; }
+    .nf-row { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; }
+    .nf-label { font-size: 0.65rem; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; }
+    .nf-val { font-size: 0.78rem; color: #e2e8f0; font-weight: 500; }
+    .nf-val.money { color: #34d399; font-weight: 700; }
+    .btn-itens {
+      background: none; border: 1px solid #7c86ff44; color: #7c86ff;
+      border-radius: 8px; padding: 0 0.7rem; font-size: 0.78rem; cursor: pointer;
+      height: 34px; flex-shrink: 0;
+    }
+    .btn-itens:active { background: #7c86ff22; }
+
+    /* Items panel */
+    .nf-itens { display: none; border-top: 1px solid #2d3148; padding: 0.75rem 1rem; }
+    .nf-itens.open { display: block; }
+    .itens-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+    .itens-table th { text-align: left; font-size: 0.6rem; font-weight: 700; text-transform: uppercase;
+                      letter-spacing: 0.06em; color: #475569; padding: 0 0.4rem 0.35rem 0;
+                      border-bottom: 1px solid #2d3148; }
+    .itens-table td { padding: 0.3rem 0.4rem 0.3rem 0; border-bottom: 1px solid #1e2130;
+                      color: #e2e8f0; vertical-align: top; }
+    .itens-table tr:last-child td { border-bottom: none; }
+    .itens-table .cod { color: #7c86ff; font-weight: 700; }
+    .itens-table .num { text-align: right; }
+    .itens-table .val { text-align: right; color: #34d399; }
+    .it-loading, .it-error { font-size: 0.78rem; color: #475569; }
+    .it-error { color: #f87171; }
+
+    /* Clientes */
+    .cli-sep { border-top: 1px solid #2d3148; padding: 0.5rem 1rem 0.25rem; }
+    .cli-sep-label { font-size: 0.65rem; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; }
+    .cli-scroll { display: flex; gap: 0.5rem; padding: 0.5rem 1rem 0.75rem; overflow-x: auto; }
+    .cli-scroll::-webkit-scrollbar { height: 3px; }
+    .cli-scroll::-webkit-scrollbar-thumb { background: #2d3148; border-radius: 2px; }
+    .cli-card {
+      flex-shrink: 0; width: 72px; display: flex; flex-direction: column;
+      align-items: center; gap: 0.2rem;
+    }
+    .cli-photo {
+      width: 52px; height: 52px; border-radius: 8px; object-fit: cover;
+      background: #0f1117; border: 1px solid #2d3148; display: block;
+    }
+    .cli-ph {
+      width: 52px; height: 52px; border-radius: 8px; background: #1e2130;
+      border: 1px solid #2d3148; display: flex; align-items: center; justify-content: center;
+      color: #334155; font-size: 0.55rem;
+    }
+    .cli-nome { font-size: 0.65rem; color: #e2e8f0; text-align: center; white-space: nowrap;
+                overflow: hidden; text-overflow: ellipsis; width: 100%; }
+    .cli-sub { font-size: 0.58rem; color: #64748b; text-align: center; }
+    .chip-g-M { background:#3b82f622; color:#60a5fa; border:1px solid #3b82f644; }
+    .chip-g-F { background:#ec489922; color:#f472b6; border:1px solid #ec489944; }
+    .chip-g-A { background:#64748b22; color:#94a3b8; border:1px solid #64748b44; }
+    .chip-id  { background:#10b98122; color:#34d399; border:1px solid #10b98144; }
+    .mini-chip {
+      font-size: 0.55rem; font-weight: 600; padding: 0.1rem 0.3rem;
+      border-radius: 999px; white-space: nowrap;
+    }
+    .nenhum { font-size: 0.75rem; color: #475569; padding: 0.5rem 1rem 0.75rem; }
+
+    /* Bottom nav */
+    .bn {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: #1a1d27; border-top: 1px solid #2d3148;
+      display: flex; padding-bottom: env(safe-area-inset-bottom); z-index: 200;
+    }
+    .bn a {
+      flex: 1; display: flex; flex-direction: column; align-items: center;
+      padding: 0.5rem 0; text-decoration: none; color: #475569;
+      font-size: 0.58rem; gap: 0.15rem; min-height: 52px; justify-content: center;
+    }
+    .bn a.act { color: #7c86ff; }
+    .bn a:active { color: #7c86ff; }
+    .bn .ico { font-size: 1.25rem; line-height: 1; }
+  </style>
+</head>
+<body>
+
+<div class="mh">
+  <h1>Caixa</h1>
+  <a class="mh-btn" href="/camera300/m/tracks/caixa">&#8635; Atualizar</a>
+</div>
+
+<main>
+  {% if not notas %}
+    <div class="empty">Nenhuma nota fiscal encontrada.</div>
+  {% else %}
+    {% for nf in notas %}
+    <div class="nf-card">
+      <div class="nf-top">
+        <span class="nf-doc">NF #{{ nf.documento }}</span>
+        <div class="nf-meta">
+          <div class="nf-row">
+            <span class="nf-val">{{ nf.data.strftime('%d/%m/%Y') if nf.data else '—' }}</span>
+            <span class="nf-val">{{ nf.hora or '' }}</span>
+            <span class="nf-val money">R$ {{ '%.2f'|format(nf.valor) | replace('.', ',') }}</span>
+          </div>
+          <div class="nf-row">
+            <span class="nf-label">{{ nf.itens }} iten{{ 's' if nf.itens != 1 else '' }}</span>
+            <span class="nf-label">{{ nf.clientes | length }} cliente(s)</span>
+          </div>
+        </div>
+        <button class="btn-itens" onclick="toggleItens(this, '{{ nf.documento }}')">Itens</button>
+      </div>
+
+      <div class="nf-itens" id="itens-{{ nf.documento }}"></div>
+
+      {% if nf.clientes %}
+        <div class="cli-sep"><span class="cli-sep-label">Clientes detectados</span></div>
+        <div class="cli-scroll">
+          {% for cli in nf.clientes %}
+          <div class="cli-card">
+            {% if cli.foto %}
+              <img class="cli-photo" src="{{ cli.foto }}" alt=""
+                   onerror="this.outerHTML='<div class=cli-ph>sem foto</div>'" />
+            {% else %}
+              <div class="cli-ph">sem foto</div>
+            {% endif %}
+            <span class="cli-nome" title="{{ cli.nome or '' }}">{{ cli.nome or '—' }}</span>
+            <span class="cli-sub">ID {{ cli.id_unico }}</span>
+            <span class="cli-sub">{{ cli.created_at.strftime('%H:%M') if cli.created_at else '' }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="nenhum">Nenhum cliente detectado.</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  {% endif %}
+</main>
+
+<nav class="bn">
+  <a href="/camera300/m/">
+    <span class="ico">◉</span><span>Checkin</span>
+  </a>
+  <a href="/camera300/m/tracks/lista">
+    <span class="ico">☰</span><span>Lista</span>
+  </a>
+  <a href="/camera300/m/tracks/tabuleiro">
+    <span class="ico">⊞</span><span>Tabuleiro</span>
+  </a>
+  <a href="/camera300/m/tracks/caixa" class="act">
+    <span class="ico">⊙</span><span>Caixa</span>
+  </a>
+  <a href="/camera300/m/tracks/quadro">
+    <span class="ico">◫</span><span>Quadro</span>
+  </a>
+</nav>
+
+<script>
+  function toggleItens(btn, doc) {
+    const panel = document.getElementById('itens-' + doc);
+    if (panel.classList.contains('open')) {
+      panel.classList.remove('open');
+      btn.textContent = 'Itens';
+      return;
+    }
+    panel.classList.add('open');
+    btn.textContent = 'Fechar';
+    if (panel.dataset.loaded) return;
+    panel.dataset.loaded = '1';
+    panel.innerHTML = '<div class="it-loading">Carregando…</div>';
+    fetch(`/camera300/tracks/caixa/nf/${encodeURIComponent(doc)}`)
+      .then(r => r.json())
+      .then(data => {
+        if (!data.itens || !data.itens.length) {
+          panel.innerHTML = '<div class="it-loading" style="padding:0.5rem 0">Sem itens.</div>';
+          return;
+        }
+        let html = '<table class="itens-table"><thead><tr><th>Cód.</th><th>Produto</th><th class="num">Qtd</th><th class="val">Valor</th></tr></thead><tbody>';
+        for (const it of data.itens) {
+          html += `<tr><td class="cod">${it.codigo || '—'}</td><td>${it.produto || '—'}</td><td class="num">${it.quantidade ?? ''}</td><td class="val">R$ ${it.valor_unitario != null ? Number(it.valor_unitario).toFixed(2).replace('.', ',') : '—'}</td></tr>`;
+        }
+        html += '</tbody></table>';
+        panel.innerHTML = html;
+      })
+      .catch(() => { panel.innerHTML = '<div class="it-error">Erro ao carregar itens.</div>'; });
+  }
+</script>
+</body>
+</html>
