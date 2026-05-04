@@ -4,6 +4,7 @@ import cv2
 import requests
 import openpyxl
 import psycopg2.extras
+from urllib.parse import quote as _urlquote
 from openpyxl.styles import Font, PatternFill, Alignment
 from flask import Blueprint, render_template, jsonify, request, Response, send_file, make_response
 from requests_toolbelt import MultipartEncoder
@@ -1098,14 +1099,21 @@ def tracks_dados():
 
 
 def _prefixar_urls_heatmap(resultado):
+    def _proxy(path, download=False):
+        if not path or not path.startswith("/"):
+            return path
+        full = HEATMAP_API_BASE + path
+        suffix = "&dl=1" if download else ""
+        return f"/camera300/tracks/heatmap/img?url={_urlquote(full, safe='')}{suffix}"
+
     imagem = resultado.get("imagem", {})
     for k in ("url", "download_url"):
         if imagem.get(k, "").startswith("/"):
-            imagem[k] = HEATMAP_API_BASE + imagem[k]
+            imagem[k] = _proxy(imagem[k], download=(k == "download_url"))
     for img in resultado.get("imagens", {}).values():
         for k in ("url", "download_url", "frame_original_url", "planta_original_url"):
             if img.get(k, "").startswith("/"):
-                img[k] = HEATMAP_API_BASE + img[k]
+                img[k] = _proxy(img[k], download=(k == "download_url"))
 
 
 @tracks_bp.route("/tracks/heatmap")
@@ -1158,6 +1166,24 @@ def tracks_heatmap():
         data_fim_def=data_fim_def,
         camera_id_def=camera_id_def,
     )
+
+
+@tracks_bp.route("/tracks/heatmap/img")
+def tracks_heatmap_img():
+    url = request.args.get("url", "")
+    if not url.startswith(HEATMAP_API_BASE + "/"):
+        return Response("Origem não permitida.", status=403, mimetype="text/plain")
+    try:
+        r = requests.get(url, auth=HEATMAP_AUTH, timeout=30)
+        r.raise_for_status()
+        content_type = r.headers.get("Content-Type", "image/png")
+        filename = url.rsplit("/", 1)[-1]
+        disposition = "attachment" if request.args.get("dl") else "inline"
+        resp = Response(r.content, status=200, mimetype=content_type)
+        resp.headers["Content-Disposition"] = f'{disposition}; filename="{filename}"'
+        return resp
+    except requests.RequestException as exc:
+        return Response(f"Erro ao buscar imagem: {exc}", status=502, mimetype="text/plain")
 
 
 @tracks_bp.route("/tracks/snapshot/<int:camera_id>")
