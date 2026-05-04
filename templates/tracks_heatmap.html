@@ -240,6 +240,10 @@
     tbody td { padding: 0.6rem 0.9rem; color: #cbd5e1; }
     tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
     tbody td.pct { color: #7c86ff; font-size: 0.8rem; }
+    tfoot tr { border-top: 2px solid #2d3148; background: #1e2130; }
+    tfoot td { padding: 0.65rem 0.9rem; }
+    tfoot td.foot-label { font-weight: 700; color: #e2e8f0; }
+    tfoot td.foot { font-weight: 700; color: #e2e8f0; font-variant-numeric: tabular-nums; text-align: right; }
 
     .bar-wrap {
       display: flex;
@@ -400,6 +404,16 @@
         </tr>
         {% endfor %}
       </tbody>
+      <tfoot>
+        <tr>
+          <td class="foot-label">Total</td>
+          <td class="num foot">{{ total_pessoas }}</td>
+          <td class="num foot">100%</td>
+          <td></td>
+          <td class="num foot">{{ total_pontos }}</td>
+          <td class="num foot">100%</td>
+        </tr>
+      </tfoot>
     </table>
   </div>
 
