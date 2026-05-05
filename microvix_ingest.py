@@ -18,6 +18,7 @@ from urllib3.util.retry import Retry
 
 from config import (
     get_pg_conn, release_pg_conn,
+    get_faciais_conn, release_faciais_conn,
     MICROVIX_CHAVE, MICROVIX_CNPJ, MICROVIX_GRUPO,
 )
 
@@ -702,6 +703,59 @@ def _registrar_carga(conn, contagens: dict):
 
 
 # ---------------------------------------------------------------------------
+# Sincronização faciais.person_purchases ← microvix.microvix_movimento
+# ---------------------------------------------------------------------------
+
+def _sincronizar_person_purchases(pg_conn):
+    """Insere notas anônimas em faciais.person_purchases e marca cancelamentos."""
+    cur = pg_conn.cursor()
+    cur.execute("""
+        SELECT DISTINCT documento, cancelado
+        FROM microvix_movimento
+        WHERE cod_natureza_operacao = '10030'
+          AND tipo_transacao        = 'V'
+          AND excluido              = 'N'
+          AND cod_cliente           = '1'
+    """)
+    rows = cur.fetchall()
+    cur.close()
+
+    if not rows:
+        return 0
+
+    all_bills      = [(1, row[0]) for row in rows]
+    cancelled_bills = [row[0] for row in rows if row[1] != 'N']
+
+    faciais_conn = get_faciais_conn()
+    try:
+        fc = faciais_conn.cursor()
+        psycopg2.extras.execute_batch(
+            fc,
+            "INSERT INTO person_purchases (store_id, bill) VALUES (%s, %s)"
+            " ON CONFLICT (store_id, bill) DO NOTHING",
+            all_bills,
+            page_size=500,
+        )
+        if cancelled_bills:
+            psycopg2.extras.execute_batch(
+                fc,
+                "UPDATE person_purchases SET is_cancelled = TRUE"
+                " WHERE store_id = 1 AND bill = %s",
+                [(b,) for b in cancelled_bills],
+                page_size=500,
+            )
+        faciais_conn.commit()
+        fc.close()
+    except Exception:
+        faciais_conn.rollback()
+        raise
+    finally:
+        release_faciais_conn(faciais_conn)
+
+    return len(all_bills)
+
+
+# ---------------------------------------------------------------------------
 # Entrypoint público — chamado pela rota Flask em background thread
 # ---------------------------------------------------------------------------
 
@@ -727,6 +781,8 @@ _METODOS = [
     ("microvix_faturas",                             _ingerir_faturas),
     ("microvix_pedidos_venda",                       _ingerir_pedidos_venda),
     ("microvix_pedidos_compra",                      _ingerir_pedidos_compra),
+    # sincronização derivada (não registrada em microvix_carga)
+    ("faciais_person_purchases",                     _sincronizar_person_purchases),
 ]
 
 
