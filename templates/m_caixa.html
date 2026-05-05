@@ -69,16 +69,42 @@
     .it-loading, .it-error { font-size: 0.78rem; color: #475569; }
     .it-error { color: #f87171; }
 
-    /* Clientes */
-    .cli-sep { border-top: 1px solid #2d3148; padding: 0.5rem 1rem 0.25rem; }
-    .cli-sep-label { font-size: 0.65rem; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; }
-    .cli-scroll { display: flex; gap: 0.5rem; padding: 0.5rem 1rem 0.75rem; overflow-x: auto; }
+    /* Seções */
+    .secao { border-top: 1px solid #2d3148; padding: 0.5rem 1rem; }
+    .secao-label {
+      font-size: 0.62rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.07em; color: #475569; margin-bottom: 0.4rem;
+      display: flex; align-items: center; gap: 0.4rem;
+    }
+    .secao-label .hint { font-weight: 400; color: #334155; text-transform: none; letter-spacing: 0; }
+
+    /* Comprador confirmado */
+    .confirmado-card {
+      display: flex; align-items: center; gap: 0.6rem;
+      background: #0d1f17; border: 1px solid #10b98144; border-radius: 8px;
+      padding: 0.4rem 0.6rem;
+    }
+    .confirmado-badge {
+      font-size: 0.55rem; font-weight: 700; padding: 0.1rem 0.35rem;
+      border-radius: 999px; background: #10b98122; color: #34d399;
+      border: 1px solid #10b98144; white-space: nowrap;
+    }
+    .btn-remover {
+      background: none; border: 1px solid #2d3148; color: #94a3b8;
+      font-size: 0.65rem; font-weight: 600; padding: 0.2rem 0.5rem;
+      border-radius: 5px; cursor: pointer; margin-left: auto; flex-shrink: 0;
+    }
+    .btn-remover:active { background: #f8717122; color: #f87171; border-color: #f8717144; }
+
+    /* Candidatos scroll */
+    .cli-scroll { display: flex; gap: 0.5rem; padding: 0.1rem 0 0.4rem; overflow-x: auto; }
     .cli-scroll::-webkit-scrollbar { height: 3px; }
     .cli-scroll::-webkit-scrollbar-thumb { background: #2d3148; border-radius: 2px; }
     .cli-card {
       flex-shrink: 0; width: 72px; display: flex; flex-direction: column;
-      align-items: center; gap: 0.2rem;
+      align-items: center; gap: 0.2rem; cursor: pointer;
     }
+    .cli-card:active { opacity: 0.7; }
     .cli-photo {
       width: 52px; height: 52px; border-radius: 8px; object-fit: cover;
       background: #0f1117; border: 1px solid #2d3148; display: block;
@@ -91,15 +117,55 @@
     .cli-nome { font-size: 0.65rem; color: #e2e8f0; text-align: center; white-space: nowrap;
                 overflow: hidden; text-overflow: ellipsis; width: 100%; }
     .cli-sub { font-size: 0.58rem; color: #64748b; text-align: center; }
+
+    /* Confirmado mini card */
+    .conf-photo {
+      width: 40px; height: 40px; border-radius: 6px; object-fit: cover;
+      background: #0f1117; border: 1px solid #2d3148; flex-shrink: 0;
+    }
+    .conf-ph {
+      width: 40px; height: 40px; border-radius: 6px; background: #1e2130;
+      border: 1px solid #2d3148; display: flex; align-items: center; justify-content: center;
+      color: #334155; font-size: 0.5rem; flex-shrink: 0;
+    }
+    .conf-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.05rem; }
+    .conf-id { font-size: 0.62rem; font-weight: 700; color: #7c86ff; }
+    .conf-nome { font-size: 0.72rem; font-weight: 600; color: #e2e8f0;
+                 white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* Busca manual */
+    .busca-row { display: flex; align-items: center; gap: 0.5rem; }
+    .busca-input {
+      flex: 1; background: #0f1117; border: 1px solid #2d3148;
+      color: #e2e8f0; font-size: 0.82rem; padding: 0.35rem 0.6rem;
+      border-radius: 6px; outline: none; min-width: 0;
+    }
+    .busca-input:focus { border-color: #7c86ff88; }
+    .busca-input::placeholder { color: #334155; }
+    .btn-buscar {
+      background: none; border: 1px solid #7c86ff55; color: #7c86ff;
+      font-size: 0.75rem; font-weight: 600; padding: 0.35rem 0.7rem;
+      border-radius: 6px; cursor: pointer; white-space: nowrap; flex-shrink: 0;
+    }
+    .btn-buscar:active { background: #7c86ff22; }
+    .busca-preview { margin-top: 0.4rem; }
+    .busca-erro { font-size: 0.72rem; color: #f87171; margin-top: 0.3rem; }
+    .btn-confirmar {
+      background: #10b98122; border: 1px solid #10b98144; color: #34d399;
+      font-size: 0.68rem; font-weight: 700; padding: 0.25rem 0.55rem;
+      border-radius: 5px; cursor: pointer; white-space: nowrap; flex-shrink: 0;
+    }
+    .btn-confirmar:active { background: #10b98133; }
+
+    .nenhum { font-size: 0.72rem; color: #475569; }
+
+    /* Chips */
+    .chip { font-size: 0.55rem; font-weight: 600; padding: 0.1rem 0.3rem;
+            border-radius: 999px; white-space: nowrap; }
     .chip-g-M { background:#3b82f622; color:#60a5fa; border:1px solid #3b82f644; }
     .chip-g-F { background:#ec489922; color:#f472b6; border:1px solid #ec489944; }
     .chip-g-A { background:#64748b22; color:#94a3b8; border:1px solid #64748b44; }
-    .chip-id  { background:#10b98122; color:#34d399; border:1px solid #10b98144; }
-    .mini-chip {
-      font-size: 0.55rem; font-weight: 600; padding: 0.1rem 0.3rem;
-      border-radius: 999px; white-space: nowrap;
-    }
-    .nenhum { font-size: 0.75rem; color: #475569; padding: 0.5rem 1rem 0.75rem; }
+    .chip-idade { background:#10b98122; color:#34d399; border:1px solid #10b98144; }
 
     /* Update banner */
     .upd-banner {
@@ -156,7 +222,7 @@
           </div>
           <div class="nf-row">
             <span class="nf-label">{{ nf.itens }} iten{{ 's' if nf.itens != 1 else '' }}</span>
-            <span class="nf-label">{{ nf.clientes | length }} cliente(s)</span>
+            <span class="nf-label">{{ nf.candidatos | length }} candidato(s)</span>
           </div>
         </div>
         <button class="btn-itens" onclick="toggleItens(this, '{{ nf.documento }}')">Itens</button>
@@ -164,26 +230,75 @@
 
       <div class="nf-itens" id="itens-{{ nf.documento }}"></div>
 
-      {% if nf.clientes %}
-        <div class="cli-sep"><span class="cli-sep-label">Clientes detectados</span></div>
-        <div class="cli-scroll">
-          {% for cli in nf.clientes %}
-          <div class="cli-card">
-            {% if cli.foto %}
-              <img class="cli-photo" src="{{ cli.foto }}" alt=""
-                   onerror="this.outerHTML='<div class=cli-ph>sem foto</div>'" />
-            {% else %}
-              <div class="cli-ph">sem foto</div>
-            {% endif %}
-            <span class="cli-nome" title="{{ cli.nome or '' }}">{{ cli.nome or '—' }}</span>
-            <span class="cli-sub">ID {{ cli.id_unico }}</span>
-            <span class="cli-sub">{{ cli.created_at.strftime('%H:%M') if cli.created_at else '' }}</span>
+      {# ---- Comprador confirmado ---- #}
+      <div class="secao">
+        <div class="secao-label">
+          Comprador confirmado
+          <span class="confirmado-badge">✓ salvo</span>
+        </div>
+        <div id="confirmado-{{ nf.documento }}">
+          {% if nf.pessoa_confirmada %}
+            {% set p = nf.pessoa_confirmada %}
+            <div class="confirmado-card">
+              {% if p.foto %}
+                <img class="conf-photo" src="{{ p.foto }}" alt=""
+                     onerror="this.outerHTML='<div class=conf-ph>sem foto</div>'" />
+              {% else %}
+                <div class="conf-ph">sem foto</div>
+              {% endif %}
+              <div class="conf-info">
+                <span class="conf-id">ID {{ p.id_unico }}</span>
+                <span class="conf-nome">{{ p.nome or '—' }}</span>
+              </div>
+              <button class="btn-remover" onclick="removerPessoa('{{ nf.documento }}')">Remover</button>
+            </div>
+          {% else %}
+            <span class="nenhum">Nenhum comprador confirmado.</span>
+          {% endif %}
+        </div>
+      </div>
+
+      {# ---- Candidatos ---- #}
+      {% if nf.candidatos %}
+        <div class="secao">
+          <div class="secao-label">
+            Detectados <span class="hint">± 5 min · todas as câmeras</span>
           </div>
-          {% endfor %}
+          <div class="cli-scroll">
+            {% for cli in nf.candidatos %}
+            <div class="cli-card" onclick="confirmarPessoa('{{ nf.documento }}', {{ cli.id_unico }})"
+                 title="Confirmar como comprador">
+              {% if cli.foto %}
+                <img class="cli-photo" src="{{ cli.foto }}" alt=""
+                     onerror="this.outerHTML='<div class=cli-ph>sem foto</div>'" />
+              {% else %}
+                <div class="cli-ph">sem foto</div>
+              {% endif %}
+              <span class="cli-nome" title="{{ cli.nome or '' }}">{{ cli.nome or '—' }}</span>
+              <span class="cli-sub">ID {{ cli.id_unico }}</span>
+              <span class="cli-sub">{{ cli.created_at.strftime('%H:%M') if cli.created_at else '' }}</span>
+            </div>
+            {% endfor %}
+          </div>
         </div>
       {% else %}
-        <div class="nenhum">Nenhum cliente detectado.</div>
+        <div class="secao">
+          <span class="nenhum">Nenhum cliente detectado no período.</span>
+        </div>
       {% endif %}
+
+      {# ---- Busca manual ---- #}
+      <div class="secao">
+        <div class="secao-label">Informar person ID</div>
+        <div class="busca-row">
+          <input class="busca-input" type="number" min="1"
+                 id="pid-{{ nf.documento }}" placeholder="ex: 42"
+                 onkeydown="if(event.key==='Enter') buscarPessoa('{{ nf.documento }}')" />
+          <button class="btn-buscar" onclick="buscarPessoa('{{ nf.documento }}')">Buscar</button>
+        </div>
+        <div class="busca-preview" id="preview-{{ nf.documento }}"></div>
+      </div>
+
     </div>
     {% endfor %}
   {% endif %}
@@ -222,19 +337,109 @@
     panel.innerHTML = '<div class="it-loading">Carregando…</div>';
     fetch(`/camera300/tracks/caixa/nf/${encodeURIComponent(doc)}`)
       .then(r => r.json())
-      .then(data => {
-        if (!data.itens || !data.itens.length) {
+      .then(itens => {
+        if (!itens || !itens.length) {
           panel.innerHTML = '<div class="it-loading" style="padding:0.5rem 0">Sem itens.</div>';
           return;
         }
         let html = '<table class="itens-table"><thead><tr><th>Cód.</th><th>Produto</th><th class="num">Qtd</th><th class="val">Valor</th></tr></thead><tbody>';
-        for (const it of data.itens) {
-          html += `<tr><td class="cod">${it.codigo || '—'}</td><td>${it.produto || '—'}</td><td class="num">${it.quantidade ?? ''}</td><td class="val">R$ ${it.valor_unitario != null ? Number(it.valor_unitario).toFixed(2).replace('.', ',') : '—'}</td></tr>`;
+        for (const it of itens) {
+          const val = it.valor_unitario != null ? Number(it.valor_unitario).toFixed(2).replace('.', ',') : '—';
+          html += `<tr><td class="cod">${it.cod_produto || '—'}</td><td>${it.produto_nome || '—'}</td><td class="num">${it.quantidade ?? ''}</td><td class="val">R$ ${val}</td></tr>`;
         }
         html += '</tbody></table>';
         panel.innerHTML = html;
       })
       .catch(() => { panel.innerHTML = '<div class="it-error">Erro ao carregar itens.</div>'; });
+  }
+
+  async function confirmarPessoa(doc, personId) {
+    try {
+      const r = await fetch(`/camera300/tracks/caixa/nf/${encodeURIComponent(doc)}/pessoa`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ person_id: personId }),
+      });
+      const data = await r.json();
+      if (!r.ok) { alert('Erro: ' + (data.error || r.status)); return; }
+      atualizarConfirmado(doc, data);
+      limparPreview(doc);
+    } catch (e) {
+      alert('Erro de comunicação.');
+    }
+  }
+
+  async function removerPessoa(doc) {
+    try {
+      const r = await fetch(`/camera300/tracks/caixa/nf/${encodeURIComponent(doc)}/pessoa`, {
+        method: 'DELETE',
+      });
+      if (!r.ok) { alert('Erro ao remover.'); return; }
+      atualizarConfirmado(doc, null);
+    } catch (e) {
+      alert('Erro de comunicação.');
+    }
+  }
+
+  async function buscarPessoa(doc) {
+    const input   = document.getElementById('pid-' + doc);
+    const preview = document.getElementById('preview-' + doc);
+    const pid     = parseInt(input.value, 10);
+    if (!pid || pid < 1) {
+      preview.innerHTML = '<div class="busca-erro">Informe um ID válido.</div>';
+      return;
+    }
+    preview.innerHTML = '<span class="nenhum">Buscando…</span>';
+    try {
+      const r = await fetch(`/camera300/tracks/caixa/pessoa/${pid}`);
+      const data = await r.json();
+      if (!r.ok) {
+        preview.innerHTML = `<div class="busca-erro">${data.error || 'Pessoa não encontrada.'}</div>`;
+        return;
+      }
+      const foto = data.foto
+        ? `<img class="conf-photo" src="${data.foto}" alt="" onerror="this.outerHTML='<div class=conf-ph>sem foto</div>'" />`
+        : '<div class="conf-ph">sem foto</div>';
+      preview.innerHTML = `
+        <div class="confirmado-card" style="margin-top:0.4rem">
+          ${foto}
+          <div class="conf-info">
+            <span class="conf-id">ID ${data.id_unico}</span>
+            <span class="conf-nome">${data.nome || '—'}</span>
+          </div>
+          <button class="btn-confirmar" onclick="confirmarPessoa('${doc}', ${data.id_unico})">Confirmar</button>
+        </div>`;
+    } catch (e) {
+      preview.innerHTML = '<div class="busca-erro">Erro de comunicação.</div>';
+    }
+  }
+
+  function atualizarConfirmado(doc, pessoa) {
+    const el = document.getElementById('confirmado-' + doc);
+    if (!el) return;
+    if (!pessoa) {
+      el.innerHTML = '<span class="nenhum">Nenhum comprador confirmado.</span>';
+      return;
+    }
+    const foto = pessoa.foto
+      ? `<img class="conf-photo" src="${pessoa.foto}" alt="" onerror="this.outerHTML='<div class=conf-ph>sem foto</div>'" />`
+      : '<div class="conf-ph">sem foto</div>';
+    el.innerHTML = `
+      <div class="confirmado-card">
+        ${foto}
+        <div class="conf-info">
+          <span class="conf-id">ID ${pessoa.id_unico}</span>
+          <span class="conf-nome">${pessoa.nome || '—'}</span>
+        </div>
+        <button class="btn-remover" onclick="removerPessoa('${doc}')">Remover</button>
+      </div>`;
+  }
+
+  function limparPreview(doc) {
+    const preview = document.getElementById('preview-' + doc);
+    if (preview) preview.innerHTML = '';
+    const input = document.getElementById('pid-' + doc);
+    if (input) input.value = '';
   }
 </script>
 

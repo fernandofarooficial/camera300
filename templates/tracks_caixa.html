@@ -103,15 +103,141 @@
 
     .nf-value.valor { color: #34d399; }
 
+    /* ---- Botão itens NF ---- */
+    .btn-itens {
+      margin-left: auto;
+      background: none;
+      border: 1px solid #7c86ff55;
+      color: #7c86ff;
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 0.3rem 0.75rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+    .btn-itens:hover { background: #7c86ff22; }
+
+    /* ---- Painel de itens ---- */
+    .nf-itens-panel {
+      display: none;
+      border-top: 1px solid #2d3148;
+      padding: 0.75rem 1.25rem;
+    }
+    .nf-itens-panel.open { display: block; }
+
+    .itens-loading { font-size: 0.78rem; color: #475569; }
+    .itens-error   { font-size: 0.78rem; color: #f87171; }
+
+    .itens-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+    .itens-table th {
+      text-align: left;
+      font-size: 0.62rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #475569;
+      padding: 0 0.5rem 0.4rem 0;
+      border-bottom: 1px solid #2d3148;
+    }
+    .itens-table td {
+      padding: 0.35rem 0.5rem 0.35rem 0;
+      border-bottom: 1px solid #1a2230;
+      color: #e2e8f0;
+      vertical-align: top;
+    }
+    .itens-table tr:last-child td { border-bottom: none; }
+    .itens-table td.cod  { color: #7c86ff; font-weight: 700; white-space: nowrap; }
+    .itens-table td.num  { text-align: right; white-space: nowrap; }
+    .itens-table td.val  { text-align: right; color: #34d399; white-space: nowrap; }
+
+    /* ---- Corpo do cartão ---- */
     .nf-body {
-      padding: 0.85rem 1.25rem;
-      min-height: 3rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
     }
 
-    .clientes-lista {
+    /* ---- Seção: label interno ---- */
+    .secao {
+      padding: 0.6rem 1.25rem;
+      border-top: 1px solid #2d3148;
+    }
+    .secao:first-child { border-top: none; }
+
+    .secao-label {
+      font-size: 0.6rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #475569;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .secao-label .hint {
+      font-weight: 400;
+      color: #334155;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+
+    /* ---- Pessoa confirmada ---- */
+    .confirmado-card {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      background: #0d1f17;
+      border: 1px solid #10b98144;
+      border-radius: 8px;
+      padding: 0.5rem 0.75rem;
+      max-width: 420px;
+    }
+
+    .confirmado-badge {
+      font-size: 0.58rem;
+      font-weight: 700;
+      padding: 0.1rem 0.4rem;
+      border-radius: 999px;
+      background: #10b98122;
+      color: #34d399;
+      border: 1px solid #10b98144;
+      white-space: nowrap;
+    }
+
+    .confirmado-acoes {
+      display: flex;
+      gap: 0.4rem;
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+
+    .btn-acao {
+      background: none;
+      border: 1px solid #2d3148;
+      color: #94a3b8;
+      font-size: 0.68rem;
+      font-weight: 600;
+      padding: 0.2rem 0.55rem;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+      white-space: nowrap;
+    }
+    .btn-acao:hover { background: #2d3148; color: #e2e8f0; }
+    .btn-acao.danger:hover { background: #f8717122; color: #f87171; border-color: #f8717144; }
+
+    /* ---- Candidatos ---- */
+    .candidatos-lista {
       display: flex;
       flex-wrap: wrap;
-      gap: 0.75rem;
+      gap: 0.6rem;
     }
 
     .nenhum {
@@ -120,7 +246,7 @@
       font-style: italic;
     }
 
-    /* ---- Mini-card de cliente ---- */
+    /* ---- Mini-card de pessoa ---- */
     .cli-card {
       display: flex;
       align-items: center;
@@ -129,8 +255,17 @@
       border: 1px solid #2d3148;
       border-radius: 8px;
       padding: 0.4rem 0.75rem 0.4rem 0.4rem;
-      min-width: 180px;
-      max-width: 240px;
+      min-width: 175px;
+      max-width: 230px;
+    }
+
+    .cli-card.candidato {
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .cli-card.candidato:hover {
+      border-color: #7c86ff88;
+      background: #1a1d27;
     }
 
     .cli-foto {
@@ -209,58 +344,73 @@
       margin-top: 0.15rem;
     }
 
-    /* ---- Botão itens NF ---- */
-    .btn-itens {
-      margin-left: auto;
+    /* ---- Busca manual ---- */
+    .busca-form {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .busca-input {
+      background: #0f1117;
+      border: 1px solid #2d3148;
+      color: #e2e8f0;
+      font-size: 0.82rem;
+      padding: 0.3rem 0.6rem;
+      border-radius: 6px;
+      width: 120px;
+      outline: none;
+    }
+    .busca-input:focus { border-color: #7c86ff88; }
+    .busca-input::placeholder { color: #334155; }
+
+    .btn-buscar {
       background: none;
       border: 1px solid #7c86ff55;
       color: #7c86ff;
       font-size: 0.75rem;
       font-weight: 600;
-      padding: 0.3rem 0.75rem;
+      padding: 0.3rem 0.7rem;
       border-radius: 6px;
       cursor: pointer;
-      transition: background 0.2s;
+      transition: background 0.15s;
+    }
+    .btn-buscar:hover { background: #7c86ff22; }
+
+    .busca-preview {
+      margin-top: 0.5rem;
+    }
+
+    .busca-preview .cli-card {
+      max-width: 300px;
+    }
+
+    .btn-confirmar {
+      margin-left: auto;
+      background: #10b98122;
+      border: 1px solid #10b98144;
+      color: #34d399;
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 0.25rem 0.6rem;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background 0.15s;
       white-space: nowrap;
     }
-    .btn-itens:hover { background: #7c86ff22; }
+    .btn-confirmar:hover { background: #10b98133; }
 
-    /* ---- Painel de itens ---- */
-    .nf-itens-panel {
-      display: none;
-      border-top: 1px solid #2d3148;
-      padding: 0.75rem 1.25rem;
+    .busca-erro {
+      font-size: 0.75rem;
+      color: #f87171;
+      margin-top: 0.35rem;
     }
-    .nf-itens-panel.open { display: block; }
-
-    .itens-loading { font-size: 0.78rem; color: #475569; }
-    .itens-error   { font-size: 0.78rem; color: #f87171; }
-
-    .itens-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.8rem;
+    .busca-ok {
+      font-size: 0.75rem;
+      color: #34d399;
+      margin-top: 0.35rem;
     }
-    .itens-table th {
-      text-align: left;
-      font-size: 0.62rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: #475569;
-      padding: 0 0.5rem 0.4rem 0;
-      border-bottom: 1px solid #2d3148;
-    }
-    .itens-table td {
-      padding: 0.35rem 0.5rem 0.35rem 0;
-      border-bottom: 1px solid #1a2230;
-      color: #e2e8f0;
-      vertical-align: top;
-    }
-    .itens-table tr:last-child td { border-bottom: none; }
-    .itens-table td.cod  { color: #7c86ff; font-weight: 700; white-space: nowrap; }
-    .itens-table td.num  { text-align: right; white-space: nowrap; }
-    .itens-table td.val  { text-align: right; color: #34d399; white-space: nowrap; }
   </style>
 </head>
 <body>
@@ -304,8 +454,8 @@
               <span class="nf-value valor">R$ {{ '%.2f'|format(nf.valor) | replace('.', ',') }}</span>
             </div>
             <div class="nf-field">
-              <span class="nf-label">Clientes detectados</span>
-              <span class="nf-value">{{ nf.clientes | length }}</span>
+              <span class="nf-label">Candidatos</span>
+              <span class="nf-value">{{ nf.candidatos | length }}</span>
             </div>
           </div>
           <button class="btn-itens"
@@ -318,46 +468,103 @@
         <div class="nf-itens-panel" id="itens-{{ nf.documento }}"></div>
 
         <div class="nf-body">
-          {% if nf.clientes %}
-            <div class="clientes-lista">
-              {% for cli in nf.clientes %}
-                <div class="cli-card">
-                  {% if cli.foto %}
-                    <img class="cli-foto" src="{{ cli.foto }}"
+
+          {# ---- Comprador confirmado ---- #}
+          <div class="secao" id="secao-confirmado-{{ nf.documento }}">
+            <div class="secao-label">
+              Comprador confirmado
+              <span class="confirmado-badge">✓ salvo</span>
+            </div>
+            <div id="confirmado-{{ nf.documento }}">
+              {% if nf.pessoa_confirmada %}
+                {% set p = nf.pessoa_confirmada %}
+                <div class="confirmado-card">
+                  {% if p.foto %}
+                    <img class="cli-foto" src="{{ p.foto }}"
                          onerror="this.outerHTML='<div class=cli-foto-placeholder>sem foto</div>'"
-                         alt="ID {{ cli.id_unico }}" />
+                         alt="ID {{ p.id_unico }}" />
                   {% else %}
                     <div class="cli-foto-placeholder">sem foto</div>
                   {% endif %}
-
                   <div class="cli-info">
-                    <span class="cli-id">ID {{ cli.id_unico }}</span>
-                    <span class="cli-nome" title="{{ cli.nome or '' }}">{{ cli.nome or '—' }}</span>
-                    {% if cli.apelido %}
-                      <span class="cli-apelido">{{ cli.apelido }}</span>
-                    {% endif %}
+                    <span class="cli-id">ID {{ p.id_unico }}</span>
+                    <span class="cli-nome" title="{{ p.nome or '' }}">{{ p.nome or '—' }}</span>
+                    {% if p.apelido %}<span class="cli-apelido">{{ p.apelido }}</span>{% endif %}
                     <div class="cli-meta">
-                      {% if cli.genero %}
-                        <span class="chip chip-g-{{ cli.genero }}">
-                          {%- if cli.genero == 'M' %}Masc
-                          {%- elif cli.genero == 'F' %}Fem
-                          {%- else %}Anôn{%- endif %}
+                      {% if p.genero %}
+                        <span class="chip chip-g-{{ p.genero }}">
+                          {%- if p.genero == 'M' %}Masc{%- elif p.genero == 'F' %}Fem{%- else %}Anôn{%- endif %}
                         </span>
                       {% endif %}
-                      {% if cli.idade %}
-                        <span class="chip chip-idade">{{ cli.idade }}a</span>
-                      {% endif %}
+                      {% if p.idade %}<span class="chip chip-idade">{{ p.idade }}a</span>{% endif %}
                     </div>
-                    <span class="cli-ts">{{ cli.created_at.strftime('%H:%M:%S') if cli.created_at else '' }}</span>
+                  </div>
+                  <div class="confirmado-acoes">
+                    <button class="btn-acao danger"
+                            onclick="removerPessoa('{{ nf.documento }}')">Remover</button>
                   </div>
                 </div>
-              {% endfor %}
+              {% else %}
+                <span class="nenhum">Nenhum comprador confirmado.</span>
+              {% endif %}
             </div>
-          {% else %}
-            <span class="nenhum">Nenhum cliente detectado na câmera Caixa neste horário (±2 min).</span>
-          {% endif %}
-        </div>
+          </div>
 
+          {# ---- Candidatos detectados ---- #}
+          <div class="secao">
+            <div class="secao-label">
+              Detectados no período
+              <span class="hint">± 5 min · todas as câmeras</span>
+            </div>
+            {% if nf.candidatos %}
+              <div class="candidatos-lista">
+                {% for cli in nf.candidatos %}
+                  <div class="cli-card candidato"
+                       onclick="confirmarPessoa('{{ nf.documento }}', {{ cli.id_unico }})"
+                       title="Clique para confirmar como comprador">
+                    {% if cli.foto %}
+                      <img class="cli-foto" src="{{ cli.foto }}"
+                           onerror="this.outerHTML='<div class=cli-foto-placeholder>sem foto</div>'"
+                           alt="ID {{ cli.id_unico }}" />
+                    {% else %}
+                      <div class="cli-foto-placeholder">sem foto</div>
+                    {% endif %}
+                    <div class="cli-info">
+                      <span class="cli-id">ID {{ cli.id_unico }}</span>
+                      <span class="cli-nome" title="{{ cli.nome or '' }}">{{ cli.nome or '—' }}</span>
+                      {% if cli.apelido %}<span class="cli-apelido">{{ cli.apelido }}</span>{% endif %}
+                      <div class="cli-meta">
+                        {% if cli.genero %}
+                          <span class="chip chip-g-{{ cli.genero }}">
+                            {%- if cli.genero == 'M' %}Masc{%- elif cli.genero == 'F' %}Fem{%- else %}Anôn{%- endif %}
+                          </span>
+                        {% endif %}
+                        {% if cli.idade %}<span class="chip chip-idade">{{ cli.idade }}a</span>{% endif %}
+                      </div>
+                      <span class="cli-ts">{{ cli.created_at.strftime('%H:%M:%S') if cli.created_at else '' }}</span>
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <span class="nenhum">Nenhum cliente detectado no período.</span>
+            {% endif %}
+          </div>
+
+          {# ---- Informar person ID manualmente ---- #}
+          <div class="secao">
+            <div class="secao-label">Informar person ID</div>
+            <div class="busca-form">
+              <input class="busca-input" type="number" min="1"
+                     id="pid-{{ nf.documento }}"
+                     placeholder="ex: 42"
+                     onkeydown="if(event.key==='Enter') buscarPessoa('{{ nf.documento }}')" />
+              <button class="btn-buscar" onclick="buscarPessoa('{{ nf.documento }}')">Buscar</button>
+            </div>
+            <div class="busca-preview" id="preview-{{ nf.documento }}"></div>
+          </div>
+
+        </div>
       </div>
     {% endfor %}
 
@@ -375,10 +582,7 @@
     const open  = panel.classList.toggle('open');
     btn.textContent = open ? 'Fechar' : 'Itens';
     if (!open) return;
-
-    // já carregou
     if (panel.dataset.loaded) return;
-
     panel.innerHTML = '<span class="itens-loading">Carregando…</span>';
     fetch('/camera300/tracks/caixa/nf/' + encodeURIComponent(doc))
       .then(r => r.json())
@@ -405,6 +609,108 @@
       .catch(() => {
         panel.innerHTML = '<span class="itens-error">Erro ao carregar itens.</span>';
       });
+  }
+
+  async function confirmarPessoa(doc, personId) {
+    try {
+      const r = await fetch(`/camera300/tracks/caixa/nf/${encodeURIComponent(doc)}/pessoa`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ person_id: personId }),
+      });
+      const data = await r.json();
+      if (!r.ok) { alert('Erro: ' + (data.error || r.status)); return; }
+      atualizarConfirmado(doc, data);
+      limparPreview(doc);
+    } catch (e) {
+      alert('Erro de comunicação.');
+    }
+  }
+
+  async function removerPessoa(doc) {
+    try {
+      const r = await fetch(`/camera300/tracks/caixa/nf/${encodeURIComponent(doc)}/pessoa`, {
+        method: 'DELETE',
+      });
+      if (!r.ok) { alert('Erro ao remover.'); return; }
+      atualizarConfirmado(doc, null);
+    } catch (e) {
+      alert('Erro de comunicação.');
+    }
+  }
+
+  async function buscarPessoa(doc) {
+    const input   = document.getElementById('pid-' + doc);
+    const preview = document.getElementById('preview-' + doc);
+    const pid     = parseInt(input.value, 10);
+    if (!pid || pid < 1) { preview.innerHTML = '<span class="busca-erro">Informe um ID válido.</span>'; return; }
+    preview.innerHTML = '<span class="nenhum">Buscando…</span>';
+    try {
+      const r = await fetch(`/camera300/tracks/caixa/pessoa/${pid}`);
+      const data = await r.json();
+      if (!r.ok) {
+        preview.innerHTML = `<span class="busca-erro">${data.error || 'Pessoa não encontrada.'}</span>`;
+        return;
+      }
+      const foto = data.foto
+        ? `<img class="cli-foto" src="${data.foto}" onerror="this.outerHTML='<div class=cli-foto-placeholder>sem foto</div>'" alt="ID ${data.id_unico}" />`
+        : '<div class="cli-foto-placeholder">sem foto</div>';
+      const generoLabel = data.genero === 'M' ? 'Masc' : data.genero === 'F' ? 'Fem' : 'Anôn';
+      const chips = [
+        data.genero ? `<span class="chip chip-g-${data.genero}">${generoLabel}</span>` : '',
+        data.idade  ? `<span class="chip chip-idade">${data.idade}a</span>` : '',
+      ].join('');
+      preview.innerHTML = `
+        <div class="cli-card" style="max-width:320px; margin-top:0.4rem">
+          ${foto}
+          <div class="cli-info">
+            <span class="cli-id">ID ${data.id_unico}</span>
+            <span class="cli-nome">${data.nome || '—'}</span>
+            ${data.apelido ? `<span class="cli-apelido">${data.apelido}</span>` : ''}
+            ${chips ? `<div class="cli-meta">${chips}</div>` : ''}
+          </div>
+          <button class="btn-confirmar" onclick="confirmarPessoa('${doc}', ${data.id_unico})">Confirmar</button>
+        </div>`;
+    } catch (e) {
+      preview.innerHTML = '<span class="busca-erro">Erro de comunicação.</span>';
+    }
+  }
+
+  function atualizarConfirmado(doc, pessoa) {
+    const el = document.getElementById('confirmado-' + doc);
+    if (!el) return;
+    if (!pessoa) {
+      el.innerHTML = '<span class="nenhum">Nenhum comprador confirmado.</span>';
+      return;
+    }
+    const foto = pessoa.foto
+      ? `<img class="cli-foto" src="${pessoa.foto}" onerror="this.outerHTML='<div class=cli-foto-placeholder>sem foto</div>'" alt="ID ${pessoa.id_unico}" />`
+      : '<div class="cli-foto-placeholder">sem foto</div>';
+    const generoLabel = pessoa.genero === 'M' ? 'Masc' : pessoa.genero === 'F' ? 'Fem' : 'Anôn';
+    const chips = [
+      pessoa.genero ? `<span class="chip chip-g-${pessoa.genero}">${generoLabel}</span>` : '',
+      pessoa.idade  ? `<span class="chip chip-idade">${pessoa.idade}a</span>` : '',
+    ].join('');
+    el.innerHTML = `
+      <div class="confirmado-card">
+        ${foto}
+        <div class="cli-info">
+          <span class="cli-id">ID ${pessoa.id_unico}</span>
+          <span class="cli-nome" title="${pessoa.nome || ''}">${pessoa.nome || '—'}</span>
+          ${pessoa.apelido ? `<span class="cli-apelido">${pessoa.apelido}</span>` : ''}
+          ${chips ? `<div class="cli-meta">${chips}</div>` : ''}
+        </div>
+        <div class="confirmado-acoes">
+          <button class="btn-acao danger" onclick="removerPessoa('${doc}')">Remover</button>
+        </div>
+      </div>`;
+  }
+
+  function limparPreview(doc) {
+    const preview = document.getElementById('preview-' + doc);
+    if (preview) preview.innerHTML = '';
+    const input = document.getElementById('pid-' + doc);
+    if (input) input.value = '';
   }
 </script>
 </body>

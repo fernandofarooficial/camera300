@@ -1335,8 +1335,6 @@ def tracks_export_download():
 @tracks_bp.route("/tracks/caixa")
 @tracks_bp.route("/m/tracks/caixa")
 def tracks_caixa():
-    from datetime import timedelta
-
     # 1. Buscar as 25 últimas notas fiscais (PostgreSQL microvix)
     notas = []
     pg_conn = None
@@ -1346,10 +1344,10 @@ def tracks_caixa():
         pg_cur.execute("""
             SELECT
                 documento,
-                COUNT(*)                                       AS itens,
-                ROUND(SUM(valor_liquido)::numeric, 2)            AS valor,
-                data_lancamento::date                          AS data,
-                hora_lancamento                                AS hora,
+                COUNT(*)                                        AS itens,
+                ROUND(SUM(valor_liquido)::numeric, 2)           AS valor,
+                data_lancamento::date                           AS data,
+                hora_lancamento                                 AS hora,
                 (data_lancamento::date + hora_lancamento::time) AS nf_dt
             FROM microvix_movimento
             WHERE cod_natureza_operacao = '10030'
@@ -1362,13 +1360,14 @@ def tracks_caixa():
         """)
         for row in pg_cur.fetchall():
             notas.append({
-                "documento": row[0],
-                "itens":     int(row[1]),
-                "valor":     float(row[2]) if row[2] is not None else 0.0,
-                "data":      row[3],
-                "hora":      (row[4] or "").strip(),
-                "nf_dt":     row[5],
-                "clientes":  [],
+                "documento":         row[0],
+                "itens":             int(row[1]),
+                "valor":             float(row[2]) if row[2] is not None else 0.0,
+                "data":              row[3],
+                "hora":              (row[4] or "").strip(),
+                "nf_dt":             row[5],
+                "candidatos":        [],
+                "pessoa_confirmada": None,
             })
         pg_cur.close()
     except Exception as e:
@@ -1377,16 +1376,46 @@ def tracks_caixa():
         if pg_conn:
             release_pg_conn(pg_conn)
 
-    # 2. Buscar registros faciais (câmera Caixa, person_type_id='C') no intervalo total ±2 min
     if notas:
-        dts = [n["nf_dt"] for n in notas if n["nf_dt"] is not None]
-        if dts:
-            dt_min = min(dts) - timedelta(minutes=1)
-            dt_max = max(dts) + timedelta(minutes=1)
+        docs = [n["documento"] for n in notas]
+        dts  = [n["nf_dt"] for n in notas if n["nf_dt"] is not None]
+        try:
+            conn = get_faciais_conn()
             try:
-                conn = get_faciais_conn()
-                try:
-                    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+                # 2. Pessoas já confirmadas em faciais.person_purchases
+                cursor.execute("""
+                    SELECT
+                        pp.bill,
+                        p.person_id   AS id_unico,
+                        p.full_name   AS nome,
+                        p.nickname    AS apelido,
+                        p.gender_id   AS genero,
+                        p.age         AS idade,
+                        r.image_path
+                    FROM person_purchases pp
+                    JOIN people p ON p.person_id = pp.person_id
+                    LEFT JOIN LATERAL (
+                        SELECT image_path
+                        FROM detection_records
+                        WHERE person_id = pp.person_id
+                          AND image_path IS NOT NULL
+                        ORDER BY created_at DESC
+                        LIMIT 1
+                    ) r ON TRUE
+                    WHERE pp.store_id = 1
+                      AND pp.bill = ANY(%s)
+                      AND pp.person_id IS NOT NULL
+                """, (docs,))
+                confirmados = {row["bill"]: dict(row) for row in cursor.fetchall()}
+                for v in confirmados.values():
+                    v["foto"] = HEIMDALL_IMAGE_BASE + v["image_path"] if v["image_path"] else None
+
+                # 3. Candidatos: todas as câmeras, janela ±5 min, tipo Cliente
+                if dts:
+                    dt_min = min(dts) - timedelta(minutes=5)
+                    dt_max = max(dts) + timedelta(minutes=5)
                     cursor.execute("""
                         SELECT
                             r.detection_record_id   AS id,
@@ -1398,40 +1427,156 @@ def tracks_caixa():
                             p.gender_id             AS genero,
                             p.age                   AS idade
                         FROM detection_records r
-                        JOIN cameras c        ON c.camera_id       = r.camera_id
-                        JOIN camera_types tc  ON tc.camera_type_id = c.camera_type_id
-                        JOIN people p         ON p.person_id        = r.person_id
-                        WHERE LOWER(tc.camera_type_name) = 'caixa'
-                          AND p.person_type_id = 'C'
+                        JOIN people p ON p.person_id = r.person_id
+                        WHERE p.person_type_id = 'C'
                           AND r.created_at BETWEEN %s AND %s
                         ORDER BY r.created_at DESC
                     """, (dt_min, dt_max))
-                    registros = cursor.fetchall()
-                    cursor.close()
-                    conn.rollback()
-                finally:
-                    release_faciais_conn(conn)
-
-                registros = [dict(r) for r in registros]
-                for reg in registros:
-                    reg["foto"] = HEIMDALL_IMAGE_BASE + reg["image_path"] if reg["image_path"] else None
-
-                for nota in notas:
-                    if nota["nf_dt"] is None:
-                        continue
-                    janela_ini = nota["nf_dt"] - timedelta(minutes=1)
-                    janela_fim = nota["nf_dt"] + timedelta(minutes=1)
-                    seen = set()
+                    registros = [dict(r) for r in cursor.fetchall()]
                     for reg in registros:
-                        if janela_ini <= reg["created_at"] <= janela_fim:
-                            if reg["id_unico"] not in seen:
-                                seen.add(reg["id_unico"])
-                                nota["clientes"].append(reg)
-            except Exception as e:
-                print(f"[caixa] Erro faciais: {e}")
+                        reg["foto"] = HEIMDALL_IMAGE_BASE + reg["image_path"] if reg["image_path"] else None
+
+                    for nota in notas:
+                        nota["pessoa_confirmada"] = confirmados.get(nota["documento"])
+                        if nota["nf_dt"] is None:
+                            continue
+                        janela_ini = nota["nf_dt"] - timedelta(minutes=5)
+                        janela_fim = nota["nf_dt"] + timedelta(minutes=5)
+                        seen = set()
+                        for reg in registros:
+                            if janela_ini <= reg["created_at"] <= janela_fim:
+                                if reg["id_unico"] not in seen:
+                                    seen.add(reg["id_unico"])
+                                    nota["candidatos"].append(reg)
+                else:
+                    for nota in notas:
+                        nota["pessoa_confirmada"] = confirmados.get(nota["documento"])
+
+                cursor.close()
+                conn.rollback()
+            finally:
+                release_faciais_conn(conn)
+        except Exception as e:
+            print(f"[caixa] Erro faciais: {e}")
 
     tmpl = "m_caixa.html" if "/m/" in request.path else "tracks_caixa.html"
     return render_template(tmpl, notas=notas)
+
+
+@tracks_bp.route("/tracks/caixa/nf/<documento>/pessoa", methods=["POST"])
+@tracks_bp.route("/m/tracks/caixa/nf/<documento>/pessoa", methods=["POST"])
+def tracks_caixa_set_pessoa(documento):
+    """Grava ou altera o comprador confirmado de uma nota fiscal."""
+    data = request.get_json() or {}
+    try:
+        person_id = int(data["person_id"])
+    except (KeyError, ValueError, TypeError):
+        return jsonify({"error": "person_id inválido"}), 400
+
+    try:
+        conn = get_faciais_conn()
+        try:
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("""
+                INSERT INTO person_purchases (store_id, bill, person_id)
+                VALUES (1, %s, %s)
+                ON CONFLICT (store_id, bill) DO UPDATE SET person_id = EXCLUDED.person_id
+            """, (documento, person_id))
+            cur.execute("""
+                SELECT
+                    p.person_id   AS id_unico,
+                    p.full_name   AS nome,
+                    p.nickname    AS apelido,
+                    p.gender_id   AS genero,
+                    p.age         AS idade,
+                    r.image_path
+                FROM people p
+                LEFT JOIN LATERAL (
+                    SELECT image_path FROM detection_records
+                    WHERE person_id = p.person_id AND image_path IS NOT NULL
+                    ORDER BY created_at DESC LIMIT 1
+                ) r ON TRUE
+                WHERE p.person_id = %s
+            """, (person_id,))
+            row = cur.fetchone()
+            if not row:
+                conn.rollback()
+                return jsonify({"error": "Pessoa não encontrada"}), 404
+            result = dict(row)
+            result["foto"] = HEIMDALL_IMAGE_BASE + result["image_path"] if result["image_path"] else None
+            conn.commit()
+            cur.close()
+            return jsonify(result)
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            release_faciais_conn(conn)
+    except Exception as e:
+        print(f"[caixa/set_pessoa] Erro: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@tracks_bp.route("/tracks/caixa/nf/<documento>/pessoa", methods=["DELETE"])
+@tracks_bp.route("/m/tracks/caixa/nf/<documento>/pessoa", methods=["DELETE"])
+def tracks_caixa_del_pessoa(documento):
+    """Remove o comprador confirmado de uma nota fiscal."""
+    try:
+        conn = get_faciais_conn()
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                UPDATE person_purchases SET person_id = NULL
+                WHERE store_id = 1 AND bill = %s
+            """, (documento,))
+            conn.commit()
+            cur.close()
+            return jsonify({"ok": True})
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            release_faciais_conn(conn)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@tracks_bp.route("/tracks/caixa/pessoa/<int:person_id>")
+def tracks_caixa_get_pessoa(person_id):
+    """Busca detalhes de uma pessoa (tipo Cliente) pelo ID."""
+    try:
+        conn = get_faciais_conn()
+        try:
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("""
+                SELECT
+                    p.person_id   AS id_unico,
+                    p.full_name   AS nome,
+                    p.nickname    AS apelido,
+                    p.gender_id   AS genero,
+                    p.age         AS idade,
+                    r.image_path
+                FROM people p
+                LEFT JOIN LATERAL (
+                    SELECT image_path FROM detection_records
+                    WHERE person_id = p.person_id AND image_path IS NOT NULL
+                    ORDER BY created_at DESC LIMIT 1
+                ) r ON TRUE
+                WHERE p.person_id = %s
+                  AND p.person_type_id = 'C'
+            """, (person_id,))
+            row = cur.fetchone()
+            cur.close()
+            conn.rollback()
+            if not row:
+                return jsonify({"error": "Pessoa não encontrada"}), 404
+            result = dict(row)
+            result["foto"] = HEIMDALL_IMAGE_BASE + result["image_path"] if result["image_path"] else None
+            return jsonify(result)
+        finally:
+            release_faciais_conn(conn)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @tracks_bp.route("/tracks/caixa/nf/<documento>")
