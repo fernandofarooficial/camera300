@@ -27,8 +27,16 @@
       background: none; border: 1px solid #2d3148; color: #94a3b8;
       padding: 0 0.85rem; border-radius: 8px; font-size: 0.82rem;
       text-decoration: none; display: inline-flex; align-items: center; height: 38px;
+      flex-shrink: 0;
     }
     .mh-btn:active { background: #2d3148; }
+    .empresa-select {
+      flex: 1; min-width: 0; max-width: 160px;
+      background: #0f1117; border: 1px solid #2d3148; color: #94a3b8;
+      border-radius: 8px; padding: 0 0.5rem; font-size: 0.72rem;
+      height: 38px; cursor: pointer; outline: none;
+    }
+    .empresa-select:focus { border-color: #7c86ff55; }
 
     main { padding: 0.75rem; display: flex; flex-direction: column; gap: 0.75rem; }
     .empty { text-align: center; color: #475569; padding: 3rem 1rem; }
@@ -203,7 +211,10 @@
 
 <div class="mh">
   <h1>Caixa</h1>
-  <a class="mh-btn" href="/camera300/m/tracks/caixa">&#8635; Atualizar</a>
+  <select class="empresa-select" id="empresa-select" onchange="mudarEmpresa(this)">
+    <option value="">Empresa…</option>
+  </select>
+  <a class="mh-btn" href="/camera300/m/tracks/caixa">&#8635;</a>
 </div>
 
 <main>
@@ -440,6 +451,41 @@
     if (preview) preview.innerHTML = '';
     const input = document.getElementById('pid-' + doc);
     if (input) input.value = '';
+  }
+</script>
+
+<script>
+  // Aplica imediatamente a cor salva (evita flash)
+  (function () {
+    var bg = localStorage.getItem('empresa_bg');
+    if (bg) document.body.style.background = bg;
+  })();
+
+  // Carrega empresas e restaura seleção
+  fetch('/camera300/tracks/api/empresas')
+    .then(function (r) { return r.json(); })
+    .then(function (empresas) {
+      var sel = document.getElementById('empresa-select');
+      if (!sel) return;
+      var savedId = localStorage.getItem('empresa_id') || '';
+      empresas.forEach(function (e) {
+        var opt = document.createElement('option');
+        opt.value = e.company_id;
+        opt.dataset.bg = e.background_color;
+        opt.textContent = e.company_name;
+        if (String(e.company_id) === savedId) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    })
+    .catch(function () { /* silencia erros de rede */ });
+
+  function mudarEmpresa(sel) {
+    var opt = sel.options[sel.selectedIndex];
+    var bg = (opt && opt.dataset.bg) ? opt.dataset.bg : '#0f1117';
+    var id = opt ? opt.value : '';
+    document.body.style.background = bg;
+    localStorage.setItem('empresa_bg', bg);
+    localStorage.setItem('empresa_id', id);
   }
 </script>
 

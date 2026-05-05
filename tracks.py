@@ -1579,6 +1579,32 @@ def tracks_caixa_get_pessoa(person_id):
         return jsonify({"error": str(e)}), 500
 
 
+@tracks_bp.route("/tracks/api/empresas")
+def tracks_api_empresas():
+    """Retorna lista de empresas com a cor de fundo de cada tema."""
+    try:
+        conn = get_faciais_conn()
+        try:
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("""
+                SELECT
+                    c.company_id,
+                    c.company_name,
+                    COALESCE(t.background_color, '#0f1117') AS background_color
+                FROM companies c
+                LEFT JOIN company_themes t ON t.company_id = c.company_id
+                ORDER BY c.company_name
+            """)
+            rows = [dict(r) for r in cur.fetchall()]
+            cur.close()
+            conn.rollback()
+            return jsonify(rows)
+        finally:
+            release_faciais_conn(conn)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @tracks_bp.route("/tracks/caixa/nf/<documento>")
 def tracks_caixa_nf_itens(documento):
     pg_conn = None
