@@ -709,22 +709,22 @@ def _registrar_carga(conn, contagens: dict):
 def _sincronizar_person_purchases(pg_conn):
     """Insere notas anônimas em faciais.person_purchases e marca cancelamentos."""
     cur = pg_conn.cursor()
+
     cur.execute("""
-        SELECT DISTINCT documento, cancelado
+        SELECT DISTINCT documento
         FROM microvix_movimento
         WHERE cod_natureza_operacao = '10030'
-          AND tipo_transacao        = 'V'
+          AND tipo_transacao        IN ('P', 'V')
           AND excluido              = 'N'
+          AND cancelado             = 'N'
           AND cod_cliente           = '1'
     """)
-    rows = cur.fetchall()
+    active_bills = [row[0] for row in cur.fetchall()]
+
     cur.close()
 
-    if not rows:
+    if not active_bills:
         return 0
-
-    all_bills      = [(1, row[0]) for row in rows]
-    cancelled_bills = [row[0] for row in rows if row[1] != 'N']
 
     faciais_conn = get_faciais_conn()
     try:
@@ -733,17 +733,9 @@ def _sincronizar_person_purchases(pg_conn):
             fc,
             "INSERT INTO person_purchases (store_id, bill) VALUES (%s, %s)"
             " ON CONFLICT (store_id, bill) DO NOTHING",
-            all_bills,
+            [(1, b) for b in active_bills],
             page_size=500,
         )
-        if cancelled_bills:
-            psycopg2.extras.execute_batch(
-                fc,
-                "UPDATE person_purchases SET is_cancelled = TRUE"
-                " WHERE store_id = 1 AND bill = %s",
-                [(b,) for b in cancelled_bills],
-                page_size=500,
-            )
         faciais_conn.commit()
         fc.close()
     except Exception:
@@ -752,7 +744,7 @@ def _sincronizar_person_purchases(pg_conn):
     finally:
         release_faciais_conn(faciais_conn)
 
-    return len(all_bills)
+    return len(active_bills)
 
 
 # ---------------------------------------------------------------------------
