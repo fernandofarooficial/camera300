@@ -717,7 +717,7 @@ def _sincronizar_person_purchases(pg_conn):
           AND tipo_transacao        IN ('P', 'V')
           AND excluido              = 'N'
           AND cancelado             = 'N'
-          AND cod_cliente           = '1'
+          AND codigo_cliente        = '1'
     """)
     active_bills = [row[0] for row in cur.fetchall()]
 
