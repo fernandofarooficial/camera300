@@ -294,7 +294,7 @@
     <div class="card-header">Consultar Mapa de Calor</div>
     <div class="card-body">
       <form method="get" action="" id="form-heatmap" onsubmit="showLoading()">
-        <input type="hidden" name="camera_id" value="1" />
+        <input type="hidden" name="camera_id" value="6" />
         <div class="form-row">
           <div class="form-group">
             <label for="data_ini">Data / Hora Inicial</label>
@@ -328,8 +328,16 @@
   <!-- Stats -->
   <div class="stats-grid">
     <div class="stat-card">
-      <div class="stat-label">Pessoas Únicas</div>
-      <div class="stat-value">{{ resultado.resumo_geral.pessoas_unicas }}</div>
+      <div class="stat-label">Entradas</div>
+      <div class="stat-value">{{ resultado.resumo_geral.entrada }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Saídas</div>
+      <div class="stat-value">{{ resultado.resumo_geral.saida }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Total de Contagens</div>
+      <div class="stat-value">{{ resultado.resumo_geral.total_contagens }}</div>
     </div>
     <div class="stat-card">
       <div class="stat-label">Total de Pontos</div>
@@ -373,44 +381,38 @@
       <thead>
         <tr>
           <th>Área</th>
-          <th class="num">Pessoas Únicas</th>
-          <th class="num">% Pessoas</th>
-          <th>Pontos (proporção)</th>
-          <th class="num">Total de Pontos</th>
-          <th class="num">% Pontos</th>
+          <th>Tipo</th>
+          <th>Quantidade (proporção)</th>
+          <th class="num">Qtd</th>
+          <th class="num">%</th>
         </tr>
       </thead>
       <tbody>
-        {% set max_pontos   = resultado.resumo_por_area | map(attribute='total_pontos')   | max %}
-        {% set total_pessoas = resultado.resumo_geral.pessoas_unicas %}
-        {% set total_pontos  = resultado.resumo_geral.total_pontos %}
+        {% set max_qtd = resultado.resumo_por_area | map(attribute='quantidade') | max %}
+        {% set total_contagens = resultado.resumo_geral.total_contagens %}
         {% for area in resultado.resumo_por_area %}
-        {% set pct_pessoas = (area.pessoas_unicas / total_pessoas * 100) | round(1) if total_pessoas else 0 %}
-        {% set pct_pontos  = (area.total_pontos   / total_pontos  * 100) | round(1) if total_pontos  else 0 %}
+        {% set pct = (area.quantidade / total_contagens * 100) | round(1) if total_contagens else 0 %}
         <tr>
           <td>{{ area.area_nome }}</td>
-          <td class="num">{{ area.pessoas_unicas }}</td>
-          <td class="num pct">{{ pct_pessoas }}%</td>
+          <td>{{ area.tipo_contagem | title }}</td>
           <td>
             <div class="bar-wrap">
               <div class="bar-bg">
-                <div class="bar-fill" style="width: {{ (area.total_pontos / max_pontos * 100) | round(1) }}%"></div>
+                <div class="bar-fill" style="width: {{ (area.quantidade / max_qtd * 100) | round(1) if max_qtd else 0 }}%"></div>
               </div>
-              <span class="bar-num">{{ area.total_pontos }}</span>
+              <span class="bar-num">{{ area.quantidade }}</span>
             </div>
           </td>
-          <td class="num">{{ area.total_pontos }}</td>
-          <td class="num pct">{{ pct_pontos }}%</td>
+          <td class="num">{{ area.quantidade }}</td>
+          <td class="num pct">{{ pct }}%</td>
         </tr>
         {% endfor %}
       </tbody>
       <tfoot>
         <tr>
-          <td class="foot-label">Total</td>
-          <td class="num foot">{{ total_pessoas }}</td>
-          <td class="num foot">100%</td>
+          <td class="foot-label" colspan="2">Total</td>
           <td></td>
-          <td class="num foot">{{ total_pontos }}</td>
+          <td class="num foot">{{ total_contagens }}</td>
           <td class="num foot">100%</td>
         </tr>
       </tfoot>
