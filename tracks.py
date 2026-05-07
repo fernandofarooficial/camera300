@@ -1128,8 +1128,8 @@ def tracks_heatmap():
     resultado  = None
     erro       = None
     hoje       = datetime.now()
-    data_ini_def  = hoje.strftime("%Y-%m-%dT00:00")
-    data_fim_def  = hoje.strftime("%Y-%m-%dT23:59")
+    data_ini_def  = hoje.strftime("%Y-%m-%dT09:00")
+    data_fim_def  = hoje.strftime("%Y-%m-%dT18:00")
     camera_id_def = request.args.get("camera_id", "")
 
     camera_id = request.args.get("camera_id", "")
