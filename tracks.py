@@ -36,7 +36,7 @@ def _carregar_cameras():
                     ct.camera_type_id               AS id_tipo_camera,
                     ct.camera_type_name             AS tipo_camera,
                     s.store_id                      AS id_local,
-                    s.store_name                    AS nome_loja,
+                    s.store_short_name              AS nome_loja,
                     s.cep,
                     s.address_number                AS numero,
                     s.address_complement            AS complemento,
