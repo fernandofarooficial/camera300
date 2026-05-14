@@ -847,6 +847,9 @@
             <span class="occurrence-date">{{ oc.created_at or '—' }}</span>
             {% if oc.camera_id %}
               <span class="occurrence-date" style="color:#7c86ff">{{ cameras_map.get(oc.camera_id) or ('Câm. ' ~ oc.camera_id) }}</span>
+              {% if camera_store_map and camera_store_map.get(oc.camera_id) %}
+                <span class="occurrence-date" style="color:#94a3b8;font-size:0.58rem">{{ camera_store_map.get(oc.camera_id) }}</span>
+              {% endif %}
             {% endif %}
             {% if oc.face_det_score or oc.recognition_score %}
               <span class="occurrence-date" style="color:#22c55e;font-weight:700">
@@ -1351,6 +1354,7 @@
   const GENERO_MAP = { M: 'Masculino', F: 'Feminino', A: 'Anônimo' };
   const FLAG_MAP   = { C: 'Cliente',  A: 'Anônimo',  F: 'Franqueado', E: 'Empregado', K: 'Criança', P: 'Prestador' };
   const CAMERAS_MAP = {{ cameras_map | tojson }};
+  const CAMERA_STORE_MAP = {{ camera_store_map | tojson }};
 
   function abrirLightbox(imgEl, tipo) {
     const card = imgEl.closest('.person-card');
@@ -1423,6 +1427,7 @@
       html += '<div class="lb-section">Ocorrência</div>';
       if (ocDate)       html += row('Data',      ocDate);
       if (ocCam)        html += row('Câmera',    CAMERAS_MAP[parseInt(ocCam)] || ('Câm. ' + ocCam));
+      if (ocCam && CAMERA_STORE_MAP[parseInt(ocCam)]) html += row('Loja', CAMERA_STORE_MAP[parseInt(ocCam)]);
       if (ocScore)      html += row('Det.',      ocScore);
       if (ocRecgnScore) html += row('Recgn.',    ocRecgnScore);
       if (ocTrack)      html += row('Track ID',  ocTrack);

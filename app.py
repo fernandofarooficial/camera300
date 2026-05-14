@@ -7,7 +7,7 @@ import time
 
 from flask import Flask, jsonify, render_template, request, Response
 
-from tracks import tracks_bp, query_heimdall, HEIMDALL_IMAGE_BASE, get_best_face
+from tracks import tracks_bp, query_heimdall, HEIMDALL_IMAGE_BASE, get_best_face, CAMERA_STORE_MAP
 import psycopg2.extras
 from db import adequar_bases, admin_people
 from config import get_faciais_conn, release_faciais_conn, SCORE_MINIMO
@@ -69,16 +69,20 @@ def salvar_rosto(track_id, camera_id=None, log_id=None, json_record_id=None):
 
         # camera_id do match tem prioridade; usa o do payload como fallback
         camera_id = cam_from_match or camera_id
+        try:
+            store_id = CAMERA_STORE_MAP.get(int(camera_id)) if camera_id is not None else None
+        except (TypeError, ValueError):
+            store_id = None
         conn = get_faciais_conn()
         cursor = conn.cursor()
         cursor.execute(
             """INSERT INTO detection_records
                (track_id, camera_id, image_path, detection_score, recognition_score, log_id, json_record_id, store_id)
                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
-            (track_id, camera_id, image_path, face_det_score, face_recgn_score, log_id, json_record_id, 1),
+            (track_id, camera_id, image_path, face_det_score, face_recgn_score, log_id, json_record_id, store_id),
         )
         conn.commit()
-        admin_people(track_id, data=heimdall_data)
+        admin_people(track_id, data=heimdall_data, store_id=store_id)
         # tracer.trace(track_id, "salvar_rosto: foi chamada a função administrar pessoas")
     except Exception as e:
         # tracer.trace(track_id, f"salvar_rosto: ERRO → {e}")

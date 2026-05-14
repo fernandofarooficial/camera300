@@ -1,6 +1,6 @@
 import psycopg2.extras
 
-from tracks import query_heimdall, fmt_timestamp, get_best_face, GENDER_MAP
+from tracks import query_heimdall, fmt_timestamp, get_best_face, GENDER_MAP, STORE_NAME_MAP
 from config import get_faciais_conn, release_faciais_conn, FLAG_NOVO_ANONIMO, SCORE_MINIMO
 from tracer import trace
 from telegram import enviar_mensagem_telegram
@@ -48,7 +48,7 @@ def atualizar_path_camera(track_id, idreg):
             release_faciais_conn(conn)
 
 
-def admin_people(track_id, data=None):
+def admin_people(track_id, data=None, store_id=None):
     faces = listar_matches_simples(track_id, data=data)
     person_id = None
     for caretas in faces:
@@ -59,12 +59,9 @@ def admin_people(track_id, data=None):
             recgn_score = caretas.get('face_recgn_score')
             if recgn_score is not None:
                 atualizar_recognition_score(track_id, recgn_score)
-                # trace(track_id, f"admin_people: recognition_score={recgn_score:.4f} atualizado para track_id={track_id}")
-            # trace(track_id, f"admin_people: person_id={person_id} vinculado ao track_id={track_id}")
-            telegram_cliente_chegou(track_id, person_id)
+            telegram_cliente_chegou(track_id, person_id, store_id=store_id)
             break
     if person_id is None:
-        # trace(track_id, "admin_people: nenhum person_id encontrado — criando nova pessoa")
         criar_pessoa(track_id, data=data)
     return True
 
@@ -201,7 +198,7 @@ def criar_pessoa(track_id, data=None):
         release_faciais_conn(conn)
 
 
-def telegram_cliente_chegou(track_id, person_id):
+def telegram_cliente_chegou(track_id, person_id, store_id=None):
     conn = get_faciais_conn()
     try:
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -225,6 +222,7 @@ def telegram_cliente_chegou(track_id, person_id):
             nome = pes.get("full_name")
             nick = pes.get("nickname")
             nota = pes.get("notes")
+            loja_str = f" na loja {STORE_NAME_MAP[store_id]}" if store_id and store_id in STORE_NAME_MAP else ""
             cursor.execute(
                 "SELECT COUNT(DISTINCT DATE(created_at)) AS qtd_visit FROM detection_records WHERE person_id = %s",
                 (person_id,),
@@ -242,13 +240,13 @@ def telegram_cliente_chegou(track_id, person_id):
                 visitas = cursor.fetchall()
                 ult_visit = visitas[0]["data_hora"].strftime("%d/%m/%Y %H:%M")
                 ant_visit = visitas[1]["data_hora"].strftime("%d/%m/%Y %H:%M")
-                msg1 = f"Cliente {nome}({nick}) chegou em {ult_visit}. "
+                msg1 = f"Cliente {nome}({nick}) chegou{loja_str} em {ult_visit}. "
                 msg2 = f"Esta é a visita de número {qtd_visit} e visita anterior foi em {ant_visit}. "
                 msg3 = f"Nota: {nota}" if nota is not None else "  "
                 mensagem = msg1 + msg2 + msg3
             else:
-                mensagem = f"Cliente {nome}({nick}) chegou. Esta é a sua primeira visita."
-            trace(track_id, f"telegram_cliente_chegou: enviando mensagem para {nome}({nick})")
+                mensagem = f"Cliente {nome}({nick}) chegou{loja_str}. Esta é a sua primeira visita."
+            trace(track_id, f"telegram_cliente_chegou: enviando mensagem para {nome}({nick}){loja_str}")
             enviar_mensagem_telegram(mensagem)
         cursor.close()
     finally:

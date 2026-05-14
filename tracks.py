@@ -36,6 +36,7 @@ def _carregar_cameras():
                     ct.camera_type_id               AS id_tipo_camera,
                     ct.camera_type_name             AS tipo_camera,
                     s.store_id                      AS id_local,
+                    s.store_name                    AS nome_loja,
                     s.cep,
                     s.address_number                AS numero,
                     s.address_complement            AS complemento,
@@ -70,6 +71,24 @@ def _carregar_cameras():
 
 # IDs das câmeras a consultar e lista completa carregados da view vw_cameras_completo
 CAMERA_IDS, CAMERAS_COMPLETO = _carregar_cameras()
+
+# Mapas derivados das câmeras carregadas:
+#   CAMERA_STORE_MAP  : camera_id (int) → store_id (int)
+#   STORE_NAME_MAP    : store_id  (int) → nome da loja (str)
+#   CAMERA_STORE_NAME_MAP : camera_id (int) → nome da loja (str)
+CAMERA_STORE_MAP: dict = {}
+STORE_NAME_MAP: dict = {}
+CAMERA_STORE_NAME_MAP: dict = {}
+for _row in CAMERAS_COMPLETO:
+    _cid = _row.get("id_camera")
+    _sid = _row.get("id_local")
+    _nome = _row.get("nome_loja") or _row.get("empresa") or (str(_sid) if _sid is not None else None)
+    if _cid is not None:
+        CAMERA_STORE_MAP[int(_cid)] = _sid
+        if _nome:
+            CAMERA_STORE_NAME_MAP[int(_cid)] = _nome
+    if _sid is not None and int(_sid) not in STORE_NAME_MAP and _nome:
+        STORE_NAME_MAP[int(_sid)] = _nome
 
 tracks_bp = Blueprint("tracks", __name__)
 
@@ -462,7 +481,8 @@ def tracks_lista():
     cameras_map = {c["id_camera"]: c.get("camera") or str(c["id_camera"]) for c in CAMERAS_COMPLETO if c.get("id_camera") is not None}
     tmpl = "m_lista.html" if "/m/" in request.path else "tracks_lista.html"
     return render_template(tmpl, groups=groups, page=page, total_pages=total_pages,
-                           cameras_map=cameras_map, ids_raw=ids_raw, flag_filter=flag_filter)
+                           cameras_map=cameras_map, camera_store_map=CAMERA_STORE_NAME_MAP,
+                           ids_raw=ids_raw, flag_filter=flag_filter)
 
 
 @tracks_bp.route("/tracks/permanencia")
