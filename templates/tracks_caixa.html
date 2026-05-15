@@ -454,6 +454,10 @@
               <span class="nf-value valor">R$ {{ '%.2f'|format(nf.valor) | replace('.', ',') }}</span>
             </div>
             <div class="nf-field">
+              <span class="nf-label">Loja</span>
+              <span class="nf-value">{{ nf.nome_loja or '—' }}</span>
+            </div>
+            <div class="nf-field">
               <span class="nf-label">Candidatos</span>
               <span class="nf-value">{{ nf.candidatos | length }}</span>
             </div>
@@ -514,7 +518,7 @@
           <div class="secao">
             <div class="secao-label">
               Detectados no período
-              <span class="hint">± 5 min · todas as câmeras</span>
+              <span class="hint">± 5 min · câmeras de {{ nf.nome_loja or 'todas as lojas' }}</span>
             </div>
             {% if nf.candidatos %}
               <div class="candidatos-lista">

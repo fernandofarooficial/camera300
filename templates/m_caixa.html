@@ -234,6 +234,7 @@
           <div class="nf-row">
             <span class="nf-label">{{ nf.itens }} iten{{ 's' if nf.itens != 1 else '' }}</span>
             <span class="nf-label">{{ nf.candidatos | length }} candidato(s)</span>
+            {% if nf.nome_loja %}<span class="nf-label">{{ nf.nome_loja }}</span>{% endif %}
           </div>
         </div>
         <button class="btn-itens" onclick="toggleItens(this, '{{ nf.documento }}')">Itens</button>
@@ -273,7 +274,7 @@
       {% if nf.candidatos %}
         <div class="secao">
           <div class="secao-label">
-            Detectados <span class="hint">± 5 min · todas as câmeras</span>
+            Detectados <span class="hint">± 5 min · câmeras de {{ nf.nome_loja or 'todas as lojas' }}</span>
           </div>
           <div class="cli-scroll">
             {% for cli in nf.candidatos %}

@@ -49,7 +49,7 @@ PG_DSN = os.environ.get(
 )
 
 LINX_PAGE_LIMIT = 5000
-DT_INICIO_FULL  = "2026-01-01"
+DT_INICIO_FULL  = "2024-01-01"
 
 logging.basicConfig(
     level=logging.INFO,

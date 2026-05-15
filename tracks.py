@@ -73,12 +73,14 @@ def _carregar_cameras():
 CAMERA_IDS, CAMERAS_COMPLETO = _carregar_cameras()
 
 # Mapas derivados das câmeras carregadas:
-#   CAMERA_STORE_MAP  : camera_id (int) → store_id (int)
-#   STORE_NAME_MAP    : store_id  (int) → nome da loja (str)
+#   CAMERA_STORE_MAP      : camera_id (int) → store_id (int)
+#   STORE_NAME_MAP        : store_id  (int) → nome da loja (str)
 #   CAMERA_STORE_NAME_MAP : camera_id (int) → nome da loja (str)
+#   STORE_CAMERAS_MAP     : store_id  (int) → set[camera_id]
 CAMERA_STORE_MAP: dict = {}
 STORE_NAME_MAP: dict = {}
 CAMERA_STORE_NAME_MAP: dict = {}
+STORE_CAMERAS_MAP: dict = {}
 for _row in CAMERAS_COMPLETO:
     _cid = _row.get("id_camera")
     _sid = _row.get("id_local")
@@ -87,8 +89,27 @@ for _row in CAMERAS_COMPLETO:
         CAMERA_STORE_MAP[int(_cid)] = _sid
         if _nome:
             CAMERA_STORE_NAME_MAP[int(_cid)] = _nome
+        if _sid is not None:
+            STORE_CAMERAS_MAP.setdefault(int(_sid), set()).add(int(_cid))
     if _sid is not None and int(_sid) not in STORE_NAME_MAP and _nome:
         STORE_NAME_MAP[int(_sid)] = _nome
+
+# CNPJ_STORE_MAP : microvix_cnpj (str) → store_id (int)
+# Carregado de faciais.stores.microvix_cnpj (ver migration_0037).
+CNPJ_STORE_MAP: dict = {}
+try:
+    _fc = get_faciais_conn()
+    try:
+        _cur = _fc.cursor()
+        _cur.execute("SELECT store_id, cnpj FROM stores WHERE cnpj IS NOT NULL")
+        for _r in _cur.fetchall():
+            CNPJ_STORE_MAP[str(_r[1])] = int(_r[0])
+        _cur.close()
+        _fc.rollback()
+    finally:
+        release_faciais_conn(_fc)
+except Exception as _exc:
+    print(f"[tracks] Aviso: não foi possível carregar CNPJ_STORE_MAP: {_exc}")
 
 tracks_bp = Blueprint("tracks", __name__)
 
@@ -1368,17 +1389,20 @@ def tracks_caixa():
                 ROUND(SUM(valor_liquido)::numeric, 2)           AS valor,
                 data_lancamento::date                           AS data,
                 hora_lancamento                                 AS hora,
-                (data_lancamento::date + hora_lancamento::time) AS nf_dt
+                (data_lancamento::date + hora_lancamento::time) AS nf_dt,
+                cnpj_emp
             FROM microvix_movimento
             WHERE cod_natureza_operacao = '10030'
               AND cancelado = 'N'
               AND excluido = 'N'
               AND tipo_transacao = 'V'
-            GROUP BY documento, data_lancamento::date, hora_lancamento
+            GROUP BY documento, data_lancamento::date, hora_lancamento, cnpj_emp
             ORDER BY data_lancamento::date DESC, hora_lancamento DESC
             LIMIT 25
         """)
         for row in pg_cur.fetchall():
+            cnpj_emp = (row[6] or "").strip()
+            store_id = CNPJ_STORE_MAP.get(cnpj_emp)
             notas.append({
                 "documento":         row[0],
                 "itens":             int(row[1]),
@@ -1386,6 +1410,9 @@ def tracks_caixa():
                 "data":              row[3],
                 "hora":              (row[4] or "").strip(),
                 "nf_dt":             row[5],
+                "cnpj_emp":          cnpj_emp,
+                "store_id":          store_id,
+                "nome_loja":         STORE_NAME_MAP.get(store_id) if store_id else None,
                 "candidatos":        [],
                 "pessoa_confirmada": None,
             })
@@ -1404,10 +1431,11 @@ def tracks_caixa():
             try:
                 cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-                # 2. Pessoas já confirmadas em faciais.person_purchases
+                # 2. Pessoas já confirmadas em faciais.person_purchases (qualquer store_id)
                 cursor.execute("""
                     SELECT
                         pp.bill,
+                        pp.store_id,
                         p.person_id   AS id_unico,
                         p.full_name   AS nome,
                         p.nickname    AS apelido,
@@ -1424,15 +1452,14 @@ def tracks_caixa():
                         ORDER BY created_at DESC
                         LIMIT 1
                     ) r ON TRUE
-                    WHERE pp.store_id = 1
-                      AND pp.bill = ANY(%s)
+                    WHERE pp.bill = ANY(%s)
                       AND pp.person_id IS NOT NULL
                 """, (docs,))
                 confirmados = {row["bill"]: dict(row) for row in cursor.fetchall()}
                 for v in confirmados.values():
                     v["foto"] = HEIMDALL_IMAGE_BASE + v["image_path"] if v["image_path"] else None
 
-                # 3. Candidatos: todas as câmeras, janela ±5 min, tipo Cliente
+                # 3. Candidatos: apenas câmeras da loja da NF, janela ±5 min, tipo Cliente
                 if dts:
                     dt_min = min(dts) - timedelta(minutes=5)
                     dt_max = max(dts) + timedelta(minutes=5)
@@ -1440,6 +1467,7 @@ def tracks_caixa():
                         SELECT
                             r.detection_record_id   AS id,
                             r.person_id             AS id_unico,
+                            r.camera_id,
                             r.image_path,
                             r.created_at,
                             p.full_name             AS nome,
@@ -1460,11 +1488,16 @@ def tracks_caixa():
                         nota["pessoa_confirmada"] = confirmados.get(nota["documento"])
                         if nota["nf_dt"] is None:
                             continue
+                        # Câmeras válidas para esta NF (filtra por store_id da loja)
+                        cameras_loja = STORE_CAMERAS_MAP.get(nota["store_id"]) if nota["store_id"] else None
                         janela_ini = nota["nf_dt"] - timedelta(minutes=5)
                         janela_fim = nota["nf_dt"] + timedelta(minutes=5)
                         seen = set()
                         for reg in registros:
                             if janela_ini <= reg["created_at"] <= janela_fim:
+                                # Se a loja está mapeada, filtra; senão mostra todos
+                                if cameras_loja is not None and reg["camera_id"] not in cameras_loja:
+                                    continue
                                 if reg["id_unico"] not in seen:
                                     seen.add(reg["id_unico"])
                                     nota["candidatos"].append(reg)
@@ -1486,12 +1519,79 @@ def tracks_caixa():
 @tracks_bp.route("/tracks/caixa/nf/<documento>/pessoa", methods=["POST"])
 @tracks_bp.route("/m/tracks/caixa/nf/<documento>/pessoa", methods=["POST"])
 def tracks_caixa_set_pessoa(documento):
-    """Grava ou altera o comprador confirmado de uma nota fiscal."""
+    """Grava ou altera o comprador confirmado de uma nota fiscal.
+    Valida que o cliente foi detectado por câmera da loja que emitiu a NF.
+    """
     data = request.get_json() or {}
     try:
         person_id = int(data["person_id"])
     except (KeyError, ValueError, TypeError):
         return jsonify({"error": "person_id inválido"}), 400
+
+    # 1. Busca a NF para obter cnpj_emp e horário
+    pg_conn = None
+    try:
+        pg_conn = get_pg_conn()
+        pg_cur = pg_conn.cursor()
+        pg_cur.execute("""
+            SELECT
+                cnpj_emp,
+                (data_lancamento::date + hora_lancamento::time) AS nf_dt
+            FROM microvix_movimento
+            WHERE documento = %s
+              AND cod_natureza_operacao = '10030'
+              AND cancelado = 'N'
+              AND excluido = 'N'
+              AND tipo_transacao = 'V'
+            LIMIT 1
+        """, (documento,))
+        nf_row = pg_cur.fetchone()
+        pg_cur.close()
+    except Exception as e:
+        print(f"[caixa/set_pessoa] Erro ao buscar NF: {e}")
+        return jsonify({"error": "Erro ao consultar nota fiscal"}), 500
+    finally:
+        if pg_conn:
+            release_pg_conn(pg_conn)
+
+    if not nf_row:
+        return jsonify({"error": "Nota fiscal não encontrada"}), 404
+
+    cnpj_emp = (nf_row[0] or "").strip()
+    nf_dt    = nf_row[1]
+    store_id = CNPJ_STORE_MAP.get(cnpj_emp)
+
+    # 2. Valida detecção da pessoa nas câmeras da loja (se o mapeamento estiver configurado)
+    if store_id is not None and nf_dt is not None:
+        cameras_loja = STORE_CAMERAS_MAP.get(store_id)
+        if cameras_loja:
+            janela_ini = nf_dt - timedelta(minutes=5)
+            janela_fim = nf_dt + timedelta(minutes=5)
+            try:
+                conn_v = get_faciais_conn()
+                try:
+                    cur_v = conn_v.cursor()
+                    cur_v.execute("""
+                        SELECT 1 FROM detection_records
+                        WHERE person_id = %s
+                          AND camera_id = ANY(%s)
+                          AND created_at BETWEEN %s AND %s
+                        LIMIT 1
+                    """, (person_id, list(cameras_loja), janela_ini, janela_fim))
+                    encontrado = cur_v.fetchone() is not None
+                    cur_v.close()
+                    conn_v.rollback()
+                finally:
+                    release_faciais_conn(conn_v)
+            except Exception as e:
+                print(f"[caixa/set_pessoa] Erro ao validar detecção: {e}")
+                return jsonify({"error": "Erro ao validar detecção da pessoa"}), 500
+
+            if not encontrado:
+                nome_loja = STORE_NAME_MAP.get(store_id, f"loja {store_id}")
+                return jsonify({
+                    "error": f"Pessoa não detectada pelas câmeras de {nome_loja} no período da nota fiscal (±5 min)"
+                }), 422
 
     try:
         conn = get_faciais_conn()
@@ -1499,9 +1599,9 @@ def tracks_caixa_set_pessoa(documento):
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute("""
                 INSERT INTO person_purchases (store_id, bill, person_id)
-                VALUES (1, %s, %s)
+                VALUES (%s, %s, %s)
                 ON CONFLICT (store_id, bill) DO UPDATE SET person_id = EXCLUDED.person_id
-            """, (documento, person_id))
+            """, (store_id or 1, documento, person_id))
             cur.execute("""
                 SELECT
                     p.person_id   AS id_unico,
@@ -1541,14 +1641,41 @@ def tracks_caixa_set_pessoa(documento):
 @tracks_bp.route("/m/tracks/caixa/nf/<documento>/pessoa", methods=["DELETE"])
 def tracks_caixa_del_pessoa(documento):
     """Remove o comprador confirmado de uma nota fiscal."""
+    # Determina store_id via cnpj_emp da NF
+    store_id = None
+    pg_conn = None
+    try:
+        pg_conn = get_pg_conn()
+        pg_cur = pg_conn.cursor()
+        pg_cur.execute(
+            "SELECT cnpj_emp FROM microvix_movimento WHERE documento = %s LIMIT 1",
+            (documento,)
+        )
+        row = pg_cur.fetchone()
+        pg_cur.close()
+        if row:
+            store_id = CNPJ_STORE_MAP.get((row[0] or "").strip())
+    except Exception as e:
+        print(f"[caixa/del_pessoa] Erro ao buscar store_id: {e}")
+    finally:
+        if pg_conn:
+            release_pg_conn(pg_conn)
+
     try:
         conn = get_faciais_conn()
         try:
             cur = conn.cursor()
-            cur.execute("""
-                UPDATE person_purchases SET person_id = NULL
-                WHERE store_id = 1 AND bill = %s
-            """, (documento,))
+            if store_id is not None:
+                cur.execute("""
+                    UPDATE person_purchases SET person_id = NULL
+                    WHERE store_id = %s AND bill = %s
+                """, (store_id, documento))
+            else:
+                # Fallback: remove sem filtrar store_id
+                cur.execute("""
+                    UPDATE person_purchases SET person_id = NULL
+                    WHERE bill = %s
+                """, (documento,))
             conn.commit()
             cur.close()
             return jsonify({"ok": True})
