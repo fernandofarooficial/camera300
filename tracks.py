@@ -357,82 +357,51 @@ def tracks_lista():
             if part.isdigit():
                 ids_filter.append(int(part))
 
-    flag_filter = request.args.get('flag', '').strip().upper()
+    flag_filter  = request.args.get('flag',  '').strip().upper()
+    store_filter = request.args.get('store', 0, type=int)
+    camera_ids_loja = list(STORE_CAMERAS_MAP.get(store_filter, [])) if store_filter else []
 
     offset = (page - 1) * per_page
+
+    # Monta condições WHERE dinamicamente
+    conditions = ["r.person_id IS NOT NULL"]
+    count_params: list = []
+    if ids_filter:
+        ph = ",".join(["%s"] * len(ids_filter))
+        conditions.append(f"r.person_id IN ({ph})")
+        count_params.extend(ids_filter)
+    if flag_filter:
+        conditions.append("p.person_type_id = %s")
+        count_params.append(flag_filter)
+    if camera_ids_loja:
+        conditions.append("r.camera_id = ANY(%s)")
+        count_params.append(camera_ids_loja)
+    where = " AND ".join(conditions)
 
     conn = get_faciais_conn()
     try:
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-        if ids_filter and flag_filter:
-            ph = ",".join(["%s"] * len(ids_filter))
-            cursor.execute(
-                f"""SELECT COUNT(DISTINCT r.person_id) AS total
-                    FROM detection_records r
-                    JOIN people p ON r.person_id = p.person_id
-                    WHERE r.person_id IS NOT NULL AND r.person_id IN ({ph}) AND p.person_type_id = %s""",
-                ids_filter + [flag_filter],
-            )
-        elif ids_filter:
-            ph = ",".join(["%s"] * len(ids_filter))
-            cursor.execute(
-                f"SELECT COUNT(DISTINCT person_id) AS total FROM detection_records WHERE person_id IS NOT NULL AND person_id IN ({ph})",
-                ids_filter,
-            )
-        elif flag_filter:
-            cursor.execute(
-                """SELECT COUNT(DISTINCT r.person_id) AS total
-                   FROM detection_records r
-                   JOIN people p ON r.person_id = p.person_id
-                   WHERE r.person_id IS NOT NULL AND p.person_type_id = %s""",
-                (flag_filter,),
-            )
-        else:
-            cursor.execute("SELECT COUNT(DISTINCT person_id) AS total FROM detection_records WHERE person_id IS NOT NULL")
+        cursor.execute(
+            f"""SELECT COUNT(DISTINCT r.person_id) AS total
+                FROM detection_records r
+                LEFT JOIN people p ON r.person_id = p.person_id
+                WHERE {where}""",
+            count_params,
+        )
         total = cursor.fetchone()["total"]
         total_pages = max(1, (total + per_page - 1) // per_page)
 
-        if ids_filter and flag_filter:
-            ph = ",".join(["%s"] * len(ids_filter))
-            cursor.execute(f"""
-                SELECT r.person_id AS id_unico
+        cursor.execute(
+            f"""SELECT r.person_id AS id_unico
                 FROM detection_records r
-                JOIN people p ON r.person_id = p.person_id
-                WHERE r.person_id IS NOT NULL AND r.person_id IN ({ph}) AND p.person_type_id = %s
+                LEFT JOIN people p ON r.person_id = p.person_id
+                WHERE {where}
                 GROUP BY r.person_id
                 ORDER BY MAX(r.created_at) DESC
-                LIMIT %s OFFSET %s
-            """, ids_filter + [flag_filter, per_page, offset])
-        elif ids_filter:
-            ph = ",".join(["%s"] * len(ids_filter))
-            cursor.execute(f"""
-                SELECT person_id AS id_unico
-                FROM detection_records
-                WHERE person_id IS NOT NULL AND person_id IN ({ph})
-                GROUP BY person_id
-                ORDER BY MAX(created_at) DESC
-                LIMIT %s OFFSET %s
-            """, ids_filter + [per_page, offset])
-        elif flag_filter:
-            cursor.execute("""
-                SELECT r.person_id AS id_unico
-                FROM detection_records r
-                JOIN people p ON r.person_id = p.person_id
-                WHERE r.person_id IS NOT NULL AND p.person_type_id = %s
-                GROUP BY r.person_id
-                ORDER BY MAX(r.created_at) DESC
-                LIMIT %s OFFSET %s
-            """, (flag_filter, per_page, offset))
-        else:
-            cursor.execute("""
-                SELECT person_id AS id_unico
-                FROM detection_records
-                WHERE person_id IS NOT NULL
-                GROUP BY person_id
-                ORDER BY MAX(created_at) DESC
-                LIMIT %s OFFSET %s
-            """, (per_page, offset))
+                LIMIT %s OFFSET %s""",
+            count_params + [per_page, offset],
+        )
         id_unicos = [row["id_unico"] for row in cursor.fetchall()]
 
         groups = []
@@ -500,10 +469,12 @@ def tracks_lista():
         release_faciais_conn(conn)
 
     cameras_map = {c["id_camera"]: c.get("camera") or str(c["id_camera"]) for c in CAMERAS_COMPLETO if c.get("id_camera") is not None}
+    stores_list = [{"store_id": sid, "nome": nome} for sid, nome in sorted(STORE_NAME_MAP.items())]
     tmpl = "m_lista.html" if "/m/" in request.path else "tracks_lista.html"
     return render_template(tmpl, groups=groups, page=page, total_pages=total_pages,
                            cameras_map=cameras_map, camera_store_map=CAMERA_STORE_NAME_MAP,
-                           ids_raw=ids_raw, flag_filter=flag_filter)
+                           ids_raw=ids_raw, flag_filter=flag_filter,
+                           store_filter=store_filter, stores_list=stores_list)
 
 
 @tracks_bp.route("/tracks/permanencia")

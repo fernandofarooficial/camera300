@@ -448,6 +448,19 @@
     }
     .filter-bar input[type="text"]:focus { border-color: #7c86ff88; }
     .filter-bar input[type="text"]::placeholder { color: #475569; }
+    .filter-bar select {
+      background: #0f1117;
+      border: 1px solid #2d3148;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.88rem;
+      padding: 0.45rem 0.7rem;
+      outline: none;
+      transition: border-color 0.2s;
+      cursor: pointer;
+    }
+    .filter-bar select:focus { border-color: #7c86ff88; }
+    .filter-bar select option { background: #1a1d27; }
     .btn-filter {
       background: #7c86ff33;
       border: 1px solid #7c86ff66;
@@ -731,6 +744,15 @@
 
 <main>
 
+  {%- set _qs_base -%}
+    {%- if ids_raw %}ids={{ ids_raw }}&{% endif -%}
+    {%- if flag_filter %}flag={{ flag_filter }}&{% endif -%}
+    {%- if store_filter %}store={{ store_filter }}&{% endif -%}
+  {%- endset -%}
+  {%- set _qs_no_store -%}
+    {%- if ids_raw %}ids={{ ids_raw }}&{% endif -%}
+    {%- if flag_filter %}flag={{ flag_filter }}&{% endif -%}
+  {%- endset -%}
   <form class="filter-bar" method="get" action="">
     <div>
       <label for="ids-input">Filtrar por IDs</label>
@@ -738,15 +760,28 @@
              value="{{ ids_raw }}"
              placeholder="ex: 1, 5, 12, 30" />
     </div>
+    {% if stores_list %}
+    <div>
+      <label for="store-select">Loja</label>
+      <select id="store-select" name="store">
+        <option value="0">Todas as lojas</option>
+        {% for s in stores_list %}
+          <option value="{{ s.store_id }}" {% if store_filter == s.store_id %}selected{% endif %}>
+            {{ s.nome }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
     <button type="submit" class="btn-filter">&#128269; Filtrar</button>
     {% if flag_filter == 'C' %}
-      <a href="?{% if ids_raw %}ids={{ ids_raw }}{% endif %}" class="btn-clientes active">&#10003; Clientes</a>
+      <a href="?{% if ids_raw %}ids={{ ids_raw }}&{% endif %}{% if store_filter %}store={{ store_filter }}&{% endif %}" class="btn-clientes active">&#10003; Clientes</a>
     {% else %}
-      <a href="?flag=C{% if ids_raw %}&ids={{ ids_raw }}{% endif %}" class="btn-clientes">Clientes</a>
+      <a href="?flag=C&{% if ids_raw %}ids={{ ids_raw }}&{% endif %}{% if store_filter %}store={{ store_filter }}&{% endif %}" class="btn-clientes">Clientes</a>
     {% endif %}
-    {% if ids_raw or flag_filter %}
+    {% if ids_raw or flag_filter or store_filter %}
       <a href="?" class="btn-filter-clear">&#10005; Limpar</a>
-      {% if ids_raw %}<span class="filter-active-badge">Filtro ativo</span>{% endif %}
+      {% if ids_raw or store_filter %}<span class="filter-active-badge">Filtro ativo</span>{% endif %}
     {% endif %}
   </form>
 
@@ -872,10 +907,14 @@
   {% endfor %}
 
   {% if total_pages > 1 %}
-    {% set ids_param = ('&ids=' ~ ids_raw) if ids_raw else '' %}
+    {%- set pg_qs -%}
+      {%- if ids_raw %}&ids={{ ids_raw }}{% endif -%}
+      {%- if flag_filter %}&flag={{ flag_filter }}{% endif -%}
+      {%- if store_filter %}&store={{ store_filter }}{% endif -%}
+    {%- endset -%}
     <div class="pagination">
       {% if page > 1 %}
-        <a href="?page={{ page - 1 }}{{ ids_param }}">&laquo; Anterior</a>
+        <a href="?page={{ page - 1 }}{{ pg_qs }}">&laquo; Anterior</a>
       {% else %}
         <span class="disabled">&laquo; Anterior</span>
       {% endif %}
@@ -883,7 +922,7 @@
       <span class="current">{{ page }} / {{ total_pages }}</span>
 
       {% if page < total_pages %}
-        <a href="?page={{ page + 1 }}{{ ids_param }}">Próxima &raquo;</a>
+        <a href="?page={{ page + 1 }}{{ pg_qs }}">Próxima &raquo;</a>
       {% else %}
         <span class="disabled">Próxima &raquo;</span>
       {% endif %}
