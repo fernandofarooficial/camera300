@@ -19,7 +19,7 @@ from urllib3.util.retry import Retry
 from config import (
     get_pg_conn, release_pg_conn,
     get_faciais_conn, release_faciais_conn,
-    MICROVIX_CHAVE, MICROVIX_CNPJ, MICROVIX_GRUPO,
+    MICROVIX_PORTAIS,
 )
 
 log = logging.getLogger(__name__)
@@ -58,6 +58,7 @@ _status = {
     "started_at":     None,
     "finished_at":    None,
     "current_method": None,
+    "current_cnpj":   None,
     "contagens":      {},
     "error":          None,
 }
@@ -175,29 +176,39 @@ def _lower_keys(registros: list[dict]) -> list[dict]:
     return [{k.lower(): v for k, v in r.items()} for r in registros]
 
 
+def _data_ini(portal: dict, dias: int) -> str:
+    """Retorna a data inicial: override do portal ou hoje - N dias."""
+    return portal.get("_data_inicio") or str(date.today() - timedelta(days=dias))
+
+
+def _data_fim(portal: dict) -> str:
+    """Retorna a data final: override do portal ou hoje."""
+    return portal.get("_data_fim") or str(date.today())
+
+
 # ---------------------------------------------------------------------------
 # Controle de timestamp
 # ---------------------------------------------------------------------------
 
-def _get_last_ts(conn, metodo: str) -> int:
+def _get_last_ts(conn, metodo: str, cnpj: str) -> int:
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT last_timestamp FROM microvix_sync_control WHERE metodo = %s",
-            (metodo,),
+            "SELECT last_timestamp FROM microvix_sync_control WHERE metodo = %s AND cnpj_emp = %s",
+            (metodo, cnpj),
         )
         row = cur.fetchone()
         return row[0] if row else 0
 
 
-def _save_ts(conn, metodo: str, ts: int):
+def _save_ts(conn, metodo: str, ts: int, cnpj: str):
     with conn.cursor() as cur:
         cur.execute(
-            """INSERT INTO microvix_sync_control (metodo, last_timestamp, last_sync_at)
-               VALUES (%s, %s, NOW())
-               ON CONFLICT (metodo) DO UPDATE
+            """INSERT INTO microvix_sync_control (metodo, cnpj_emp, last_timestamp, last_sync_at)
+               VALUES (%s, %s, %s, NOW())
+               ON CONFLICT (metodo, cnpj_emp) DO UPDATE
                  SET last_timestamp = EXCLUDED.last_timestamp,
                      last_sync_at   = NOW()""",
-            (metodo, ts),
+            (metodo, cnpj, ts),
         )
     conn.commit()
 
@@ -237,10 +248,10 @@ def _upsert(conn, tabela: str, registros: list[dict], pk_cols: list[str]) -> int
 # Funções de ingestão — tabelas existentes
 # ---------------------------------------------------------------------------
 
-def _ingerir_grupo_lojas(conn) -> int:
+def _ingerir_grupo_lojas(conn, portal: dict) -> int:
     metodo = "LinxGrupoLojas"
     _set(current_method=metodo)
-    registros = _chamar_api(metodo, {"chave": MICROVIX_CHAVE, "grupo": MICROVIX_GRUPO or ""})
+    registros = _chamar_api(metodo, {"chave": portal["chave"], "grupo": portal["grupo"] or ""})
     log.info("[%s] %d registros recebidos", metodo, len(registros))
     if not registros:
         return 0
@@ -248,11 +259,11 @@ def _ingerir_grupo_lojas(conn) -> int:
     return _upsert(conn, "microvix_grupo_lojas", registros, ["portal", "empresa"])
 
 
-def _ingerir_lojas(conn) -> int:
+def _ingerir_lojas(conn, portal: dict) -> int:
     metodo = "LinxLojas"
     _set(current_method=metodo)
-    ts = _get_last_ts(conn, metodo)
-    registros = _chamar_api(metodo, {"chave": MICROVIX_CHAVE, "cnpjEmp": MICROVIX_CNPJ, "timestamp": ts})
+    ts = _get_last_ts(conn, metodo, portal["cnpj"])
+    registros = _chamar_api(metodo, {"chave": portal["chave"], "cnpjEmp": portal["cnpj"], "timestamp": ts})
     log.info("[%s] %d registros recebidos", metodo, len(registros))
     if not registros:
         return 0
@@ -260,21 +271,20 @@ def _ingerir_lojas(conn) -> int:
     for r in registros:
         r["centro_distribuicao"] = _to_bool(r.get("centro_distribuicao"))
     n = _upsert(conn, "microvix_lojas", registros, ["portal", "empresa"])
-    _save_ts(conn, metodo, _max_ts(registros))
+    _save_ts(conn, metodo, _max_ts(registros), portal["cnpj"])
     return n
 
 
-def _ingerir_clientes(conn) -> int:
+def _ingerir_clientes(conn, portal: dict) -> int:
     metodo = "LinxClientesFornec"
     _set(current_method=metodo)
-    ts   = _get_last_ts(conn, metodo)
-    hoje = date.today()
+    ts = _get_last_ts(conn, metodo, portal["cnpj"])
     params = {
-        "chave":        MICROVIX_CHAVE,
-        "cnpjEmp":      MICROVIX_CNPJ,
+        "chave":        portal["chave"],
+        "cnpjEmp":      portal["cnpj"],
         "timestamp":    ts,
-        "data_inicial": str(hoje - timedelta(days=1)),
-        "data_fim":     str(hoje),
+        "data_inicial": _data_ini(portal, 1),
+        "data_fim":     _data_fim(portal),
     }
     registros = _chamar_api_paginado(metodo, params)
     log.info("[%s] %d registros recebidos", metodo, len(registros))
@@ -284,21 +294,20 @@ def _ingerir_clientes(conn) -> int:
     for r in registros:
         r["cliente_anonimo"] = _to_bool(r.get("cliente_anonimo"))
     n = _upsert(conn, "microvix_clientes_fornecedores", registros, ["portal", "cod_cliente"])
-    _save_ts(conn, metodo, _max_ts(registros))
+    _save_ts(conn, metodo, _max_ts(registros), portal["cnpj"])
     return n
 
 
-def _ingerir_movimento(conn) -> int:
+def _ingerir_movimento(conn, portal: dict) -> int:
     metodo = "LinxMovimento"
     _set(current_method=metodo)
-    ts   = _get_last_ts(conn, metodo)
-    hoje = date.today()
+    ts = _get_last_ts(conn, metodo, portal["cnpj"])
     params = {
-        "chave":        MICROVIX_CHAVE,
-        "cnpjEmp":      MICROVIX_CNPJ,
+        "chave":        portal["chave"],
+        "cnpjEmp":      portal["cnpj"],
         "timestamp":    ts,
-        "data_inicial": str(hoje - timedelta(days=2)),
-        "data_fim":     str(hoje),
+        "data_inicial": _data_ini(portal, 2),
+        "data_fim":     _data_fim(portal),
     }
     registros = _chamar_api_paginado(metodo, params)
     log.info("[%s] %d registros recebidos", metodo, len(registros))
@@ -315,21 +324,20 @@ def _ingerir_movimento(conn) -> int:
             r[c] = _to_bool(r.get(c))
     n = _upsert(conn, "microvix_movimento", registros,
                 ["portal", "cnpj_emp", "transacao", "cod_produto"])
-    _save_ts(conn, metodo, _max_ts(registros))
+    _save_ts(conn, metodo, _max_ts(registros), portal["cnpj"])
     return n
 
 
-def _ingerir_produtos(conn) -> int:
+def _ingerir_produtos(conn, portal: dict) -> int:
     metodo = "LinxProdutos"
     _set(current_method=metodo)
-    ts   = _get_last_ts(conn, metodo)
-    hoje = date.today()
+    ts = _get_last_ts(conn, metodo, portal["cnpj"])
     params = {
-        "chave":            MICROVIX_CHAVE,
-        "cnpjEmp":          MICROVIX_CNPJ,
+        "chave":            portal["chave"],
+        "cnpjEmp":          portal["cnpj"],
         "timestamp":        ts,
-        "dt_update_inicio": str(hoje - timedelta(days=1)),
-        "dt_update_fim":    str(hoje),
+        "dt_update_inicio": _data_ini(portal, 1),
+        "dt_update_fim":    _data_fim(portal),
     }
     registros = _chamar_api_paginado(metodo, params)
     log.info("[%s] %d registros recebidos", metodo, len(registros))
@@ -339,21 +347,20 @@ def _ingerir_produtos(conn) -> int:
     for r in registros:
         r["obrigatorio_identificacao_cliente"] = _to_bool(r.get("obrigatorio_identificacao_cliente"))
     n = _upsert(conn, "microvix_produtos", registros, ["portal", "cod_produto"])
-    _save_ts(conn, metodo, _max_ts(registros))
+    _save_ts(conn, metodo, _max_ts(registros), portal["cnpj"])
     return n
 
 
-def _ingerir_produtos_detalhes(conn) -> int:
+def _ingerir_produtos_detalhes(conn, portal: dict) -> int:
     metodo = "LinxProdutosDetalhes"
     _set(current_method=metodo)
-    ts   = _get_last_ts(conn, metodo)
-    hoje = date.today()
+    ts = _get_last_ts(conn, metodo, portal["cnpj"])
     params = {
-        "chave":               MICROVIX_CHAVE,
-        "cnpjEmp":             MICROVIX_CNPJ,
+        "chave":               portal["chave"],
+        "cnpjEmp":             portal["cnpj"],
         "timestamp":           ts,
-        "data_mov_ini":        str(hoje - timedelta(days=2)),
-        "data_mov_fim":        str(hoje),
+        "data_mov_ini":        _data_ini(portal, 2),
+        "data_mov_fim":        _data_fim(portal),
         "retornar_saldo_zero": 0,
     }
     registros = _chamar_api_paginado(metodo, params)
@@ -363,7 +370,7 @@ def _ingerir_produtos_detalhes(conn) -> int:
     registros = _lower_keys(registros)
     n = _upsert(conn, "microvix_produtos_detalhes", registros,
                 ["portal", "empresa", "cod_produto"])
-    _save_ts(conn, metodo, _max_ts(registros))
+    _save_ts(conn, metodo, _max_ts(registros), portal["cnpj"])
     return n
 
 
@@ -371,16 +378,15 @@ def _ingerir_produtos_detalhes(conn) -> int:
 # Funções de ingestão — tabelas novas
 # ---------------------------------------------------------------------------
 
-def _ingerir_clientes_campos_adicionais(conn) -> int:
+def _ingerir_clientes_campos_adicionais(conn, portal: dict) -> int:
     # API não suporta timestamp; usa janela de datas dos últimos 2 dias
     metodo = "LinxClientesFornecCamposAdicionais"
     _set(current_method=metodo)
-    hoje = date.today()
     params = {
-        "chave":        MICROVIX_CHAVE,
-        "cnpjEmp":      MICROVIX_CNPJ,
-        "data_inicial": str(hoje - timedelta(days=2)),
-        "data_fim":     str(hoje),
+        "chave":        portal["chave"],
+        "cnpjEmp":      portal["cnpj"],
+        "data_inicial": _data_ini(portal, 2),
+        "data_fim":     _data_fim(portal),
     }
     registros = _chamar_api(metodo, params)
     log.info("[%s] %d registros recebidos", metodo, len(registros))
@@ -391,13 +397,13 @@ def _ingerir_clientes_campos_adicionais(conn) -> int:
                    ["portal", "cod_cliente", "campo"])
 
 
-def _ingerir_clientes_classes(conn) -> int:
+def _ingerir_clientes_classes(conn, portal: dict) -> int:
     metodo = "LinxClientesFornecClasses"
     _set(current_method=metodo)
-    ts = _get_last_ts(conn, metodo)
+    ts = _get_last_ts(conn, metodo, portal["cnpj"])
     params = {
-        "chave":     MICROVIX_CHAVE,
-        "cnpjEmp":   MICROVIX_CNPJ,
+        "chave":     portal["chave"],
+        "cnpjEmp":   portal["cnpj"],
         "timestamp": ts,
     }
     registros = _chamar_api_paginado(metodo, params)
@@ -407,21 +413,20 @@ def _ingerir_clientes_classes(conn) -> int:
     registros = _lower_keys(registros)
     n = _upsert(conn, "microvix_clientes_fornec_classes", registros,
                 ["portal", "cod_cliente", "cod_classe"])
-    _save_ts(conn, metodo, _max_ts(registros))
+    _save_ts(conn, metodo, _max_ts(registros), portal["cnpj"])
     return n
 
 
-def _ingerir_fidelidade(conn) -> int:
+def _ingerir_fidelidade(conn, portal: dict) -> int:
     metodo = "LinxFidelidade"
     _set(current_method=metodo)
-    ts   = _get_last_ts(conn, metodo)
-    hoje = date.today()
+    ts = _get_last_ts(conn, metodo, portal["cnpj"])
     params = {
-        "chave":        MICROVIX_CHAVE,
-        "cnpjEmp":      MICROVIX_CNPJ,
+        "chave":        portal["chave"],
+        "cnpjEmp":      portal["cnpj"],
         "timestamp":    ts,
-        "data_inicial": str(hoje - timedelta(days=2)),
-        "data_fim":     str(hoje),
+        "data_inicial": _data_ini(portal, 2),
+        "data_fim":     _data_fim(portal),
     }
     registros = _chamar_api_paginado(metodo, params)
     log.info("[%s] %d registros recebidos", metodo, len(registros))
@@ -430,17 +435,17 @@ def _ingerir_fidelidade(conn) -> int:
     registros = _lower_keys(registros)
     n = _upsert(conn, "microvix_fidelidade", registros,
                 ["portal", "id_fidelidade_parceiro_log"])
-    _save_ts(conn, metodo, _max_ts(registros))
+    _save_ts(conn, metodo, _max_ts(registros), portal["cnpj"])
     return n
 
 
-def _ingerir_vendedores(conn) -> int:
+def _ingerir_vendedores(conn, portal: dict) -> int:
     metodo = "LinxVendedores"
     _set(current_method=metodo)
-    ts = _get_last_ts(conn, metodo)
+    ts = _get_last_ts(conn, metodo, portal["cnpj"])
     params = {
-        "chave":     MICROVIX_CHAVE,
-        "cnpjEmp":   MICROVIX_CNPJ,
+        "chave":     portal["chave"],
+        "cnpjEmp":   portal["cnpj"],
         "timestamp": ts,
     }
     registros = _chamar_api_paginado(metodo, params)
@@ -449,20 +454,20 @@ def _ingerir_vendedores(conn) -> int:
         return 0
     registros = _lower_keys(registros)
     n = _upsert(conn, "microvix_vendedores", registros, ["portal", "cod_vendedor"])
-    _save_ts(conn, metodo, _max_ts(registros))
+    _save_ts(conn, metodo, _max_ts(registros), portal["cnpj"])
     return n
 
 
-def _ingerir_metas_vendedores(conn) -> int:
+def _ingerir_metas_vendedores(conn, portal: dict) -> int:
     # data_inicial_meta e data_fim_meta são obrigatórios; usa janela ampla
     # para capturar metas passadas recentemente alteradas e metas futuras
     metodo = "LinxMetasVendedores"
     _set(current_method=metodo)
-    ts   = _get_last_ts(conn, metodo)
+    ts   = _get_last_ts(conn, metodo, portal["cnpj"])
     hoje = date.today()
     params = {
-        "chave":             MICROVIX_CHAVE,
-        "cnpjEmp":           MICROVIX_CNPJ,
+        "chave":             portal["chave"],
+        "cnpjEmp":           portal["cnpj"],
         "timestamp":         ts,
         "data_inicial_meta": str(hoje - timedelta(days=30)),
         "data_fim_meta":     str(hoje + timedelta(days=365)),
@@ -474,17 +479,17 @@ def _ingerir_metas_vendedores(conn) -> int:
     registros = _lower_keys(registros)
     n = _upsert(conn, "microvix_metas_vendedores", registros,
                 ["portal", "cnpj_emp", "id_meta"])
-    _save_ts(conn, metodo, _max_ts(registros))
+    _save_ts(conn, metodo, _max_ts(registros), portal["cnpj"])
     return n
 
 
-def _ingerir_produtos_depositos(conn) -> int:
+def _ingerir_produtos_depositos(conn, portal: dict) -> int:
     metodo = "LinxProdutosDepositos"
     _set(current_method=metodo)
-    ts = _get_last_ts(conn, metodo)
+    ts = _get_last_ts(conn, metodo, portal["cnpj"])
     params = {
-        "chave":     MICROVIX_CHAVE,
-        "cnpjEmp":   MICROVIX_CNPJ,
+        "chave":     portal["chave"],
+        "cnpjEmp":   portal["cnpj"],
         "timestamp": ts,
     }
     registros = _chamar_api_paginado(metodo, params)
@@ -496,18 +501,18 @@ def _ingerir_produtos_depositos(conn) -> int:
         r["disponivel"]               = _to_bool(r.get("disponivel"))
         r["disponivel_transferencia"] = _to_bool(r.get("disponivel_transferencia"))
     n = _upsert(conn, "microvix_produtos_depositos", registros, ["portal", "cod_deposito"])
-    _save_ts(conn, metodo, _max_ts(registros))
+    _save_ts(conn, metodo, _max_ts(registros), portal["cnpj"])
     return n
 
 
-def _ingerir_produtos_inventario(conn) -> int:
+def _ingerir_produtos_inventario(conn, portal: dict) -> int:
     # API não suporta timestamp — sempre atualiza o snapshot do estoque de hoje
     metodo = "LinxProdutosInventario"
     _set(current_method=metodo)
     hoje = str(date.today())
     params = {
-        "chave":           MICROVIX_CHAVE,
-        "cnpjEmp":         MICROVIX_CNPJ,
+        "chave":           portal["chave"],
+        "cnpjEmp":         portal["cnpj"],
         "data_inventario": hoje,
     }
     registros = _chamar_api(metodo, params)
@@ -521,7 +526,7 @@ def _ingerir_produtos_inventario(conn) -> int:
                    ["portal", "cnpj_emp", "cod_produto"])
 
 
-def _ingerir_produtos_promocoes(conn) -> int:
+def _ingerir_produtos_promocoes(conn, portal: dict) -> int:
     # API não suporta timestamp; usa janela de datas de cadastro dos últimos 7 dias
     # e vigência ampla para capturar promoções em andamento
     metodo = "LinxProdutosPromocoes"
@@ -530,8 +535,8 @@ def _ingerir_produtos_promocoes(conn) -> int:
     todos: list[dict] = []
     for flag_ativa in ("S", "N"):
         params = {
-            "chave":            MICROVIX_CHAVE,
-            "cnpjEmp":          MICROVIX_CNPJ,
+            "chave":            portal["chave"],
+            "cnpjEmp":          portal["cnpj"],
             "data_cad_inicial":  str(hoje - timedelta(days=7)),
             "data_cad_fim":     str(hoje),
             "data_vig_inicial": str(hoje - timedelta(days=7)),
@@ -550,13 +555,13 @@ def _ingerir_produtos_promocoes(conn) -> int:
                    ["portal", "cnpj_emp", "cod_produto", "id_campanha"])
 
 
-def _ingerir_produtos_tabelas(conn) -> int:
+def _ingerir_produtos_tabelas(conn, portal: dict) -> int:
     metodo = "LinxProdutosTabelas"
     _set(current_method=metodo)
-    ts = _get_last_ts(conn, metodo)
+    ts = _get_last_ts(conn, metodo, portal["cnpj"])
     params = {
-        "chave":     MICROVIX_CHAVE,
-        "cnpjEmp":   MICROVIX_CNPJ,
+        "chave":     portal["chave"],
+        "cnpjEmp":   portal["cnpj"],
         "timestamp": ts,
     }
     registros = _chamar_api_paginado(metodo, params)
@@ -566,30 +571,33 @@ def _ingerir_produtos_tabelas(conn) -> int:
     registros = _lower_keys(registros)
     n = _upsert(conn, "microvix_produtos_tabelas", registros,
                 ["portal", "cnpj_emp", "id_tabela"])
-    _save_ts(conn, metodo, _max_ts(registros))
+    _save_ts(conn, metodo, _max_ts(registros), portal["cnpj"])
     return n
 
 
-def _ingerir_produtos_tabelas_precos(conn) -> int:
-    # id_tabela é obrigatório na API — itera sobre as tabelas cadastradas no DB
+def _ingerir_produtos_tabelas_precos(conn, portal: dict) -> int:
+    # id_tabela é obrigatório na API — itera sobre as tabelas do portal no DB
     metodo = "LinxProdutosTabelasPrecos"
     _set(current_method=metodo)
 
     with conn.cursor() as cur:
-        cur.execute("SELECT DISTINCT id_tabela FROM microvix_produtos_tabelas")
+        cur.execute(
+            "SELECT DISTINCT id_tabela FROM microvix_produtos_tabelas WHERE cnpj_emp = %s",
+            (portal["cnpj"],),
+        )
         tabela_ids = [row[0] for row in cur.fetchall()]
 
     if not tabela_ids:
-        log.warning("[%s] nenhuma tabela em microvix_produtos_tabelas — execute "
-                    "a ingestão de produtos_tabelas primeiro.", metodo)
+        log.warning("[%s] nenhuma tabela em microvix_produtos_tabelas para cnpj %s — execute "
+                    "a ingestão de produtos_tabelas primeiro.", metodo, portal["cnpj"])
         return 0
 
-    ts_global = _get_last_ts(conn, metodo)
+    ts_global = _get_last_ts(conn, metodo, portal["cnpj"])
     total = 0
     for id_tabela in tabela_ids:
         params = {
-            "chave":     MICROVIX_CHAVE,
-            "cnpjEmp":   MICROVIX_CNPJ,
+            "chave":     portal["chave"],
+            "cnpjEmp":   portal["cnpj"],
             "timestamp": ts_global,
             "id_tabela": id_tabela,
         }
@@ -603,27 +611,28 @@ def _ingerir_produtos_tabelas_precos(conn) -> int:
         total += n
 
     if total:
-        # atualiza ts com o maior entre todas as tabelas (busca no DB)
         with conn.cursor() as cur:
-            cur.execute("SELECT MAX(timestamp) FROM microvix_produtos_tabelas_precos")
+            cur.execute(
+                "SELECT MAX(timestamp) FROM microvix_produtos_tabelas_precos WHERE cnpj_emp = %s",
+                (portal["cnpj"],),
+            )
             row = cur.fetchone()
             if row and row[0]:
-                _save_ts(conn, metodo, int(row[0]))
+                _save_ts(conn, metodo, int(row[0]), portal["cnpj"])
 
     return total
 
 
-def _ingerir_faturas(conn) -> int:
+def _ingerir_faturas(conn, portal: dict) -> int:
     metodo = "LinxFaturas"
     _set(current_method=metodo)
-    ts   = _get_last_ts(conn, metodo)
-    hoje = date.today()
+    ts = _get_last_ts(conn, metodo, portal["cnpj"])
     params = {
-        "chave":        MICROVIX_CHAVE,
-        "cnpjEmp":      MICROVIX_CNPJ,
+        "chave":        portal["chave"],
+        "cnpjEmp":      portal["cnpj"],
         "timestamp":    ts,
-        "data_inicial": str(hoje - timedelta(days=2)),
-        "data_fim":     str(hoje),
+        "data_inicial": _data_ini(portal, 2),
+        "data_fim":     _data_fim(portal),
     }
     registros = _chamar_api_paginado(metodo, params)
     log.info("[%s] %d registros recebidos", metodo, len(registros))
@@ -632,21 +641,20 @@ def _ingerir_faturas(conn) -> int:
     registros = _lower_keys(registros)
     n = _upsert(conn, "microvix_faturas", registros,
                 ["portal", "cnpj_emp", "codigo_fatura"])
-    _save_ts(conn, metodo, _max_ts(registros))
+    _save_ts(conn, metodo, _max_ts(registros), portal["cnpj"])
     return n
 
 
-def _ingerir_pedidos_venda(conn) -> int:
+def _ingerir_pedidos_venda(conn, portal: dict) -> int:
     metodo = "LinxPedidosVenda"
     _set(current_method=metodo)
-    ts   = _get_last_ts(conn, metodo)
-    hoje = date.today()
+    ts = _get_last_ts(conn, metodo, portal["cnpj"])
     params = {
-        "chave":        MICROVIX_CHAVE,
-        "cnpjEmp":      MICROVIX_CNPJ,
+        "chave":        portal["chave"],
+        "cnpjEmp":      portal["cnpj"],
         "timestamp":    ts,
-        "data_inicial": str(hoje - timedelta(days=2)),
-        "data_fim":     str(hoje),
+        "data_inicial": _data_ini(portal, 2),
+        "data_fim":     _data_fim(portal),
     }
     registros = _chamar_api_paginado(metodo, params)
     log.info("[%s] %d registros recebidos", metodo, len(registros))
@@ -655,21 +663,20 @@ def _ingerir_pedidos_venda(conn) -> int:
     registros = _lower_keys(registros)
     n = _upsert(conn, "microvix_pedidos_venda", registros,
                 ["portal", "cnpj_emp", "transacao", "cod_produto"])
-    _save_ts(conn, metodo, _max_ts(registros))
+    _save_ts(conn, metodo, _max_ts(registros), portal["cnpj"])
     return n
 
 
-def _ingerir_pedidos_compra(conn) -> int:
+def _ingerir_pedidos_compra(conn, portal: dict) -> int:
     metodo = "LinxPedidosCompra"
     _set(current_method=metodo)
-    ts   = _get_last_ts(conn, metodo)
-    hoje = date.today()
+    ts = _get_last_ts(conn, metodo, portal["cnpj"])
     params = {
-        "chave":        MICROVIX_CHAVE,
-        "cnpjEmp":      MICROVIX_CNPJ,
+        "chave":        portal["chave"],
+        "cnpjEmp":      portal["cnpj"],
         "timestamp":    ts,
-        "data_inicial": str(hoje - timedelta(days=2)),
-        "data_fim":     str(hoje),
+        "data_inicial": _data_ini(portal, 2),
+        "data_fim":     _data_fim(portal),
     }
     registros = _chamar_api_paginado(metodo, params)
     log.info("[%s] %d registros recebidos", metodo, len(registros))
@@ -680,7 +687,7 @@ def _ingerir_pedidos_compra(conn) -> int:
         r["integrado_linx"] = _to_bool(r.get("integrado_linx"))
     n = _upsert(conn, "microvix_pedidos_compra", registros,
                 ["portal", "cnpj_emp", "cod_pedido", "cod_produto"])
-    _save_ts(conn, metodo, _max_ts(registros))
+    _save_ts(conn, metodo, _max_ts(registros), portal["cnpj"])
     return n
 
 
@@ -706,21 +713,20 @@ def _registrar_carga(conn, contagens: dict):
 # Sincronização faciais.person_purchases ← microvix.microvix_movimento
 # ---------------------------------------------------------------------------
 
-def _sincronizar_person_purchases(pg_conn):
-    """Insere notas anônimas em faciais.person_purchases e marca cancelamentos."""
+def _sincronizar_person_purchases(pg_conn, portal: dict) -> int:
+    """Insere notas anônimas em faciais.person_purchases para o portal dado."""
     cur = pg_conn.cursor()
-
     cur.execute("""
         SELECT DISTINCT documento
         FROM microvix_movimento
-        WHERE cod_natureza_operacao = '10030'
-          AND tipo_transacao        IN ('P', 'V')
-          AND excluido              = 'N'
-          AND cancelado             = 'N'
-          AND codigo_cliente        = '1'
-    """)
+        WHERE cnpj_emp                = %s
+          AND cod_natureza_operacao   = '10030'
+          AND tipo_transacao          IN ('P', 'V')
+          AND excluido                = 'N'
+          AND cancelado               = 'N'
+          AND codigo_cliente          = '1'
+    """, (portal["cnpj"],))
     active_bills = [row[0] for row in cur.fetchall()]
-
     cur.close()
 
     if not active_bills:
@@ -733,7 +739,7 @@ def _sincronizar_person_purchases(pg_conn):
             fc,
             "INSERT INTO person_purchases (store_id, bill) VALUES (%s, %s)"
             " ON CONFLICT (store_id, bill) DO NOTHING",
-            [(1, b) for b in active_bills],
+            [(portal["store_id"], b) for b in active_bills],
             page_size=500,
         )
         faciais_conn.commit()
@@ -778,26 +784,24 @@ _METODOS = [
 ]
 
 
-def run_incremental():
-    """Executa todos os métodos de ingestão incremental. Deve ser chamado em thread."""
+def _run_portais(portais: list[dict]):
+    """Núcleo compartilhado: executa _METODOS para cada portal da lista."""
     from datetime import datetime
-    _set(running=True, started_at=datetime.now().isoformat(),
-         finished_at=None, current_method=None, contagens={}, error=None)
-
     pg_conn = None
     try:
         pg_conn = get_pg_conn()
         contagens = {}
-        for coluna, fn in _METODOS:
-            try:
-                n = fn(pg_conn)
-                contagens[coluna] = n or 0
-            except Exception as exc:
-                log.error("Erro em %s: %s", coluna, exc, exc_info=True)
-                pg_conn.rollback()
-                contagens[coluna] = 0
-            with _status_lock:
-                _status["contagens"] = dict(contagens)
+        for portal in portais:
+            _set(current_cnpj=portal["cnpj"])
+            for coluna, fn in _METODOS:
+                try:
+                    n = fn(pg_conn, portal)
+                    contagens[coluna] = contagens.get(coluna, 0) + (n or 0)
+                except Exception as exc:
+                    log.error("Erro em %s (%s): %s", coluna, portal["cnpj"], exc, exc_info=True)
+                    pg_conn.rollback()
+                with _status_lock:
+                    _status["contagens"] = dict(contagens)
 
         _registrar_carga(pg_conn, contagens)
     except Exception as exc:
@@ -811,4 +815,30 @@ def run_incremental():
     finally:
         if pg_conn:
             release_pg_conn(pg_conn)
-        _set(running=False, finished_at=datetime.now().isoformat(), current_method=None)
+        _set(running=False, finished_at=datetime.now().isoformat(),
+             current_method=None, current_cnpj=None)
+
+
+def run_incremental():
+    """Executa todos os métodos de ingestão incremental para cada portal. Deve ser chamado em thread."""
+    from datetime import datetime
+    _set(running=True, started_at=datetime.now().isoformat(),
+         finished_at=None, current_method=None, current_cnpj=None, contagens={}, error=None)
+    _run_portais(MICROVIX_PORTAIS)
+
+
+def run_full_load(cnpj: str, data_inicio: str):
+    """Carga histórica completa de um portal específico. Deve ser chamado em thread.
+
+    data_inicio: data ISO (YYYY-MM-DD) de início do histórico, ex: '2024-01-01'.
+    """
+    from datetime import datetime
+    portal = next((p for p in MICROVIX_PORTAIS if p["cnpj"] == cnpj), None)
+    if portal is None:
+        log.error("run_full_load: portal não encontrado para cnpj=%s", cnpj)
+        return
+
+    portal_full = {**portal, "_data_inicio": data_inicio, "_data_fim": str(date.today())}
+    _set(running=True, started_at=datetime.now().isoformat(),
+         finished_at=None, current_method=None, current_cnpj=cnpj, contagens={}, error=None)
+    _run_portais([portal_full])

@@ -1818,6 +1818,26 @@ def tracks_carga_sync():
     return jsonify({"ok": True})
 
 
+@tracks_bp.route("/tracks/carga/full-load", methods=["POST"])
+def tracks_carga_full_load():
+    import threading as _threading
+    from microvix_ingest import run_full_load, get_status
+    from config import MICROVIX_PORTAIS
+    data = request.get_json(silent=True) or {}
+    cnpj = data.get("cnpj", "").strip()
+    data_inicio = data.get("data_inicio", "").strip()
+    if not cnpj or not data_inicio:
+        return jsonify({"ok": False, "error": "Informe cnpj e data_inicio (YYYY-MM-DD)."}), 400
+    if not any(p["cnpj"] == cnpj for p in MICROVIX_PORTAIS):
+        return jsonify({"ok": False, "error": f"CNPJ {cnpj} não está em MICROVIX_PORTAIS."}), 400
+    st = get_status()
+    if st["running"]:
+        return jsonify({"ok": False, "error": "Sincronização já em andamento."})
+    t = _threading.Thread(target=run_full_load, args=(cnpj, data_inicio), daemon=True)
+    t.start()
+    return jsonify({"ok": True, "cnpj": cnpj, "data_inicio": data_inicio})
+
+
 @tracks_bp.route("/tracks/carga/status")
 def tracks_carga_status():
     from microvix_ingest import get_status

@@ -28,7 +28,16 @@ ZIONS_TOKEN   = os.environ.get("ZIONS_TOKEN",   "")
 # ── Linx Microvix ──────────────────────────────────────────────────────────────
 MICROVIX_CHAVE = os.environ.get("MICROVIX_CHAVE", "8F4DD752-CEED-4296-BB3B-7F9C6D9E2ED5")
 MICROVIX_CNPJ  = os.environ.get("MICROVIX_CNPJ",  "49104467000170")
+MICROVIX_CNPJ2 = os.environ.get("MICROVIX_CNPJ2", "34881719000109")
 MICROVIX_GRUPO = os.environ.get("MICROVIX_GRUPO", "ECOVILLE")
+
+MICROVIX_PORTAIS = [
+    {"cnpj": MICROVIX_CNPJ, "chave": MICROVIX_CHAVE, "grupo": MICROVIX_GRUPO, "store_id": 1},
+]
+if MICROVIX_CNPJ2:
+    MICROVIX_PORTAIS.append(
+        {"cnpj": MICROVIX_CNPJ2, "chave": MICROVIX_CHAVE, "grupo": MICROVIX_GRUPO, "store_id": 2}
+    )
 
 DB_CONFIG = {
     'user':     os.environ.get("DB_USER",     "fefa_dev"),
