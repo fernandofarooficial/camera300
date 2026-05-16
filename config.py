@@ -17,7 +17,7 @@ HEIMDALL_END_DATE   = os.environ.get("HEIMDALL_END_DATE",   "2026-12-31")
 FLAG_NOVO_ANONIMO = os.environ.get("FLAG_NOVO_ANONIMO", "C")
 
 # Score mínimo de detecção facial para aceitar um registro.
-SCORE_MINIMO = float(os.environ.get("SCORE_MINIMO", "0.65"))
+SCORE_MINIMO = float(os.environ.get("SCORE_MINIMO", "0.72"))
 
 TELEGRAM_TOKEN   = os.environ.get("TELEGRAM_TOKEN",   "8608684261:AAEuQYGMbSA9ytbGFCvV-jl87cPhRHw1le4")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "-1003759902077")
