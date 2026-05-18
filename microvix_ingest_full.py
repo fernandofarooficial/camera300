@@ -205,12 +205,13 @@ def _upsert(conn, tabela: str, registros: list[dict], pk_cols: list[str]) -> int
 
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT column_name FROM information_schema.columns "
+            "SELECT column_name, character_maximum_length FROM information_schema.columns "
             "WHERE table_schema = 'microvix' AND table_name = %s",
             (tabela,),
         )
-        colunas_banco = {row[0] for row in cur.fetchall()}
+        col_info = {row[0]: row[1] for row in cur.fetchall()}
 
+    colunas_banco = set(col_info.keys())
     todas_cols = list(registros[0].keys())
     cols = [c for c in todas_cols if c in colunas_banco]
     ignoradas = set(todas_cols) - set(cols)
@@ -224,7 +225,14 @@ def _upsert(conn, tabela: str, registros: list[dict], pk_cols: list[str]) -> int
         f"INSERT INTO {tabela} ({col_list}) VALUES ({val_tmpl}) "
         f"ON CONFLICT ({', '.join(pk_cols)}) DO UPDATE SET {update}"
     )
-    rows = [[r.get(c) for c in cols] for r in registros]
+
+    def _clip(col, val):
+        max_len = col_info.get(col)
+        if max_len and isinstance(val, str) and len(val) > max_len:
+            return val[:max_len]
+        return val
+
+    rows = [[_clip(c, r.get(c)) for c in cols] for r in registros]
     with conn.cursor() as cur:
         psycopg2.extras.execute_batch(cur, sql, rows, page_size=500)
     conn.commit()

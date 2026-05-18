@@ -222,12 +222,13 @@ def _upsert(conn, tabela: str, registros: list[dict], pk_cols: list[str]) -> int
         return 0
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT column_name FROM information_schema.columns "
+            "SELECT column_name, character_maximum_length FROM information_schema.columns "
             "WHERE table_schema = 'microvix' AND table_name = %s",
             (tabela,),
         )
-        colunas_banco = {row[0] for row in cur.fetchall()}
+        col_info = {row[0]: row[1] for row in cur.fetchall()}
 
+    colunas_banco = set(col_info.keys())
     todas_cols = list(registros[0].keys())
     cols = [c for c in todas_cols if c in colunas_banco]
     col_list = ", ".join(cols)
@@ -237,7 +238,14 @@ def _upsert(conn, tabela: str, registros: list[dict], pk_cols: list[str]) -> int
         f"INSERT INTO {tabela} ({col_list}) VALUES ({val_tmpl}) "
         f"ON CONFLICT ({', '.join(pk_cols)}) DO UPDATE SET {update}"
     )
-    rows = [[r.get(c) for c in cols] for r in registros]
+
+    def _clip(col, val):
+        max_len = col_info.get(col)
+        if max_len and isinstance(val, str) and len(val) > max_len:
+            return val[:max_len]
+        return val
+
+    rows = [[_clip(c, r.get(c)) for c in cols] for r in registros]
     with conn.cursor() as cur:
         psycopg2.extras.execute_batch(cur, sql, rows, page_size=500)
     conn.commit()
@@ -715,7 +723,7 @@ def _registrar_carga(conn, contagens: dict):
 
 def _sincronizar_person_purchases(pg_conn, portal: dict) -> int:
     """Insere notas anônimas em faciais.person_purchases para o portal dado."""
-    cur = pg_conn.cursor()
+    cur = pg_conn.cursor("sync_pp_cursor")  # cursor servidor — não carrega tudo na RAM
     cur.execute("""
         SELECT DISTINCT documento
         FROM microvix_movimento
@@ -726,31 +734,33 @@ def _sincronizar_person_purchases(pg_conn, portal: dict) -> int:
           AND cancelado               = 'N'
           AND codigo_cliente          = '1'
     """, (portal["cnpj"],))
-    active_bills = [row[0] for row in cur.fetchall()]
-    cur.close()
-
-    if not active_bills:
-        return 0
 
     faciais_conn = get_faciais_conn()
+    total = 0
     try:
         fc = faciais_conn.cursor()
-        psycopg2.extras.execute_batch(
-            fc,
-            "INSERT INTO person_purchases (store_id, bill) VALUES (%s, %s)"
-            " ON CONFLICT (store_id, bill) DO NOTHING",
-            [(portal["store_id"], b) for b in active_bills],
-            page_size=500,
-        )
-        faciais_conn.commit()
+        while True:
+            batch = cur.fetchmany(2000)
+            if not batch:
+                break
+            psycopg2.extras.execute_batch(
+                fc,
+                "INSERT INTO person_purchases (store_id, bill) VALUES (%s, %s)"
+                " ON CONFLICT (store_id, bill) DO NOTHING",
+                [(portal["store_id"], row[0]) for row in batch],
+                page_size=500,
+            )
+            faciais_conn.commit()
+            total += len(batch)
         fc.close()
     except Exception:
         faciais_conn.rollback()
         raise
     finally:
+        cur.close()
         release_faciais_conn(faciais_conn)
 
-    return len(active_bills)
+    return total
 
 
 # ---------------------------------------------------------------------------
