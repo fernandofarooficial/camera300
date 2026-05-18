@@ -53,7 +53,7 @@ def admin_people(track_id, data=None, store_id=None):
     person_id = None
     for caretas in faces:
         track_careta = caretas.get('track_id')
-        person_id = obter_person_id_legado(track_careta)
+        person_id = obter_person_id_legado(track_careta, store_id=store_id)
         if person_id is not None:
             atualizar_person_id_em_registro(person_id, track_id)
             recgn_score = caretas.get('face_recgn_score')
@@ -95,14 +95,22 @@ def listar_matches_simples(track_id, data=None):
     return faces
 
 
-def obter_person_id_legado(track_id):
+def obter_person_id_legado(track_id, store_id=None):
     conn = get_faciais_conn()
     try:
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cursor.execute(
-            "SELECT person_id FROM detection_records WHERE track_id = %s ORDER BY detection_record_id DESC LIMIT 1",
-            (track_id,),
-        )
+        if store_id is not None:
+            cursor.execute(
+                """SELECT person_id FROM detection_records
+                   WHERE track_id = %s AND store_id = %s
+                   ORDER BY detection_record_id DESC LIMIT 1""",
+                (track_id, store_id),
+            )
+        else:
+            cursor.execute(
+                "SELECT person_id FROM detection_records WHERE track_id = %s ORDER BY detection_record_id DESC LIMIT 1",
+                (track_id,),
+            )
         row = cursor.fetchone()
         cursor.close()
         if row is None:
