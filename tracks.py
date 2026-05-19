@@ -1498,7 +1498,6 @@ def tracks_caixa_set_pessoa(documento):
         person_id = int(data["person_id"])
     except (KeyError, ValueError, TypeError):
         return jsonify({"error": "person_id inválido"}), 400
-    cnpj_emp_req = (data.get("cnpj_emp") or "").strip()
 
     # 1. Busca a NF para obter cnpj_emp e horário
     pg_conn = None
@@ -1510,14 +1509,13 @@ def tracks_caixa_set_pessoa(documento):
                 cnpj_emp,
                 (data_lancamento::date + hora_lancamento::time) AS nf_dt
             FROM microvix_movimento
-            WHERE documento = %(documento)s
-              AND (%(cnpj)s = '' OR cnpj_emp = %(cnpj)s)
+            WHERE documento = %s
               AND cod_natureza_operacao = '10030'
               AND cancelado = 'N'
               AND excluido = 'N'
               AND (tipo_transacao IN ('P','V') OR tipo_transacao IS NULL)
             LIMIT 1
-        """, {"documento": documento, "cnpj": cnpj_emp_req})
+        """, (documento,))
         nf_row = pg_cur.fetchone()
         pg_cur.close()
     except Exception as e:
