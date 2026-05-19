@@ -1532,37 +1532,37 @@ def tracks_caixa_set_pessoa(documento):
     nf_dt    = nf_row[1]
     store_id = CNPJ_STORE_MAP.get(cnpj_emp)
 
-    # 2. Valida detecção da pessoa nas câmeras da loja (se o mapeamento estiver configurado)
+    # 2. Valida detecção da pessoa nas câmeras da loja via JOIN no banco
     if store_id is not None and nf_dt is not None:
-        cameras_loja = STORE_CAMERAS_MAP.get(store_id)
-        if cameras_loja:
-            janela_ini = nf_dt - timedelta(minutes=10)
-            janela_fim = nf_dt + timedelta(minutes=10)
+        janela_ini = nf_dt - timedelta(minutes=10)
+        janela_fim = nf_dt + timedelta(minutes=10)
+        try:
+            conn_v = get_faciais_conn()
             try:
-                conn_v = get_faciais_conn()
-                try:
-                    cur_v = conn_v.cursor()
-                    cur_v.execute("""
-                        SELECT 1 FROM detection_records
-                        WHERE person_id = %s
-                          AND camera_id = ANY(%s)
-                          AND created_at BETWEEN %s AND %s
-                        LIMIT 1
-                    """, (person_id, list(cameras_loja), janela_ini, janela_fim))
-                    encontrado = cur_v.fetchone() is not None
-                    cur_v.close()
-                    conn_v.rollback()
-                finally:
-                    release_faciais_conn(conn_v)
-            except Exception as e:
-                print(f"[caixa/set_pessoa] Erro ao validar detecção: {e}")
-                return jsonify({"error": "Erro ao validar detecção da pessoa"}), 500
+                cur_v = conn_v.cursor()
+                cur_v.execute("""
+                    SELECT 1
+                    FROM detection_records dr
+                    JOIN cameras c ON c.camera_id = dr.camera_id
+                    WHERE dr.person_id = %s
+                      AND c.store_id   = %s
+                      AND dr.created_at BETWEEN %s AND %s
+                    LIMIT 1
+                """, (person_id, store_id, janela_ini, janela_fim))
+                encontrado = cur_v.fetchone() is not None
+                cur_v.close()
+                conn_v.rollback()
+            finally:
+                release_faciais_conn(conn_v)
+        except Exception as e:
+            print(f"[caixa/set_pessoa] Erro ao validar detecção: {e}")
+            return jsonify({"error": "Erro ao validar detecção da pessoa"}), 500
 
-            if not encontrado:
-                nome_loja = STORE_NAME_MAP.get(store_id, f"loja {store_id}")
-                return jsonify({
-                    "error": f"Pessoa não detectada pelas câmeras de {nome_loja} no período da nota fiscal (±10 min)"
-                }), 422
+        if not encontrado:
+            nome_loja = STORE_NAME_MAP.get(store_id, f"loja {store_id}")
+            return jsonify({
+                "error": f"Pessoa não detectada pelas câmeras de {nome_loja} no período da nota fiscal (±10 min)"
+            }), 422
 
     try:
         conn = get_faciais_conn()
