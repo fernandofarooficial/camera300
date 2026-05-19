@@ -1366,7 +1366,8 @@ def tracks_caixa():
             WHERE cod_natureza_operacao = '10030'
               AND cancelado = 'N'
               AND excluido = 'N'
-              AND tipo_transacao = 'V'
+              AND (tipo_transacao IN ('P','V') OR tipo_transacao IS NULL)
+              AND cod_cliente = 1
             GROUP BY documento, data_lancamento::date, hora_lancamento, cnpj_emp
             ORDER BY data_lancamento::date DESC, hora_lancamento DESC
             LIMIT 25
