@@ -1370,7 +1370,7 @@ def tracks_caixa():
               AND codigo_cliente = 1
             GROUP BY documento, data_lancamento::date, hora_lancamento, cnpj_emp
             ORDER BY data_lancamento::date DESC, hora_lancamento DESC
-            LIMIT 25
+            LIMIT 50
         """)
         for row in pg_cur.fetchall():
             cnpj_emp = (row[6] or "").strip()
@@ -1433,8 +1433,8 @@ def tracks_caixa():
 
                 # 3. Candidatos: apenas câmeras da loja da NF, janela ±5 min, tipo Cliente
                 if dts:
-                    dt_min = min(dts) - timedelta(minutes=5)
-                    dt_max = max(dts) + timedelta(minutes=5)
+                    dt_min = min(dts) - timedelta(minutes=10)
+                    dt_max = max(dts) + timedelta(minutes=10)
                     cursor.execute("""
                         SELECT
                             r.detection_record_id   AS id,
