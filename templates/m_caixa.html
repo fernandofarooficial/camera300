@@ -278,7 +278,7 @@
           </div>
           <div class="cli-scroll">
             {% for cli in nf.candidatos %}
-            <div class="cli-card" onclick="confirmarPessoa('{{ nf.documento }}', {{ cli.id_unico }})"
+            <div class="cli-card" onclick="confirmarPessoa('{{ nf.documento }}', {{ cli.id_unico }}, '{{ nf.cnpj_emp }}')"
                  title="Confirmar como comprador">
               {% if cli.foto %}
                 <img class="cli-photo" src="{{ cli.foto }}" alt=""
@@ -305,8 +305,8 @@
         <div class="busca-row">
           <input class="busca-input" type="number" min="1"
                  id="pid-{{ nf.documento }}" placeholder="ex: 42"
-                 onkeydown="if(event.key==='Enter') buscarPessoa('{{ nf.documento }}')" />
-          <button class="btn-buscar" onclick="buscarPessoa('{{ nf.documento }}')">Buscar</button>
+                 onkeydown="if(event.key==='Enter') buscarPessoa('{{ nf.documento }}', '{{ nf.cnpj_emp }}')" />
+          <button class="btn-buscar" onclick="buscarPessoa('{{ nf.documento }}', '{{ nf.cnpj_emp }}')">Buscar</button>
         </div>
         <div class="busca-preview" id="preview-{{ nf.documento }}"></div>
       </div>
@@ -365,12 +365,12 @@
       .catch(() => { panel.innerHTML = '<div class="it-error">Erro ao carregar itens.</div>'; });
   }
 
-  async function confirmarPessoa(doc, personId) {
+  async function confirmarPessoa(doc, personId, cnpjEmp) {
     try {
       const r = await fetch(`/camera300/tracks/caixa/nf/${encodeURIComponent(doc)}/pessoa`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ person_id: personId }),
+        body: JSON.stringify({ person_id: personId, cnpj_emp: cnpjEmp || '' }),
       });
       const data = await r.json();
       if (!r.ok) { alert('Erro: ' + (data.error || r.status)); return; }
@@ -393,7 +393,7 @@
     }
   }
 
-  async function buscarPessoa(doc) {
+  async function buscarPessoa(doc, cnpjEmp) {
     const input   = document.getElementById('pid-' + doc);
     const preview = document.getElementById('preview-' + doc);
     const pid     = parseInt(input.value, 10);
@@ -419,7 +419,7 @@
             <span class="conf-id">ID ${data.id_unico}</span>
             <span class="conf-nome">${data.nome || '—'}</span>
           </div>
-          <button class="btn-confirmar" onclick="confirmarPessoa('${doc}', ${data.id_unico})">Confirmar</button>
+          <button class="btn-confirmar" onclick="confirmarPessoa('${doc}', ${data.id_unico}, '${cnpjEmp || ''}')">Confirmar</button>
         </div>`;
     } catch (e) {
       preview.innerHTML = '<div class="busca-erro">Erro de comunicação.</div>';
