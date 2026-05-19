@@ -1510,7 +1510,7 @@ def tracks_caixa_set_pessoa(documento):
                 cnpj_emp,
                 (data_lancamento::date + hora_lancamento::time) AS nf_dt
             FROM microvix_movimento
-            WHERE documento = %s
+            WHERE documento = %(documento)s
               AND (%(cnpj)s = '' OR cnpj_emp = %(cnpj)s)
               AND cod_natureza_operacao = '10030'
               AND cancelado = 'N'
