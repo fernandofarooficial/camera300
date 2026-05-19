@@ -1467,8 +1467,7 @@ def tracks_caixa():
                         seen = set()
                         for reg in registros:
                             if janela_ini <= reg["created_at"] <= janela_fim:
-                                # Se a loja está mapeada, filtra; senão mostra todos
-                                if cameras_loja is not None and reg["camera_id"] not in cameras_loja:
+                                if not cameras_loja or reg["camera_id"] not in cameras_loja:
                                     continue
                                 if reg["id_unico"] not in seen:
                                     seen.add(reg["id_unico"])
