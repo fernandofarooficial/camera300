@@ -274,7 +274,7 @@
       {% if nf.candidatos %}
         <div class="secao">
           <div class="secao-label">
-            Detectados <span class="hint">± 5 min · câmeras de {{ nf.nome_loja or 'todas as lojas' }}</span>
+            Detectados <span class="hint">± 10 min · câmeras de {{ nf.nome_loja or 'todas as lojas' }}</span>
           </div>
           <div class="cli-scroll">
             {% for cli in nf.candidatos %}
@@ -365,15 +365,24 @@
       .catch(() => { panel.innerHTML = '<div class="it-error">Erro ao carregar itens.</div>'; });
   }
 
-  async function confirmarPessoa(doc, personId, cnpjEmp) {
+  async function confirmarPessoa(doc, personId, cnpjEmp, force = false) {
     try {
       const r = await fetch(`/camera300/tracks/caixa/nf/${encodeURIComponent(doc)}/pessoa`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ person_id: personId, cnpj_emp: cnpjEmp || '' }),
+        body: JSON.stringify({ person_id: personId, cnpj_emp: cnpjEmp || '', force }),
       });
       const data = await r.json();
-      if (!r.ok) { alert('Erro: ' + (data.error || r.status)); return; }
+      if (!r.ok) {
+        if (r.status === 422 && data.pode_forcar) {
+          if (confirm((data.error || 'Detecção não encontrada') + '\n\nConfirmar mesmo assim?')) {
+            confirmarPessoa(doc, personId, cnpjEmp, true);
+          }
+          return;
+        }
+        alert('Erro: ' + (data.error || r.status));
+        return;
+      }
       atualizarConfirmado(doc, data);
       limparPreview(doc);
     } catch (e) {

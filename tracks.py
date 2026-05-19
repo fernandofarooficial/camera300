@@ -1498,6 +1498,7 @@ def tracks_caixa_set_pessoa(documento):
         person_id = int(data["person_id"])
     except (KeyError, ValueError, TypeError):
         return jsonify({"error": "person_id inválido"}), 400
+    force = bool(data.get("force"))
 
     # 1. Busca a NF para obter cnpj_emp e horário
     pg_conn = None
@@ -1533,7 +1534,7 @@ def tracks_caixa_set_pessoa(documento):
     store_id = CNPJ_STORE_MAP.get(cnpj_emp)
 
     # 2. Valida detecção da pessoa nas câmeras da loja via JOIN no banco
-    if store_id is not None and nf_dt is not None:
+    if not force and store_id is not None and nf_dt is not None:
         janela_ini = nf_dt - timedelta(minutes=10)
         janela_fim = nf_dt + timedelta(minutes=10)
         try:
@@ -1561,7 +1562,8 @@ def tracks_caixa_set_pessoa(documento):
         if not encontrado:
             nome_loja = STORE_NAME_MAP.get(store_id, f"loja {store_id}")
             return jsonify({
-                "error": f"Pessoa não detectada pelas câmeras de {nome_loja} no período da nota fiscal (±10 min)"
+                "error": f"Pessoa não detectada pelas câmeras de {nome_loja} no período da nota fiscal (±10 min)",
+                "pode_forcar": True,
             }), 422
 
     try:
