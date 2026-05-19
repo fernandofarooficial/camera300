@@ -1431,7 +1431,7 @@ def tracks_caixa():
                 for v in confirmados.values():
                     v["foto"] = HEIMDALL_IMAGE_BASE + v["image_path"] if v["image_path"] else None
 
-                # 3. Candidatos: apenas câmeras da loja da NF, janela ±5 min, tipo Cliente
+                # 3. Candidatos: apenas câmeras da loja da NF, janela ±10 min, tipo Cliente
                 if dts:
                     dt_min = min(dts) - timedelta(minutes=10)
                     dt_max = max(dts) + timedelta(minutes=10)
@@ -1462,8 +1462,8 @@ def tracks_caixa():
                             continue
                         # Câmeras válidas para esta NF (filtra por store_id da loja)
                         cameras_loja = STORE_CAMERAS_MAP.get(nota["store_id"]) if nota["store_id"] else None
-                        janela_ini = nota["nf_dt"] - timedelta(minutes=5)
-                        janela_fim = nota["nf_dt"] + timedelta(minutes=5)
+                        janela_ini = nota["nf_dt"] - timedelta(minutes=10)
+                        janela_fim = nota["nf_dt"] + timedelta(minutes=10)
                         seen = set()
                         for reg in registros:
                             if janela_ini <= reg["created_at"] <= janela_fim:
