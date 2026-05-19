@@ -1513,7 +1513,7 @@ def tracks_caixa_set_pessoa(documento):
               AND cod_natureza_operacao = '10030'
               AND cancelado = 'N'
               AND excluido = 'N'
-              AND tipo_transacao = 'V'
+              AND (tipo_transacao IN ('P','V') OR tipo_transacao IS NULL)
             LIMIT 1
         """, (documento,))
         nf_row = pg_cur.fetchone()
@@ -1536,8 +1536,8 @@ def tracks_caixa_set_pessoa(documento):
     if store_id is not None and nf_dt is not None:
         cameras_loja = STORE_CAMERAS_MAP.get(store_id)
         if cameras_loja:
-            janela_ini = nf_dt - timedelta(minutes=5)
-            janela_fim = nf_dt + timedelta(minutes=5)
+            janela_ini = nf_dt - timedelta(minutes=10)
+            janela_fim = nf_dt + timedelta(minutes=10)
             try:
                 conn_v = get_faciais_conn()
                 try:
@@ -1561,7 +1561,7 @@ def tracks_caixa_set_pessoa(documento):
             if not encontrado:
                 nome_loja = STORE_NAME_MAP.get(store_id, f"loja {store_id}")
                 return jsonify({
-                    "error": f"Pessoa não detectada pelas câmeras de {nome_loja} no período da nota fiscal (±5 min)"
+                    "error": f"Pessoa não detectada pelas câmeras de {nome_loja} no período da nota fiscal (±10 min)"
                 }), 422
 
     try:
