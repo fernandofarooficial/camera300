@@ -524,7 +524,7 @@
               <div class="candidatos-lista">
                 {% for cli in nf.candidatos %}
                   <div class="cli-card candidato"
-                       onclick="confirmarPessoa('{{ nf.documento }}', {{ cli.id_unico }})"
+                       onclick="confirmarPessoa('{{ nf.documento }}', {{ cli.id_unico }}, '{{ nf.cnpj_emp }}')"
                        title="Clique para confirmar como comprador">
                     {% if cli.foto %}
                       <img class="cli-foto" src="{{ cli.foto }}"
@@ -562,8 +562,8 @@
               <input class="busca-input" type="number" min="1"
                      id="pid-{{ nf.documento }}"
                      placeholder="ex: 42"
-                     onkeydown="if(event.key==='Enter') buscarPessoa('{{ nf.documento }}')" />
-              <button class="btn-buscar" onclick="buscarPessoa('{{ nf.documento }}')">Buscar</button>
+                     onkeydown="if(event.key==='Enter') buscarPessoa('{{ nf.documento }}', '{{ nf.cnpj_emp }}')" />
+              <button class="btn-buscar" onclick="buscarPessoa('{{ nf.documento }}', '{{ nf.cnpj_emp }}')">Buscar</button>
             </div>
             <div class="busca-preview" id="preview-{{ nf.documento }}"></div>
           </div>
@@ -615,12 +615,12 @@
       });
   }
 
-  async function confirmarPessoa(doc, personId) {
+  async function confirmarPessoa(doc, personId, cnpjEmp) {
     try {
       const r = await fetch(`/camera300/tracks/caixa/nf/${encodeURIComponent(doc)}/pessoa`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ person_id: personId }),
+        body: JSON.stringify({ person_id: personId, cnpj_emp: cnpjEmp || '' }),
       });
       const data = await r.json();
       if (!r.ok) { alert('Erro: ' + (data.error || r.status)); return; }
@@ -643,7 +643,7 @@
     }
   }
 
-  async function buscarPessoa(doc) {
+  async function buscarPessoa(doc, cnpjEmp) {
     const input   = document.getElementById('pid-' + doc);
     const preview = document.getElementById('preview-' + doc);
     const pid     = parseInt(input.value, 10);
@@ -673,7 +673,7 @@
             ${data.apelido ? `<span class="cli-apelido">${data.apelido}</span>` : ''}
             ${chips ? `<div class="cli-meta">${chips}</div>` : ''}
           </div>
-          <button class="btn-confirmar" onclick="confirmarPessoa('${doc}', ${data.id_unico})">Confirmar</button>
+          <button class="btn-confirmar" onclick="confirmarPessoa('${doc}', ${data.id_unico}, '${cnpjEmp || ''}')">Confirmar</button>
         </div>`;
     } catch (e) {
       preview.innerHTML = '<span class="busca-erro">Erro de comunicação.</span>';
