@@ -411,6 +411,62 @@
       color: #34d399;
       margin-top: 0.35rem;
     }
+
+    /* ---- Filtro ---- */
+    .filtro-card {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 12px;
+      padding: 1rem 1.25rem;
+    }
+    .filtro-form {
+      display: flex;
+      align-items: flex-end;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .filtro-field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+    .filtro-label {
+      font-size: 0.6rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: #475569;
+    }
+    .filtro-select, .filtro-date {
+      background: #0f1117;
+      border: 1px solid #2d3148;
+      color: #e2e8f0;
+      font-size: 0.85rem;
+      padding: 0.38rem 0.65rem;
+      border-radius: 6px;
+      outline: none;
+      height: 36px;
+    }
+    .filtro-select:focus, .filtro-date:focus { border-color: #7c86ff88; }
+    .btn-filtrar {
+      height: 36px;
+      background: #7c86ff22;
+      border: 1px solid #7c86ff55;
+      color: #7c86ff;
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 0 1.1rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-filtrar:hover { background: #7c86ff33; }
+    .filtro-resultado {
+      margin-left: auto;
+      font-size: 0.72rem;
+      color: #475569;
+      align-self: center;
+    }
   </style>
 </head>
 <body>
@@ -427,8 +483,36 @@
 
 <main>
 
-  {% if not notas %}
-    <div class="empty-state">Nenhuma nota fiscal encontrada.</div>
+  <div class="filtro-card">
+    <form class="filtro-form" method="GET" action="">
+      <div class="filtro-field">
+        <label class="filtro-label">Loja</label>
+        <select name="store_id" class="filtro-select" required>
+          <option value="">Selecione…</option>
+          {% for loja in lojas %}
+            <option value="{{ loja.store_id }}"
+                    {% if loja.store_id == store_id_sel %}selected{% endif %}>
+              {{ loja.store_name }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="filtro-field">
+        <label class="filtro-label">Data</label>
+        <input type="date" name="data" class="filtro-date"
+               value="{{ data_sel }}" required />
+      </div>
+      <button type="submit" class="btn-filtrar">Filtrar</button>
+      {% if filtro_aplicado %}
+        <span class="filtro-resultado">{{ notas | length }} nota(s) encontrada(s)</span>
+      {% endif %}
+    </form>
+  </div>
+
+  {% if filtro_aplicado and not notas %}
+    <div class="empty-state">Nenhuma nota fiscal encontrada para os filtros selecionados.</div>
+  {% elif not filtro_aplicado %}
+    <div class="empty-state">Selecione a loja e o dia para visualizar as notas fiscais.</div>
   {% else %}
 
     {% for nf in notas %}

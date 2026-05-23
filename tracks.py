@@ -1347,144 +1347,161 @@ def tracks_export_download():
 @tracks_bp.route("/tracks/caixa")
 @tracks_bp.route("/m/tracks/caixa")
 def tracks_caixa():
-    # 1. Buscar as 25 últimas notas fiscais (PostgreSQL microvix)
+    store_id_param = request.args.get("store_id", type=int)
+    data_param     = request.args.get("data")  # YYYY-MM-DD
+
+    # Lojas com CNPJ cadastrado (únicas elegíveis para NFs Microvix), ordenadas por nome
+    lojas = sorted(
+        [{"store_id": sid, "store_name": STORE_NAME_MAP.get(sid, f"Loja {sid}")}
+         for sid in set(CNPJ_STORE_MAP.values())],
+        key=lambda x: x["store_name"],
+    )
+
+    # Data padrão = hoje (para pré-preencher o campo mesmo sem filtro aplicado)
+    data_display = data_param or date.today().strftime("%Y-%m-%d")
+
     notas = []
-    pg_conn = None
-    try:
-        pg_conn = get_pg_conn()
-        pg_cur = pg_conn.cursor()
-        pg_cur.execute("""
-            SELECT
-                documento,
-                COUNT(*)                                        AS itens,
-                ROUND(SUM(valor_liquido)::numeric, 2)           AS valor,
-                data_lancamento::date                           AS data,
-                hora_lancamento                                 AS hora,
-                (data_lancamento::date + hora_lancamento::time) AS nf_dt,
-                cnpj_emp
-            FROM microvix_movimento
-            WHERE cod_natureza_operacao = '10030'
-              AND cancelado = 'N'
-              AND excluido = 'N'
-              AND (tipo_transacao IN ('P','V') OR tipo_transacao IS NULL)
-              AND codigo_cliente = 1
-            GROUP BY documento, data_lancamento::date, hora_lancamento, cnpj_emp
-            ORDER BY data_lancamento::date DESC, hora_lancamento DESC
-            LIMIT 50
-        """)
-        for row in pg_cur.fetchall():
-            cnpj_emp = (row[6] or "").strip()
-            store_id = CNPJ_STORE_MAP.get(cnpj_emp)
-            notas.append({
-                "documento":         row[0],
-                "itens":             int(row[1]),
-                "valor":             float(row[2]) if row[2] is not None else 0.0,
-                "data":              row[3],
-                "hora":              (row[4] or "").strip(),
-                "nf_dt":             row[5],
-                "cnpj_emp":          cnpj_emp,
-                "store_id":          store_id,
-                "nome_loja":         STORE_NAME_MAP.get(store_id) if store_id else None,
-                "candidatos":        [],
-                "pessoa_confirmada": None,
-            })
-        pg_cur.close()
-    except Exception as e:
-        print(f"[caixa] Erro PostgreSQL: {e}")
-    finally:
-        if pg_conn:
-            release_pg_conn(pg_conn)
 
-    if notas:
-        docs = [n["documento"] for n in notas]
-        dts  = [n["nf_dt"] for n in notas if n["nf_dt"] is not None]
-        try:
-            conn = get_faciais_conn()
+    if store_id_param and data_param:
+        store_cnpj_map = {sid: cnpj for cnpj, sid in CNPJ_STORE_MAP.items()}
+        cnpj_sel = store_cnpj_map.get(store_id_param)
+
+        if cnpj_sel:
+            pg_conn = None
             try:
-                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-
-                # 2. Pessoas já confirmadas em faciais.person_purchases (qualquer store_id)
-                cursor.execute("""
+                pg_conn = get_pg_conn()
+                pg_cur  = pg_conn.cursor()
+                pg_cur.execute("""
                     SELECT
-                        pp.bill,
-                        pp.store_id,
-                        p.person_id   AS id_unico,
-                        p.full_name   AS nome,
-                        p.nickname    AS apelido,
-                        p.gender_id   AS genero,
-                        p.age         AS idade,
-                        r.image_path
-                    FROM person_purchases pp
-                    JOIN people p ON p.person_id = pp.person_id
-                    LEFT JOIN LATERAL (
-                        SELECT image_path
-                        FROM detection_records
-                        WHERE person_id = pp.person_id
-                          AND image_path IS NOT NULL
-                        ORDER BY created_at DESC
-                        LIMIT 1
-                    ) r ON TRUE
-                    WHERE pp.bill = ANY(%s)
-                      AND pp.person_id IS NOT NULL
-                """, (docs,))
-                confirmados = {row["bill"]: dict(row) for row in cursor.fetchall()}
-                for v in confirmados.values():
-                    v["foto"] = HEIMDALL_IMAGE_BASE + v["image_path"] if v["image_path"] else None
+                        documento,
+                        COUNT(*)                                        AS itens,
+                        ROUND(SUM(valor_total)::numeric, 2)             AS valor,
+                        data_lancamento::date                           AS data,
+                        hora_lancamento                                 AS hora,
+                        (data_lancamento::date + hora_lancamento::time) AS nf_dt,
+                        cnpj_emp
+                    FROM microvix_movimento
+                    WHERE cod_natureza_operacao = '10030'
+                      AND cancelado = 'N'
+                      AND excluido  = 'N'
+                      AND (tipo_transacao IN ('P','V') OR tipo_transacao IS NULL)
+                      AND codigo_cliente = 1
+                      AND cnpj_emp = %s
+                      AND data_lancamento::date = %s
+                    GROUP BY documento, data_lancamento::date, hora_lancamento, cnpj_emp
+                    ORDER BY hora_lancamento DESC
+                """, (cnpj_sel, data_param))
+                for row in pg_cur.fetchall():
+                    cnpj_emp = (row[6] or "").strip()
+                    notas.append({
+                        "documento":         row[0],
+                        "itens":             int(row[1]),
+                        "valor":             float(row[2]) if row[2] is not None else 0.0,
+                        "data":              row[3],
+                        "hora":              (row[4] or "").strip(),
+                        "nf_dt":             row[5],
+                        "cnpj_emp":          cnpj_emp,
+                        "store_id":          store_id_param,
+                        "nome_loja":         STORE_NAME_MAP.get(store_id_param),
+                        "candidatos":        [],
+                        "pessoa_confirmada": None,
+                    })
+                pg_cur.close()
+            except Exception as e:
+                print(f"[caixa] Erro PostgreSQL: {e}")
+            finally:
+                if pg_conn:
+                    release_pg_conn(pg_conn)
 
-                # 3. Candidatos: apenas câmeras da loja da NF, janela ±10 min, tipo Cliente
-                if dts:
-                    dt_min = min(dts) - timedelta(minutes=10)
-                    dt_max = max(dts) + timedelta(minutes=10)
+        if notas:
+            docs = [n["documento"] for n in notas]
+            dts  = [n["nf_dt"] for n in notas if n["nf_dt"] is not None]
+            try:
+                conn = get_faciais_conn()
+                try:
+                    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
                     cursor.execute("""
                         SELECT
-                            r.detection_record_id   AS id,
-                            r.person_id             AS id_unico,
-                            r.camera_id,
-                            r.image_path,
-                            r.created_at,
-                            p.full_name             AS nome,
-                            p.nickname              AS apelido,
-                            p.gender_id             AS genero,
-                            p.age                   AS idade
-                        FROM detection_records r
-                        JOIN people p ON p.person_id = r.person_id
-                        WHERE p.person_type_id = 'C'
-                          AND r.created_at BETWEEN %s AND %s
-                        ORDER BY r.created_at DESC
-                    """, (dt_min, dt_max))
-                    registros = [dict(r) for r in cursor.fetchall()]
-                    for reg in registros:
-                        reg["foto"] = HEIMDALL_IMAGE_BASE + reg["image_path"] if reg["image_path"] else None
+                            pp.bill,
+                            pp.store_id,
+                            p.person_id   AS id_unico,
+                            p.full_name   AS nome,
+                            p.nickname    AS apelido,
+                            p.gender_id   AS genero,
+                            p.age         AS idade,
+                            r.image_path
+                        FROM person_purchases pp
+                        JOIN people p ON p.person_id = pp.person_id
+                        LEFT JOIN LATERAL (
+                            SELECT image_path
+                            FROM detection_records
+                            WHERE person_id = pp.person_id
+                              AND image_path IS NOT NULL
+                            ORDER BY created_at DESC
+                            LIMIT 1
+                        ) r ON TRUE
+                        WHERE pp.bill = ANY(%s)
+                          AND pp.person_id IS NOT NULL
+                    """, (docs,))
+                    confirmados = {row["bill"]: dict(row) for row in cursor.fetchall()}
+                    for v in confirmados.values():
+                        v["foto"] = HEIMDALL_IMAGE_BASE + v["image_path"] if v["image_path"] else None
 
-                    for nota in notas:
-                        nota["pessoa_confirmada"] = confirmados.get(nota["documento"])
-                        if nota["nf_dt"] is None:
-                            continue
-                        # Câmeras válidas para esta NF (filtra por store_id da loja)
-                        cameras_loja = STORE_CAMERAS_MAP.get(nota["store_id"]) if nota["store_id"] else None
-                        janela_ini = nota["nf_dt"] - timedelta(minutes=10)
-                        janela_fim = nota["nf_dt"] + timedelta(minutes=10)
-                        seen = set()
+                    # Candidatos: câmeras da loja selecionada, janela cobrindo todo o dia
+                    if dts:
+                        dt_min = min(dts) - timedelta(minutes=10)
+                        dt_max = max(dts) + timedelta(minutes=10)
+                        cursor.execute("""
+                            SELECT
+                                r.detection_record_id   AS id,
+                                r.person_id             AS id_unico,
+                                r.camera_id,
+                                r.image_path,
+                                r.created_at,
+                                p.full_name             AS nome,
+                                p.nickname              AS apelido,
+                                p.gender_id             AS genero,
+                                p.age                   AS idade
+                            FROM detection_records r
+                            JOIN people  p ON p.person_id = r.person_id
+                            JOIN cameras c ON c.camera_id = r.camera_id
+                            WHERE p.person_type_id = 'C'
+                              AND c.store_id       = %s
+                              AND r.created_at BETWEEN %s AND %s
+                            ORDER BY r.created_at DESC
+                        """, (store_id_param, dt_min, dt_max))
+                        registros = [dict(r) for r in cursor.fetchall()]
                         for reg in registros:
-                            if janela_ini <= reg["created_at"] <= janela_fim:
-                                if not cameras_loja or reg["camera_id"] not in cameras_loja:
-                                    continue
-                                if reg["id_unico"] not in seen:
-                                    seen.add(reg["id_unico"])
-                                    nota["candidatos"].append(reg)
-                else:
-                    for nota in notas:
-                        nota["pessoa_confirmada"] = confirmados.get(nota["documento"])
+                            reg["foto"] = HEIMDALL_IMAGE_BASE + reg["image_path"] if reg["image_path"] else None
 
-                cursor.close()
-                conn.rollback()
-            finally:
-                release_faciais_conn(conn)
-        except Exception as e:
-            print(f"[caixa] Erro faciais: {e}")
+                        for nota in notas:
+                            nota["pessoa_confirmada"] = confirmados.get(nota["documento"])
+                            if nota["nf_dt"] is None:
+                                continue
+                            janela_ini = nota["nf_dt"] - timedelta(minutes=10)
+                            janela_fim = nota["nf_dt"] + timedelta(minutes=10)
+                            seen = set()
+                            for reg in registros:
+                                if janela_ini <= reg["created_at"] <= janela_fim:
+                                    if reg["id_unico"] not in seen:
+                                        seen.add(reg["id_unico"])
+                                        nota["candidatos"].append(reg)
+                    else:
+                        for nota in notas:
+                            nota["pessoa_confirmada"] = confirmados.get(nota["documento"])
+
+                    cursor.close()
+                    conn.rollback()
+                finally:
+                    release_faciais_conn(conn)
+            except Exception as e:
+                print(f"[caixa] Erro faciais: {e}")
 
     tmpl = "m_caixa.html" if "/m/" in request.path else "tracks_caixa.html"
-    return render_template(tmpl, notas=notas)
+    return render_template(tmpl, notas=notas, lojas=lojas,
+                           store_id_sel=store_id_param, data_sel=data_display,
+                           filtro_aplicado=bool(store_id_param and data_param))
 
 
 @tracks_bp.route("/tracks/caixa/nf/<documento>/pessoa", methods=["POST"])

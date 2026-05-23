@@ -175,6 +175,33 @@
     .chip-g-A { background:#64748b22; color:#94a3b8; border:1px solid #64748b44; }
     .chip-idade { background:#10b98122; color:#34d399; border:1px solid #10b98144; }
 
+    /* Filtro */
+    .filtro-bar {
+      background: #1a1d27;
+      border-bottom: 1px solid #2d3148;
+      padding: 0.6rem 0.75rem;
+    }
+    .filtro-form {
+      display: flex; align-items: center; gap: 0.5rem; flex-wrap: nowrap;
+    }
+    .f-select, .f-date {
+      flex: 1; min-width: 0;
+      background: #0f1117; border: 1px solid #2d3148; color: #e2e8f0;
+      border-radius: 8px; padding: 0 0.5rem; font-size: 0.75rem;
+      height: 38px; outline: none;
+    }
+    .f-select:focus, .f-date:focus { border-color: #7c86ff55; }
+    .f-btn {
+      background: #7c86ff22; border: 1px solid #7c86ff55; color: #7c86ff;
+      border-radius: 8px; font-size: 0.8rem; font-weight: 700;
+      padding: 0 0.85rem; height: 38px; cursor: pointer; flex-shrink: 0;
+    }
+    .f-btn:active { background: #7c86ff33; }
+    .f-info {
+      font-size: 0.65rem; color: #475569; text-align: center;
+      padding-top: 0.3rem;
+    }
+
     /* Update banner */
     .upd-banner {
       display: none; position: fixed;
@@ -217,9 +244,31 @@
   <a class="mh-btn" href="/camera300/m/tracks/caixa">&#8635;</a>
 </div>
 
+<div class="filtro-bar">
+  <form class="filtro-form" method="GET" action="">
+    <select name="store_id" class="f-select" required>
+      <option value="">Loja…</option>
+      {% for loja in lojas %}
+        <option value="{{ loja.store_id }}"
+                {% if loja.store_id == store_id_sel %}selected{% endif %}>
+          {{ loja.store_name }}
+        </option>
+      {% endfor %}
+    </select>
+    <input type="date" name="data" class="f-date"
+           value="{{ data_sel }}" required />
+    <button type="submit" class="f-btn">→</button>
+  </form>
+  {% if filtro_aplicado %}
+    <div class="f-info">{{ notas | length }} nota(s) encontrada(s)</div>
+  {% endif %}
+</div>
+
 <main>
-  {% if not notas %}
-    <div class="empty">Nenhuma nota fiscal encontrada.</div>
+  {% if not filtro_aplicado %}
+    <div class="empty">Selecione a loja e o dia para visualizar as notas fiscais.</div>
+  {% elif not notas %}
+    <div class="empty">Nenhuma nota fiscal encontrada para os filtros selecionados.</div>
   {% else %}
     {% for nf in notas %}
     <div class="nf-card">
