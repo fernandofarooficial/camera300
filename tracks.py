@@ -1526,25 +1526,43 @@ def tracks_caixa_set_pessoa(documento):
         person_id = int(data["person_id"])
     except (KeyError, ValueError, TypeError):
         return jsonify({"error": "person_id inválido"}), 400
-    force = bool(data.get("force"))
+    force    = bool(data.get("force"))
+    # cnpj_emp enviado pelo front — essencial para filtrar a NF correta,
+    # pois documento não é único no Microvix (mesma numeração em lojas distintas)
+    cnpj_emp_body = (data.get("cnpj_emp") or "").strip()
 
-    # 1. Busca a NF para obter cnpj_emp e horário
+    # 1. Busca a NF para obter cnpj_emp confirmado e horário
     pg_conn = None
     try:
         pg_conn = get_pg_conn()
         pg_cur = pg_conn.cursor()
-        pg_cur.execute("""
-            SELECT
-                cnpj_emp,
-                (data_lancamento::date + hora_lancamento::time) AS nf_dt
-            FROM microvix_movimento
-            WHERE documento = %s
-              AND cod_natureza_operacao = '10030'
-              AND cancelado = 'N'
-              AND excluido = 'N'
-              AND (tipo_transacao IN ('P','V') OR tipo_transacao IS NULL)
-            LIMIT 1
-        """, (documento,))
+        if cnpj_emp_body:
+            pg_cur.execute("""
+                SELECT
+                    cnpj_emp,
+                    (data_lancamento::date + hora_lancamento::time) AS nf_dt
+                FROM microvix_movimento
+                WHERE documento = %s
+                  AND cnpj_emp = %s
+                  AND cod_natureza_operacao = '10030'
+                  AND cancelado = 'N'
+                  AND excluido = 'N'
+                  AND (tipo_transacao IN ('P','V') OR tipo_transacao IS NULL)
+                LIMIT 1
+            """, (documento, cnpj_emp_body))
+        else:
+            pg_cur.execute("""
+                SELECT
+                    cnpj_emp,
+                    (data_lancamento::date + hora_lancamento::time) AS nf_dt
+                FROM microvix_movimento
+                WHERE documento = %s
+                  AND cod_natureza_operacao = '10030'
+                  AND cancelado = 'N'
+                  AND excluido = 'N'
+                  AND (tipo_transacao IN ('P','V') OR tipo_transacao IS NULL)
+                LIMIT 1
+            """, (documento,))
         nf_row = pg_cur.fetchone()
         pg_cur.close()
     except Exception as e:
