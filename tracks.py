@@ -1579,7 +1579,11 @@ def tracks_caixa_set_pessoa(documento):
         if not encontrado:
             nome_loja = STORE_NAME_MAP.get(store_id, f"loja {store_id}")
             return jsonify({
-                "error": f"Pessoa não detectada pelas câmeras de {nome_loja} no período da nota fiscal (±10 min)",
+                "error": (
+                    f"Pessoa não detectada pelas câmeras de {nome_loja} no período da nota fiscal (±10 min) — "
+                    f"person_id={person_id}, store_id={store_id}, cnpj_emp={cnpj_emp}, "
+                    f"janela={janela_ini.strftime('%H:%M')}-{janela_fim.strftime('%H:%M')}"
+                ),
                 "pode_forcar": True,
             }), 422
 
