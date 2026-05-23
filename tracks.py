@@ -111,6 +111,15 @@ try:
 except Exception as _exc:
     print(f"[tracks] Aviso: não foi possível carregar CNPJ_STORE_MAP: {_exc}")
 
+def _cnpj_key(cnpj: str) -> str:
+    """Normaliza CNPJ para lookup no CNPJ_STORE_MAP.
+    faciais.stores.cnpj é int8 (sem zeros à esquerda);
+    microvix.cnpj_emp é varchar(14) (pode ter zeros à esquerda).
+    """
+    digits = cnpj.strip().replace(".", "").replace("/", "").replace("-", "")
+    return str(int(digits)) if digits.isdigit() else digits
+
+
 tracks_bp = Blueprint("tracks", __name__)
 
 
@@ -1365,8 +1374,10 @@ def tracks_caixa():
     if store_id_param and data_param:
         store_cnpj_map = {sid: cnpj for cnpj, sid in CNPJ_STORE_MAP.items()}
         cnpj_sel = store_cnpj_map.get(store_id_param)
+        # microvix.cnpj_emp é varchar(14) com zeros à esquerda; padeia para casar
+        cnpj_sel_padded = cnpj_sel.zfill(14) if cnpj_sel else None
 
-        if cnpj_sel:
+        if cnpj_sel_padded:
             pg_conn = None
             try:
                 pg_conn = get_pg_conn()
@@ -1390,7 +1401,7 @@ def tracks_caixa():
                       AND data_lancamento::date = %s
                     GROUP BY documento, data_lancamento::date, hora_lancamento, cnpj_emp
                     ORDER BY hora_lancamento DESC
-                """, (cnpj_sel, data_param))
+                """, (cnpj_sel_padded, data_param))
                 for row in pg_cur.fetchall():
                     cnpj_emp = (row[6] or "").strip()
                     notas.append({
@@ -1548,7 +1559,7 @@ def tracks_caixa_set_pessoa(documento):
 
     cnpj_emp = (nf_row[0] or "").strip()
     nf_dt    = nf_row[1]
-    store_id = CNPJ_STORE_MAP.get(cnpj_emp)
+    store_id = CNPJ_STORE_MAP.get(_cnpj_key(cnpj_emp))
 
     # 2. Valida detecção da pessoa nas câmeras da loja via JOIN no banco
     if not force and store_id is not None and nf_dt is not None:
@@ -1648,7 +1659,7 @@ def tracks_caixa_del_pessoa(documento):
         row = pg_cur.fetchone()
         pg_cur.close()
         if row:
-            store_id = CNPJ_STORE_MAP.get((row[0] or "").strip())
+            store_id = CNPJ_STORE_MAP.get(_cnpj_key(row[0] or ""))
     except Exception as e:
         print(f"[caixa/del_pessoa] Erro ao buscar store_id: {e}")
     finally:
