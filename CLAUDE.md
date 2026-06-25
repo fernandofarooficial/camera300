@@ -126,6 +126,30 @@ Cruza notas fiscais Microvix com faces detectadas para identificar compradores.
 
 ---
 
+## Tela Lista — ações sobre ocorrências (`/tracks/lista`)
+
+Cada ocorrência na faixa horizontal exibe três botões ao passar o mouse:
+
+| Botão | Cor | Ação |
+|---|---|---|
+| `↗ Mover` | azul | Move o registro para uma pessoa existente (modal com busca por ID) |
+| `+ Novo` | âmbar | Cria nova pessoa a partir desta imagem |
+| `🗑` | vermelho | Exclui o registro individual |
+
+### Rota `POST /tracks/api/registro/<reg_id>/nova-pessoa`
+
+Criada em `tracks.py` (`nova_pessoa_de_registro`). Lógica:
+
+1. Busca o `detection_record` pelo `reg_id`, obtendo `track_id` e `person_id` original.
+2. Insere nova `people` com `reference_track_id = track_id` e `person_type_id = FLAG_NOVO_ANONIMO`.
+3. Define `full_name = "AnônimoXXX"` e `nickname = "AXXX"` (mesmo padrão de `criar_pessoa` em `db.py`).
+4. Move **apenas este registro** (`detection_record_id`) para a nova pessoa — diferente de `criar_pessoa` que move todos os registros do `track_id`.
+5. Se a pessoa original ficou sem registros, remove-a automaticamente (mesmo comportamento de `mover_registro`).
+
+Retorna: `{success, person_id, nome, pessoa_excluida}`.
+
+---
+
 ## Flags de pessoa
 
 | Flag | Significado |
@@ -162,6 +186,7 @@ Cruza notas fiscais Microvix com faces detectadas para identificar compradores.
 - `POST /tracks/api/pessoa/<id_unico>/base` → atualizar_base_pessoa
 - `DELETE /tracks/api/registro/<reg_id>` → exclui registro individual
 - `POST /tracks/api/registro/<reg_id>/mover` → move registro para outro id_unico
+- `POST /tracks/api/registro/<reg_id>/nova-pessoa` → cria nova pessoa a partir do registro
 
 ### Ingestão Microvix
 - `GET /tracks/carga` → log das 20 últimas cargas
