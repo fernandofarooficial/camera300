@@ -764,6 +764,64 @@ def mover_registro(reg_id):
     return jsonify({"success": True, "pessoa_excluida": pessoa_excluida})
 
 
+@tracks_bp.route("/tracks/api/registro/<int:reg_id>/nova-pessoa", methods=["POST"])
+def nova_pessoa_de_registro(reg_id):
+    """Cria nova pessoa a partir de um registro, com os mesmos defaults do fluxo de API."""
+    from config import FLAG_NOVO_ANONIMO
+    conn = get_faciais_conn()
+    try:
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        cursor.execute(
+            "SELECT track_id, person_id FROM detection_records WHERE detection_record_id = %s",
+            (reg_id,),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            cursor.close()
+            return jsonify({"error": "Registro não encontrado"}), 404
+
+        track_id = row["track_id"]
+        person_id_original = row["person_id"]
+
+        cursor.execute(
+            "INSERT INTO people (reference_track_id, person_type_id) VALUES (%s, %s) RETURNING person_id",
+            (track_id, FLAG_NOVO_ANONIMO),
+        )
+        new_id = cursor.fetchone()["person_id"]
+        conn.commit()
+
+        full_name = f"Anônimo{new_id:03}"
+        nickname  = f"A{new_id:03}"
+        cursor.execute(
+            "UPDATE people SET full_name = %s, nickname = %s WHERE person_id = %s",
+            (full_name, nickname, new_id),
+        )
+        cursor.execute(
+            "UPDATE detection_records SET person_id = %s WHERE detection_record_id = %s",
+            (new_id, reg_id),
+        )
+
+        pessoa_excluida = False
+        if person_id_original and person_id_original != new_id:
+            cursor.execute(
+                "SELECT COUNT(*) AS total FROM detection_records WHERE person_id = %s",
+                (person_id_original,),
+            )
+            if cursor.fetchone()["total"] == 0:
+                cursor.execute("DELETE FROM people WHERE person_id = %s", (person_id_original,))
+                pessoa_excluida = True
+
+        conn.commit()
+        cursor.close()
+        return jsonify({"success": True, "person_id": new_id, "nome": full_name, "pessoa_excluida": pessoa_excluida})
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        release_faciais_conn(conn)
+
+
 @tracks_bp.route("/tracks/tabuleiro")
 @tracks_bp.route("/m/tracks/tabuleiro")
 def tracks_tabuleiro():

@@ -200,6 +200,8 @@
     }
     .oc-btn-move { color: #7c86ff; border-color: #7c86ff44; }
     .oc-btn-move:hover { background: #7c86ff22; }
+    .oc-btn-new  { color: #f59e0b; border-color: #f59e0b44; }
+    .oc-btn-new:hover  { background: #f59e0b22; }
     .oc-btn-del  { color: #ef4444; border-color: #ef444444; }
     .oc-btn-del:hover  { background: #ef444422; }
     .oc-btn:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -896,6 +898,8 @@
             <div class="oc-actions">
               <button class="oc-btn oc-btn-move" title="Mover para outra pessoa"
                       onclick="abrirModalMover(this)">&#8599; Mover</button>
+              <button class="oc-btn oc-btn-new" title="Criar nova pessoa a partir desta imagem"
+                      onclick="novaPessoaDeRegistro(this)">&#10133; Novo</button>
               <button class="oc-btn oc-btn-del" title="Excluir ocorrência"
                       onclick="excluirRegistro(this)">&#128465;</button>
             </div>
@@ -1484,6 +1488,33 @@
   document.getElementById('lightbox-overlay').addEventListener('click', function(e) {
     if (e.target === this) fecharLightbox();
   });
+
+  /* =========================================================
+     Nova pessoa a partir de ocorrência
+  ========================================================= */
+  async function novaPessoaDeRegistro(btn) {
+    const oc   = btn.closest('.occurrence');
+    const regId = oc.dataset.regId;
+    const date  = oc.dataset.regDate || 'data desconhecida';
+    if (!confirm(
+      `Criar nova pessoa a partir desta ocorrência (${date})?\n\n` +
+      `A imagem será desvinculada da pessoa atual e uma nova entrada será criada com os mesmos padrões do sistema (Anônimo + flag padrão).`
+    )) return;
+    btn.disabled = true;
+    try {
+      const resp = await fetch(`/camera300/tracks/api/registro/${regId}/nova-pessoa`, { method: 'POST' });
+      const data = await resp.json();
+      if (data.success) {
+        location.reload();
+      } else {
+        alert('Erro: ' + (data.error || 'desconhecido'));
+        btn.disabled = false;
+      }
+    } catch (err) {
+      alert('Falha na requisição.');
+      btn.disabled = false;
+    }
+  }
 
   // Fecha todos os modais com Escape
   document.addEventListener('keydown', function(e) {
