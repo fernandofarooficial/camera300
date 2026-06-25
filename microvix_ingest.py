@@ -754,10 +754,16 @@ def _sincronizar_person_purchases(pg_conn, portal: dict) -> int:
             total += len(batch)
         fc.close()
     except Exception:
-        faciais_conn.rollback()
+        try:
+            faciais_conn.rollback()
+        except Exception:
+            pass
         raise
     finally:
-        cur.close()
+        try:
+            cur.close()
+        except Exception:
+            pass
         release_faciais_conn(faciais_conn)
 
     return total
@@ -796,6 +802,7 @@ _METODOS = [
 
 def _run_portais(portais: list[dict]):
     """Núcleo compartilhado: executa _METODOS para cada portal da lista."""
+    import psycopg2
     from datetime import datetime
     pg_conn = None
     try:
@@ -809,7 +816,15 @@ def _run_portais(portais: list[dict]):
                     contagens[coluna] = contagens.get(coluna, 0) + (n or 0)
                 except Exception as exc:
                     log.error("Erro em %s (%s): %s", coluna, portal["cnpj"], exc, exc_info=True)
-                    pg_conn.rollback()
+                    try:
+                        pg_conn.rollback()
+                    except (psycopg2.OperationalError, psycopg2.InterfaceError):
+                        # Conexão SSL caiu durante o sync — descarta e pega nova do pool
+                        try:
+                            release_pg_conn(pg_conn)
+                        except Exception:
+                            pass
+                        pg_conn = get_pg_conn()
                 with _status_lock:
                     _status["contagens"] = dict(contagens)
 

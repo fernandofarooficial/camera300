@@ -211,3 +211,15 @@ Retorna: `{success, person_id, nome, pessoa_excluida}`.
 - `db.py` — `criar_pessoa` usa `FLAG_NOVO_ANONIMO` (default `"C"`) → todo novo anônimo dispara Telegram.
 - `tracks.py:413` — permanência estimada em 30 min quando há só 1 registro ou diferença < 2 min.
 - `tracks_resumo` — threshold `0.73` hardcoded em vez de usar `SCORE_MINIMO`.
+
+---
+
+## Correção: queda de conexão SSL no microvix_ingest (2026-06-25)
+
+**Sintoma:** `psycopg2.OperationalError: SSL connection has been closed unexpectedly` seguido de `psycopg2.InterfaceError: connection already closed` no rollback — abortava toda a sincronização.
+
+**Causa:** `_run_portais` mantinha uma única `pg_conn` aberta por toda a sync (podendo durar 15+ min). O servidor PostgreSQL derruba sessões SSL ociosas. Quando um método falhava e o código tentava `pg_conn.rollback()` na conexão morta, gerava segunda exceção em cascata.
+
+**Fix em `_run_portais` (`microvix_ingest.py`):** o `rollback()` agora está dentro de try/except; se falhar com `OperationalError` ou `InterfaceError`, descarta a conexão morta, pega uma nova do pool e continua os métodos restantes.
+
+**Fix em `_sincronizar_person_purchases`:** o `faciais_conn.rollback()` e o `cur.close()` do bloco finally também foram protegidos com try/except, evitando exceção secundária quando essas conexões também caem.
