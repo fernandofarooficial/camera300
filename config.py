@@ -3,8 +3,8 @@ import mysql.connector.pooling
 import psycopg2
 import psycopg2.pool
 
-HEIMDALL_URL             = os.environ.get("HEIMDALL_URL",             "http://187.17.228.160:6500/api/facial/recognize-by-track")
-HEIMDALL_IMAGE_BASE      = os.environ.get("HEIMDALL_IMAGE_BASE",      "http://187.17.228.160:6500/api/facial/images")
+HEIMDALL_URL             = os.environ.get("HEIMDALL_URL",             "http://201.71.234.83:6500/api/facial/recognize-by-track")
+HEIMDALL_IMAGE_BASE      = os.environ.get("HEIMDALL_IMAGE_BASE",      "http://201.71.234.83:6500/api/facial/images")
 HEIMDALL_CONNECT_TIMEOUT = int(os.environ.get("HEIMDALL_CONNECT_TIMEOUT", "5"))
 HEIMDALL_READ_TIMEOUT    = int(os.environ.get("HEIMDALL_READ_TIMEOUT",    "45"))
 
@@ -22,7 +22,7 @@ SCORE_MINIMO = float(os.environ.get("SCORE_MINIMO", "0.72"))
 TELEGRAM_TOKEN   = os.environ.get("TELEGRAM_TOKEN",   "8608684261:AAEuQYGMbSA9ytbGFCvV-jl87cPhRHw1le4")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "-1003759902077")
 
-ZIONS_API_URL = os.environ.get("ZIONS_API_URL", "http://187.17.228.160:6500/api")
+ZIONS_API_URL = os.environ.get("ZIONS_API_URL", "http://201.71.234.83:6500/api")
 ZIONS_TOKEN   = os.environ.get("ZIONS_TOKEN",   "")
 
 # ── Linx Microvix ──────────────────────────────────────────────────────────────
