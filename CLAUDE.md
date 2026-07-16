@@ -17,13 +17,25 @@ Sistema Flask de reconhecimento facial em tempo real. Fluxo principal:
 
 ```
 POST /api/data/facial_recognition
-  → dedup por track_id (5s)
-  → Thread: salvar_rosto → get_best_face → query_heimdall
-       → INSERT faciais.detection_records (se score >= SCORE_MINIMO)
+  → se data.full_name != "Pessoa desconhecida": INSERT faciais.zions_identified_records e para (não processa)
+  → INSERT faciais.json_records (payload bruto, image_base64 redigido)
+  → dedup por track_id (5s, `DEDUP_SECONDS`)
+  → Thread: salvar_rosto → query_heimdall (até 3 tentativas: `_RETRY_DELAYS = [3, 12, 20]`s) → get_best_face
+       → INSERT faciais.detection_records (se score >= SCORE_MINIMO; senão desiste e marca `_processed_no_face`)
        → admin_people → obter_person_id_legado → telegram_cliente_chegou
 ```
 
+### Pessoas já identificadas pelo ZIONS (desde commit 0054)
+
+O ZIONS envia `data.full_name` no payload; quando o próprio analítico já reconheceu a pessoa por nome (valor diferente do literal `"Pessoa desconhecida"`, **inclusive quando o campo vem ausente/nulo**), o evento **não** entra no pipeline de reconhecimento facial próprio: é gravado em `faciais.zions_identified_records` (payload bruto com `image_base64` redigido, mesma redação de `json_records`) e a request retorna 200 imediatamente — sem `INSERT` em `json_records`/`detection_records`, sem dedup, sem thread `salvar_rosto`. Só quando `data.full_name == "Pessoa desconhecida"` o fluxo normal (acima) é seguido.
+
+`zions_identified_records` não é consumida pelo app — consulta é feita direto no banco. Helper `_redact_image_base64(payload)` em `app.py` centraliza a redação do `image_base64` (raiz e `data.image_base64`).
+
 **Stack:** Flask + gunicorn, PostgreSQL/psycopg2 (2 pools), templates Jinja2 + SSE, Heimdall (reconhecimento facial), Telegram Bot API.
+
+### Deploy atrás de proxy reverso (`/camera300`)
+
+Em produção a aplicação fica atrás de um proxy que expõe tudo sob o prefixo `/camera300` (ex.: `/camera300/tracks/lista`, `/camera300/stream`). As rotas Flask **não** têm esse prefixo — ele é hardcoded manualmente em todos os `fetch`/`href` dos templates (`index.html`, `m_index.html`, `tracks_lista.html`, `m_caixa.html`, `m_lista.html` etc.), não usa `url_for`. **Ao criar uma rota nova consumida por JS/links, lembre de prefixar `/camera300` no template.**
 
 ---
 
@@ -64,6 +76,8 @@ Dois pools PostgreSQL no mesmo DSN (`postgresql://fefa_dev:Fd7493dt@72.60.58.241
 | `MICROVIX_CNPJ2` | `"34881719000109"` | CNPJ do segundo portal (se vazio, não adiciona) |
 | `MICROVIX_PORTAIS` | lista automática | Gerada a partir dos CNPJs acima |
 
+> `HEATMAP_API_URL`, `HEATMAP_API_BASE`, `HEATMAP_AUTH` (Basic Auth) **não** estão em `config.py` — ficam hardcoded no topo de `tracks.py` (linhas ~19-21), diferente do padrão do resto do projeto de usar env vars em `config.py`.
+
 ---
 
 ## Ingestão Microvix — Multi-CNPJ (desde commit 0039)
@@ -94,9 +108,12 @@ Cruza notas fiscais Microvix com faces detectadas para identificar compradores.
 
 ### Mapeamentos carregados na inicialização (tracks.py)
 - `CNPJ_STORE_MAP` → `{cnpj_str: store_id}` lido de `faciais.stores.cnpj` (coluna `int8`, sem zeros à esquerda).
-- `_cnpj_key(cnpj)` → normaliza CNPJ para lookup (remove formatação e zeros à esquerda).
-- `microvix.cnpj_emp` é `varchar(14)` com zeros à esquerda → usar `.zfill(14)` ao comparar.
+- `_cnpj_key(cnpj)` → normaliza CNPJ para lookup no `CNPJ_STORE_MAP` (remove formatação e zeros à esquerda, `int()` round-trip). Usar sempre que comparar um `cnpj_emp` do Microvix contra `CNPJ_STORE_MAP`.
+- `microvix.cnpj_emp` é `varchar(14)` com zeros à esquerda → usar `.zfill(14)` ao montar o filtro de query (ex.: `cnpj_sel_padded` em `tracks_caixa`).
 - `CAMERA_STORE_MAP`, `STORE_NAME_MAP`, `CAMERA_STORE_NAME_MAP`, `STORE_CAMERAS_MAP` → derivados de `faciais.cameras`.
+
+### CNPJ na confirmação de comprador (desde commit 0053)
+`POST /tracks/caixa/nf/<documento>/pessoa` agora recebe `cnpj_emp` no body (enviado pelo front, que já sabe qual loja/CNPJ está exibindo). Se presente, filtra a NF por `documento + cnpj_emp` no lugar de só `documento` — essencial porque `documento` se repete entre lojas. Sem `cnpj_emp` no body, cai no comportamento antigo (primeira NF encontrada por `documento`, `LIMIT 1`).
 
 ### Tabelas envolvidas
 - `faciais.person_purchases` → `(person_purchase_id, person_id, store_id, bill, is_cancelled, is_identified)`. PK única por `(store_id, bill)`.
@@ -107,10 +124,11 @@ Cruza notas fiscais Microvix com faces detectadas para identificar compradores.
 | Rota | Método | Descrição |
 |---|---|---|
 | `/tracks/caixa` ou `/m/tracks/caixa` | GET | Página principal; params: `store_id`, `data` (YYYY-MM-DD) |
-| `/tracks/caixa/nf/<documento>/pessoa` | POST | Confirma comprador; body: `{person_id, cnpj_emp, force?}` |
-| `/tracks/caixa/nf/<documento>/pessoa` | DELETE | Remove comprador confirmado |
+| `/tracks/caixa/nf/<documento>/pessoa` ou `/m/...` | POST | Confirma comprador; body: `{person_id, cnpj_emp, force?}` |
+| `/tracks/caixa/nf/<documento>/pessoa` ou `/m/...` | DELETE | Remove comprador confirmado |
 | `/tracks/caixa/pessoa/<person_id>` | GET | Dados da pessoa |
 | `/tracks/caixa/nf/<documento>` | GET | Itens da NF em JSON |
+| `/tracks/api/empresas` | GET | Empresas + cor de tema (ver seção "Tema por empresa") |
 
 **Validação de confirmação:** ao confirmar pessoa, verifica se ela foi detectada por câmera da loja na janela ±10 min. Se não, retorna HTTP 422 com `"pode_forcar": true`; re-enviar com `force: true` bypassa.
 
@@ -123,6 +141,22 @@ Cruza notas fiscais Microvix com faces detectadas para identificar compradores.
 ## Match por loja (db.py — desde commit 0040)
 
 `obter_person_id_legado(track_id, store_id=None)` aceita `store_id` opcional para restringir o match de track_id a registros da mesma loja.
+
+---
+
+## Mapa de Calor (`/tracks/heatmap`, desde commit ~0019)
+
+Consulta uma API externa de heatmap (serviço separado, não é o Heimdall):
+
+- `HEATMAP_API_URL` (`POST .../api/heatmap`) → recebe `{camera_id, data_ini, data_fim}`, retorna `{ok, resultado}` com URLs de imagens.
+- `_prefixar_urls_heatmap(resultado)` reescreve as URLs da resposta para passarem pelo proxy `/tracks/heatmap/img` (evita expor a API externa e suas credenciais direto ao browser).
+- `GET /tracks/heatmap/img?url=...` → proxy autenticado (Basic Auth); só aceita `url` que comece com `HEATMAP_API_BASE`, senão 403.
+
+---
+
+## Tema por empresa (`/tracks/api/empresas`, desde commit 0032)
+
+Retorna `{company_id, company_name, background_color}` de `faciais.companies` LEFT JOIN `faciais.company_themes`, usado pelo front (ex. `m_caixa.html`) para colorir a UI conforme a empresa/loja. Cor default `#0f1117` quando não há tema cadastrado.
 
 ---
 
@@ -168,13 +202,16 @@ Retorna: `{success, person_id, nome, pessoa_excluida}`.
 ### Visualização
 - `GET /tracks` → últimas 5 tracks com Heimdall
 - `GET /tracks/resumo` → resumo das últimas 30 tracks
-- `GET /tracks/lista` → listagem paginada de pessoas (5/pág)
-- `GET /tracks/tabuleiro` → grid visual (30/pág)
+- `GET /tracks/lista` ou `/m/tracks/lista` → listagem paginada de pessoas (5/pág)
+- `GET /tracks/tabuleiro` ou `/m/tracks/tabuleiro` → grid visual (30/pág)
 - `GET /tracks/permanencia` → permanência estimada (5/pág)
-- `GET /tracks/quadro` → analytics (gráficos)
+- `GET /tracks/quadro` ou `/m/tracks/quadro` → analytics (gráficos)
 - `GET /tracks/dados` → página de dados/câmeras
+- `GET /tracks/heatmap` → página do mapa de calor (params: `camera_id`, `data_ini`, `data_fim`)
+- `GET /tracks/heatmap/img` → proxy autenticado de imagens do heatmap (param `url`)
 - `GET /tracks/snapshot/<camera_id>` → frame RTSP via OpenCV
 - `GET /tracks/api` → JSON das últimas 5 tracks
+- `GET /tracks/api/empresas` → lista empresas + cor de tema (`companies` + `company_themes`)
 - `GET /tracks/export` → página de exportação com filtro de datas
 - `GET /tracks/export/download` → gera `.xlsx` (openpyxl)
 - `GET /tracks/logs` → log do ZIONS_API_URL
@@ -194,7 +231,10 @@ Retorna: `{success, person_id, nome, pessoa_excluida}`.
 - `GET /tracks/carga/status` → status da sincronização
 - `POST /tracks/carga/full-load` → carga histórica (`{cnpj, data_inicio}`)
 
-### Outras
+### Outras (app.py, fora do blueprint `/tracks`)
+- `GET /` → `index.html` (dashboard desktop)
+- `GET /m/` → `m_index.html` (dashboard mobile)
+- `GET /service-worker.js` → service worker do PWA (mobile)
 - `POST /api/adequar_bases` → adequar_bases() assíncrono
 - `GET /api/adequar_bases/status` → status
 - `GET /api/traces` → trace_entries JSON
@@ -209,7 +249,7 @@ Retorna: `{success, person_id, nome, pessoa_excluida}`.
 
 - `config.py` — credenciais e token Telegram hardcoded como defaults (vazam no repositório).
 - `db.py` — `criar_pessoa` usa `FLAG_NOVO_ANONIMO` (default `"C"`) → todo novo anônimo dispara Telegram.
-- `tracks.py:413` — permanência estimada em 30 min quando há só 1 registro ou diferença < 2 min.
+- `tracks.py:576` (`tracks_permanencia`) — permanência estimada em 30 min quando há só 1 registro ou diferença < 2 min (linha pode se mover; buscar por `estimado = True`).
 - `tracks_resumo` — threshold `0.73` hardcoded em vez de usar `SCORE_MINIMO`.
 
 ---

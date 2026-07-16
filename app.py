@@ -215,6 +215,16 @@ def service_worker():
     return response
 
 
+def _redact_image_base64(payload):
+    """Retorna cópia do payload com image_base64 (raiz e data.image_base64) substituído por 'foto'."""
+    redacted = {**payload}
+    if 'image_base64' in redacted:
+        redacted['image_base64'] = 'foto'
+    if 'data' in redacted and isinstance(redacted['data'], dict) and 'image_base64' in redacted['data']:
+        redacted['data'] = {**redacted['data'], 'image_base64': 'foto'}
+    return redacted
+
+
 @app.route('/api/data/facial_recognition', methods=['POST'])
 def receive_facial_recognition():
     # tracer.trace("receive_facial_recognition", "Iniciado tratamento do evento, json gravado")
@@ -225,9 +235,36 @@ def receive_facial_recognition():
     log_id = payload.get('log_id') or payload.get('data', {}).get('log_id')
     trk_id = payload.get('track_id') or payload.get('data', {}).get('track_id')
     score_post = payload.get('score') or payload.get('data', {}).get('score')
+    full_name = payload.get('full_name') or payload.get('data', {}).get('full_name')
+    evt_camera_id = payload.get('data', {}).get('camera_id')
 
     tracer.trace("Recebi Evento",trk_id)
     tracer.trace(trk_id, f"score post: {score_post}")
+
+    if full_name != "Pessoa desconhecida":
+        tracer.trace(trk_id, f"receive_facial_recognition: full_name={full_name!r} (pessoa identificada pelo ZIONS) — não processado, gravado em zions_identified_records")
+        _conn = None
+        try:
+            _conn = get_faciais_conn()
+            _cur = _conn.cursor()
+            _cur.execute(
+                """INSERT INTO zions_identified_records (log_id, track_id, camera_id, full_name, score, payload)
+                   VALUES (%s, %s, %s, %s, %s, %s)""",
+                (log_id, trk_id, evt_camera_id, full_name, score_post, json.dumps(_redact_image_base64(payload))),
+            )
+            _conn.commit()
+            _cur.close()
+        except Exception as _e:
+            print(f"Erro ao salvar zions_identified_records: {_e}")
+            if _conn:
+                try:
+                    _conn.rollback()
+                except Exception:
+                    pass
+        finally:
+            if _conn:
+                release_faciais_conn(_conn)
+        return jsonify({'success': True, 'message': 'Named person ignored'}), 200
 
     json_record_id = None
     try:
