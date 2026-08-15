@@ -2,12 +2,20 @@
 
 ## Esquemas de Banco de Dados
 
-Os esquemas das bases de dados usadas no projeto ficam em `doc_fonte/base_de_dados/`:
+**Referência definitiva do schema:** `C:\Users\ferna\db-docs\lojas\doc_faciais.sql` e
+`doc_microvix.sql` — pasta **compartilhada entre todas as aplicações locais que usam o banco
+`lojas`** (`72.60.58.241:5432`), não só este projeto. Ver
+`C:\Users\ferna\db-docs\lojas\README.md` para como foi gerada e como manter atualizada.
 
-- **faciais** → `doc_fonte/base_de_dados/faciais_doc.sql`
-- **microvix** → `doc_fonte/base_de_dados/microvix_doc.sql`
+Sempre consulte esses arquivos ao desenvolver qualquer funcionalidade que envolva acesso ao
+banco de dados, para garantir que nomes de tabelas, colunas e relacionamentos estejam corretos.
+Comentários de coluna de `doc_faciais.sql` vêm de `COMMENT ON` já existentes no banco; os de
+`doc_microvix.sql` vêm da especificação oficial do Web Service Microvix (PDF na mesma pasta
+compartilhada), já que o schema `microvix` (dados sincronizados do ERP por este projeto via
+`microvix_ingest.py`) não tem `COMMENT ON` no banco.
 
-Sempre consulte esses arquivos ao desenvolver qualquer funcionalidade que envolva acesso ao banco de dados, para garantir que nomes de tabelas, colunas e relacionamentos estejam corretos.
+(A referência antiga `doc_fonte/base_de_dados/` não existe mais neste projeto — apontava pra
+uma pasta que nunca chegou a ser criada aqui.)
 
 ---
 
@@ -47,7 +55,8 @@ Em produção a aplicação fica atrás de um proxy que expõe tudo sob o prefix
 | `tracks.py` | Blueprint `/tracks`, Heimdall, CRUD pessoas, caixa, carga Microvix |
 | `db.py` | admin_people, criar_pessoa, telegram_cliente_chegou |
 | `config.py` | Pools de conexão, variáveis de ambiente, MICROVIX_PORTAIS |
-| `microvix_ingest.py` | Ingestão incremental e histórica Microvix → PostgreSQL |
+| `microvix_ingest.py` | Ingestão incremental e histórica Microvix → PostgreSQL, acionada pelas rotas `/tracks/carga/*` |
+| `microvix_ingest_full.py` | Script standalone (CLI, `python microvix_ingest_full.py`) de carga completa Microvix — **não** é importado pelo Flask app nem por nenhuma rota; execução manual |
 | `telegram.py` | enviar_mensagem_telegram |
 | `tracer.py` | Log em memória por track_id, broadcast SSE |
 
@@ -91,6 +100,7 @@ Dois pools PostgreSQL no mesmo DSN (`postgresql://fefa_dev:Fd7493dt@72.60.58.241
 - **`POST /tracks/carga/full-load`** → dispara `run_full_load()` em thread background.
   - Body JSON: `{"cnpj": "...", "data_inicio": "YYYY-MM-DD"}`.
   - Valida que o CNPJ está em `MICROVIX_PORTAIS`.
+- `_METODOS` (`microvix_ingest.py`) hoje cobre 19 métodos Linx (bem além das 6 tabelas originais registradas em `microvix_carga`) — inclui `microvix_vendedores`, `microvix_faturas`, `microvix_pedidos_venda`, `microvix_pedidos_compra`, `microvix_produtos_tabelas(_precos)`, `microvix_fidelidade`, `microvix_metas_vendedores`, etc. Ver `doc_microvix.sql` (pasta `db-docs/lojas`) para o schema completo dessas tabelas. A última entrada de `_METODOS`, `faciais_person_purchases` (→ `_sincronizar_person_purchases`), não é um método Linx — é a sincronização derivada de NFs anônimas para `faciais.person_purchases` (ver seção "Tela Caixa").
 
 ---
 
@@ -99,7 +109,7 @@ Dois pools PostgreSQL no mesmo DSN (`postgresql://fefa_dev:Fd7493dt@72.60.58.241
 Cruza notas fiscais Microvix com faces detectadas para identificar compradores.
 
 ### Lógica
-1. Lista NFs do dia de uma loja (`cod_natureza_operacao='10030'`, `cancelado='N'`, `excluido='N'`, `codigo_cliente=1`).
+1. Lista NFs do dia de uma loja (`cod_natureza_operacao='10030'`, `cancelado='N'`, `excluido='N'`, `codigo_cliente=1`, `tipo_transacao IN ('P','V')` ou nulo).
 2. Busca candidatos: pessoas do tipo `'C'` detectadas pelas câmeras da loja em janela de ±10 min por NF.
 3. Exibe confirmados via tabela `faciais.person_purchases`.
 
@@ -230,6 +240,13 @@ Retorna: `{success, person_id, nome, pessoa_excluida}`.
 - `POST /tracks/carga/sync` → ingestão incremental em background
 - `GET /tracks/carga/status` → status da sincronização
 - `POST /tracks/carga/full-load` → carga histórica (`{cnpj, data_inicio}`)
+
+### Tela Caixa (detalhes na seção "Tela Caixa" acima)
+- `GET /tracks/caixa` ou `/m/tracks/caixa` → página principal
+- `POST /tracks/caixa/nf/<documento>/pessoa` ou `/m/...` → confirma comprador
+- `DELETE /tracks/caixa/nf/<documento>/pessoa` ou `/m/...` → remove comprador confirmado
+- `GET /tracks/caixa/nf/<documento>` → itens da NF em JSON
+- `GET /tracks/caixa/pessoa/<person_id>` → dados da pessoa (apenas `person_type_id='C'`)
 
 ### Outras (app.py, fora do blueprint `/tracks`)
 - `GET /` → `index.html` (dashboard desktop)
