@@ -19,6 +19,20 @@ uma pasta que nunca chegou a ser criada aqui.)
 
 ---
 
+## Deploy
+
+```
+ssh root@72.60.58.241
+# no VPS: /home/workuser/camera300
+git pull origin main && sudo systemctl restart camera300
+```
+
+Serviço systemd: `camera300.service`. Mesmo servidor e mesmo acesso SSH usados pelo
+`retail_analytics` (e demais projetos em `/home/workuser/`) — não precisa de configuração
+adicional, só trocar o diretório e o nome do serviço.
+
+---
+
 ## Arquitetura Geral
 
 Sistema Flask de reconhecimento facial em tempo real. Fluxo principal:
@@ -109,6 +123,9 @@ Dois pools PostgreSQL no mesmo DSN (`postgresql://fefa_dev:Fd7493dt@72.60.58.241
 - `seller_name` é gravado com `nome_vendedor.capitalize()` — só a primeira letra da string maiúscula, todo o resto minúsculo (não é title-case por palavra).
 - `is_active` = `ativo == 'S'` **e** `data_saida` vazio/nulo (reflete os dois campos do Microvix, conforme comentário da coluna em `doc_faciais.sql`).
 - Roda em todo sync (incremental agendado e full-load), pois é acionado dentro de `_ingerir_vendedores`, não como entrada separada em `_METODOS`.
+- **Validado em produção em 2026-08-15**: reset manual do checkpoint `LinxVendedores` (`microvix_sync_control.last_timestamp = 0`) forçou reprocessar todos os vendedores; `faciais.sellers` populado com 30 linhas (14 na loja 1, 16 na loja 2), nomes corretamente capitalizados e `is_active` variando conforme esperado.
+- **Não filtra por `tipo_vendedor`** — `microvix_vendedores` traz junto códigos que não são vendedores humanos (ex.: `"Sistema"`, `"Depósito"`, `"Vendedor loja"`, `"Ecoville"`), que acabam sincronizados em `faciais.sellers` como se fossem vendedores. Se isso for indesejado (ex.: para alocação de metas por vendedor), considerar filtrar por `tipo_vendedor IN ('V', 'A')` em `_sincronizar_sellers`.
+- `seller_name` preserva artefatos de formatação do cadastro Microvix (ex.: espaço duplo) — só `.strip()` nas pontas, sem normalizar espaços internos.
 
 ---
 
