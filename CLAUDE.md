@@ -102,6 +102,14 @@ Dois pools PostgreSQL no mesmo DSN (`postgresql://fefa_dev:Fd7493dt@72.60.58.241
   - Valida que o CNPJ está em `MICROVIX_PORTAIS`.
 - `_METODOS` (`microvix_ingest.py`) hoje cobre 19 métodos Linx (bem além das 6 tabelas originais registradas em `microvix_carga`) — inclui `microvix_vendedores`, `microvix_faturas`, `microvix_pedidos_venda`, `microvix_pedidos_compra`, `microvix_produtos_tabelas(_precos)`, `microvix_fidelidade`, `microvix_metas_vendedores`, etc. Ver `doc_microvix.sql` (pasta `db-docs/lojas`) para o schema completo dessas tabelas. A última entrada de `_METODOS`, `faciais_person_purchases` (→ `_sincronizar_person_purchases`), não é um método Linx — é a sincronização derivada de NFs anônimas para `faciais.person_purchases` (ver seção "Tela Caixa").
 
+### Sincronização faciais.sellers ← microvix_vendedores
+
+`_ingerir_vendedores` (método `LinxVendedores`), a cada chamada, também sincroniza `faciais.sellers` via `_sincronizar_sellers(store_id, registros)`, usando os registros já retornados pela API para aquele portal — não uma nova query no banco. Motivo: `microvix_vendedores` é chaveada por `(portal, cod_vendedor)`, mas o `portal` numérico do Microvix pode ser compartilhado entre lojas da mesma rede/grupo e a tabela não tem `cnpj_emp`; então o `store_id` correto só é conhecido no momento da chamada (escopada por `cnpjEmp=portal["cnpj"]`), não é recuperável depois via SQL. `faciais.sellers` usa `(store_id, cod_vendedor)` (constraint `uq_sellers_store_cod`), não `(portal, cod_vendedor)`.
+
+- `seller_name` é gravado com `nome_vendedor.capitalize()` — só a primeira letra da string maiúscula, todo o resto minúsculo (não é title-case por palavra).
+- `is_active` = `ativo == 'S'` **e** `data_saida` vazio/nulo (reflete os dois campos do Microvix, conforme comentário da coluna em `doc_faciais.sql`).
+- Roda em todo sync (incremental agendado e full-load), pois é acionado dentro de `_ingerir_vendedores`, não como entrada separada em `_METODOS`.
+
 ---
 
 ## Tela Caixa (desde commit 0042)

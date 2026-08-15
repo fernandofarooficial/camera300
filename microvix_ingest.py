@@ -463,7 +463,58 @@ def _ingerir_vendedores(conn, portal: dict) -> int:
     registros = _lower_keys(registros)
     n = _upsert(conn, "microvix_vendedores", registros, ["portal", "cod_vendedor"])
     _save_ts(conn, metodo, _max_ts(registros), portal["cnpj"])
+    n_sellers = _sincronizar_sellers(portal["store_id"], registros)
+    log.info("[%s] %d vendedor(es) sincronizados em faciais.sellers", metodo, n_sellers)
     return n
+
+
+def _sincronizar_sellers(store_id: int, registros: list[dict]) -> int:
+    """Upsert em faciais.sellers a partir dos registros de LinxVendedores desta chamada.
+
+    microvix_vendedores é chaveada por (portal, cod_vendedor), mas cod_vendedor não é
+    globalmente único fora do portal — faciais.sellers usa (store_id, cod_vendedor)
+    (uq_sellers_store_cod). Por isso associamos cada vendedor ao store_id do portal
+    que originou esta chamada (cnpjEmp), em vez de tentar mapear pelo "portal"
+    numérico do Microvix, que pode ser compartilhado entre lojas da mesma rede.
+    """
+    linhas = []
+    for r in registros:
+        cod_vendedor = r.get("cod_vendedor")
+        nome = (r.get("nome_vendedor") or "").strip()
+        if not cod_vendedor or not nome:
+            continue
+        ativo = (r.get("ativo") or "").strip().upper() == "S"
+        saiu = bool(r.get("data_saida"))
+        linhas.append((store_id, int(cod_vendedor), nome.capitalize(), ativo and not saiu))
+
+    if not linhas:
+        return 0
+
+    conn = get_faciais_conn()
+    try:
+        cur = conn.cursor()
+        psycopg2.extras.execute_batch(
+            cur,
+            """INSERT INTO sellers (store_id, cod_vendedor, seller_name, is_active)
+               VALUES (%s, %s, %s, %s)
+               ON CONFLICT (store_id, cod_vendedor) DO UPDATE
+                 SET seller_name = EXCLUDED.seller_name,
+                     is_active   = EXCLUDED.is_active""",
+            linhas,
+            page_size=500,
+        )
+        conn.commit()
+        cur.close()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise
+    finally:
+        release_faciais_conn(conn)
+
+    return len(linhas)
 
 
 def _ingerir_metas_vendedores(conn, portal: dict) -> int:
