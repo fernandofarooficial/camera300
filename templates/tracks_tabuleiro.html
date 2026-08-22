@@ -335,6 +335,8 @@
                 data-nome="{{ p.nome or '' }}"
                 data-apelido="{{ p.apelido or '' }}"
                 data-doc="{{ p.doc or '' }}"
+                data-telefone="{{ p.telefone or '' }}"
+                data-email="{{ p.email or '' }}"
                 data-idade="{{ p.idade or '' }}"
                 data-genero="{{ p.genero or '' }}"
                 data-flag="{{ p.flag or '' }}"
@@ -396,6 +398,14 @@
           <input type="text" id="f-doc" maxlength="20" placeholder="000.000.000-00" />
         </div>
         <div class="form-field">
+          <label>Telefone</label>
+          <input type="text" id="f-telefone" maxlength="20" placeholder="(00) 00000-0000" />
+        </div>
+        <div class="form-field">
+          <label>E-mail</label>
+          <input type="email" id="f-email" maxlength="255" placeholder="pessoa@exemplo.com" />
+        </div>
+        <div class="form-field">
           <label>G&ecirc;nero</label>
           <select id="f-genero">
             <option value="">— selecionar —</option>
@@ -436,6 +446,8 @@
     document.getElementById('f-nome').value    = btn.dataset.nome;
     document.getElementById('f-apelido').value = btn.dataset.apelido;
     document.getElementById('f-doc').value     = btn.dataset.doc;
+    document.getElementById('f-telefone').value = btn.dataset.telefone;
+    document.getElementById('f-email').value   = btn.dataset.email;
     document.getElementById('f-idade').value   = btn.dataset.idade;
     document.getElementById('f-genero').value  = btn.dataset.genero;
     document.getElementById('f-flag').value    = btn.dataset.flag;
@@ -486,6 +498,8 @@
       nome:    document.getElementById('f-nome').value.trim(),
       apelido: document.getElementById('f-apelido').value.trim(),
       doc:     document.getElementById('f-doc').value.trim(),
+      telefone: document.getElementById('f-telefone').value.trim(),
+      email:   document.getElementById('f-email').value.trim(),
       idade:   document.getElementById('f-idade').value !== ''
                ? parseInt(document.getElementById('f-idade').value) : '',
       genero:  document.getElementById('f-genero').value,

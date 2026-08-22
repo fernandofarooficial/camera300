@@ -433,7 +433,9 @@ def tracks_lista():
                     p.reference_track_id        AS track_id_base,
                     p.document                  AS doc,
                     p.age                       AS idade,
-                    p.notes                     AS notas
+                    p.notes                     AS notas,
+                    p.phone                     AS telefone,
+                    p.email                     AS email
                 FROM detection_records r
                 LEFT JOIN people p ON r.person_id = p.person_id
                 WHERE r.person_id IN ({placeholders})
@@ -454,6 +456,8 @@ def tracks_lista():
                         "doc":           row["doc"],
                         "idade":         row["idade"],
                         "notas":         row["notas"],
+                        "telefone":      row["telefone"],
+                        "email":         row["email"],
                         "track_id_base": row["track_id_base"],
                         "foto":          None,
                         "ocorrencias":   [],
@@ -529,6 +533,8 @@ def tracks_permanencia():
                     p.document                  AS doc,
                     p.age                       AS idade,
                     p.notes                     AS notas,
+                    p.phone                     AS telefone,
+                    p.email                     AS email,
                     p.reference_track_id        AS track_id_base
                 FROM detection_records r
                 LEFT JOIN people p ON r.person_id = p.person_id
@@ -552,6 +558,8 @@ def tracks_permanencia():
                         "doc":           row["doc"],
                         "idade":         row["idade"],
                         "notas":         row["notas"],
+                        "telefone":      row["telefone"],
+                        "email":         row["email"],
                         "track_id_base": row["track_id_base"],
                         "foto":          None,
                         "dias":          {},
@@ -616,6 +624,8 @@ _CAMPO_MAP = {
     "genero":  "gender_id",
     "flag":    "person_type_id",
     "notas":   "notes",
+    "telefone": "phone",
+    "email":   "email",
 }
 
 
@@ -688,7 +698,7 @@ def buscar_pessoa(id_unico):
         cursor.execute(
             """
             SELECT p.person_id AS id_unico, p.full_name AS nome, p.nickname AS apelido,
-                   p.person_type_id AS flag,
+                   p.person_type_id AS flag, p.phone AS telefone, p.email AS email,
                    (SELECT r.image_path FROM detection_records r
                     WHERE r.track_id = p.reference_track_id AND r.image_path IS NOT NULL
                     ORDER BY r.detection_score DESC LIMIT 1) AS image_path
@@ -849,6 +859,8 @@ def tracks_tabuleiro():
                 p.document                  AS doc,
                 p.age                       AS idade,
                 p.notes                     AS notas,
+                p.phone                     AS telefone,
+                p.email                     AS email,
                 (SELECT r.image_path FROM detection_records r
                  WHERE r.track_id = p.reference_track_id AND r.image_path IS NOT NULL
                  ORDER BY r.detection_score DESC LIMIT 1) AS image_path
