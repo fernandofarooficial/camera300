@@ -219,6 +219,35 @@ Retorna: `{success, person_id, nome, pessoa_excluida}`.
 
 ---
 
+## Formulário de edição de pessoa (telefone/e-mail)
+
+O modal "Editar Pessoa" está **duplicado em três templates** (mesmo HTML/JS, sem componente
+compartilhado): `tracks_lista.html`, `tracks_tabuleiro.html` e `tracks_permanencia.html`. Uma
+alteração no formulário precisa ser replicada nos três. Campos atuais: Nome, Apelido, Idade,
+Doc (CPF/CNPJ), Telefone, E-mail, Gênero, Flag, Notas.
+
+- Colunas `faciais.people.phone` (`varchar(20)`) e `faciais.people.email` (`varchar(255)`) —
+  já existiam no schema antes do formulário expô-las.
+- `_CAMPO_MAP` (`tracks.py`) mapeia os nomes de campo do frontend (legado) para as colunas:
+  `telefone` → `phone`, `email` → `email` (esse já bate 1:1). Usado por
+  `POST /tracks/api/pessoa/<id_unico>` (`atualizar_pessoa`).
+- As queries de `tracks_lista`, `tracks_tabuleiro`, `tracks_permanencia` e `buscar_pessoa`
+  (`tracks.py`) trazem `p.phone AS telefone` e `p.email AS email`, propagados nos `data-*` dos
+  cards/botões de cada template.
+
+### Máscara de telefone `(99) 9-9999-9999`
+
+Cada um dos três templates define sua própria função JS `formatTelefone(value)` (duplicada,
+mesmo motivo do modal) que:
+- Remove tudo que não é dígito e limita a 11 dígitos (DDD + 9 dígitos do celular).
+- Formata progressivamente enquanto o usuário digita, via `oninput` no `#f-telefone`.
+- É reaplicada em `abrirModal()` ao carregar o valor existente (`formatTelefone(btn.dataset.telefone)`),
+  então um telefone já salvo sem formatação (ou com formatação antiga) é normalizado ao abrir o modal.
+- O valor salvo no banco é a string já formatada (com parênteses/traço), não os dígitos crus —
+  mesmo padrão do campo Doc, que também não normaliza antes de salvar.
+
+---
+
 ## Flags de pessoa
 
 | Flag | Significado |
