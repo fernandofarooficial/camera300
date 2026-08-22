@@ -399,7 +399,7 @@
         </div>
         <div class="form-field">
           <label>Telefone</label>
-          <input type="text" id="f-telefone" maxlength="20" placeholder="(00) 00000-0000" />
+          <input type="text" id="f-telefone" maxlength="17" placeholder="(99) 9-9999-9999" oninput="this.value = formatTelefone(this.value)" />
         </div>
         <div class="form-field">
           <label>E-mail</label>
@@ -441,12 +441,23 @@
 </div>
 
 <script>
+  function formatTelefone(value) {
+    const digits = (value || '').replace(/\D/g, '').slice(0, 11);
+    let out = '';
+    if (digits.length > 0) out += '(' + digits.slice(0, 2);
+    if (digits.length >= 2) out += ') ';
+    if (digits.length >= 3) out += digits.slice(2, 3);
+    if (digits.length >= 4) out += '-' + digits.slice(3, 7);
+    if (digits.length >= 8) out += '-' + digits.slice(7, 11);
+    return out;
+  }
+
   function abrirModal(btn) {
     document.getElementById('f-id').value      = btn.dataset.id;
     document.getElementById('f-nome').value    = btn.dataset.nome;
     document.getElementById('f-apelido').value = btn.dataset.apelido;
     document.getElementById('f-doc').value     = btn.dataset.doc;
-    document.getElementById('f-telefone').value = btn.dataset.telefone;
+    document.getElementById('f-telefone').value = formatTelefone(btn.dataset.telefone);
     document.getElementById('f-email').value   = btn.dataset.email;
     document.getElementById('f-idade').value   = btn.dataset.idade;
     document.getElementById('f-genero').value  = btn.dataset.genero;
