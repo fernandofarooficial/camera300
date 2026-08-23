@@ -128,6 +128,22 @@ Dois pools PostgreSQL no mesmo DSN (`postgresql://fefa_dev:Fd7493dt@72.60.58.241
 - **Validado em produção em 2026-08-23**: deploy + sync manual (`POST /tracks/carga/sync`, fora do agendamento) confirmou `microvix_faturas_pag` retornando 470 registros na primeira execução, com `data_baixa`/`valor_pago` preenchidos em faturas emitidas meses antes (fora da janela de emissão corrente) que antes ficavam permanentemente sem baixa.
 - **Buraco histórico (pagamentos feitos há mais de 90 dias antes da sincronização existir) fechado com backfill único** em 2026-08-23: script ad-hoc (não commitado, rodou direto no venv do VPS e foi apagado depois), reaproveitando `_chamar_api_paginado`/`_upsert`/`_max_ts` do módulo, chamando `LinxFaturas` com `timestamp=0` e `data_inicial_pag='2025-05-01'`/`data_fim_pag=hoje` pros dois portais — sem tocar no cursor `LinxFaturasPag` durante a chamada, só gravando ao final como `max(cursor atual, maior timestamp retornado)` pra não regredir o avanço normal. Resultado: portal `34881719000109` foi de 1753 pra 1797 faturas com `data_baixa` (+44, preenchendo inclusive dez/2025 e jan/2026, que antes estavam zerados); portal `49104467000170` não teve novidade (histórico de baixas já estava coberto até nov/2025 antes do backfill). Cursor `LinxFaturasPag` passou a existir pros dois portais (antes só existia pro `34881719000109`, já que o outro não tinha retornado nada nos últimos 90 dias). Esse backfill não precisa ser repetido — é coberto daqui pra frente pela janela móvel de 90 dias da sincronização incremental normal.
 
+#### Causa raiz do "buraco" original (por que baixa sumia depois da emissão)
+
+`_ingerir_faturas` (consulta por emissão) filtra candidatos por `data_inicial/data_fim = _data_ini(portal, 2)` — uma janela de só 2 dias antes de hoje, aplicada sobre `data_emissao`. Uma fatura só é reconsultada enquanto sua emissão está dentro desses 2 dias; passado esse prazo, nunca mais é revisitada pela sincronização normal, mesmo que `data_baixa`/`valor_pago` só sejam preenchidos no Microvix semanas/meses depois. É exatamente esse buraco que `_ingerir_faturas_pagamento` resolve daqui pra frente.
+
+#### Achado (2026-08-23): portal 18922 sem nenhuma baixa nova desde 23/11/2025
+
+Investigando a cobertura pós-backfill, o portal **18922** (`cnpj_emp='49104467000170'`, loja **ECOVILLE - POA - RS - IGOR**, `store_id=1`) mostrou zero faturas com `data_baixa` a partir de dezembro/2025 — nos dois tipos (`receber_pagar='R'` **e** `'P'`, não só um). Confirmado direto na API (não é limitação da nossa janela nem bug de escopo/filtro):
+
+- Consulta `LinxFaturas` com `data_inicial_pag`/`data_fim_pag` em janelas estreitas (`2025-12-01→2026-01-31` e `2026-06-01→2026-08-23`) retornou **0 registros** pra esse portal — API respondeu vazio mesmo pedindo diretamente por esses períodos.
+- No banco, distribuição de `data_baixa` (mês do pagamento) pro portal 18922: `2025-03` (3.428 R + 291 P, carga histórica), `2025-04` (147 R + 9 P, cauda), `2025-06` (48 P, capturado pelo sync novo), `2025-11` (46 R, idem) — **nada depois disso**. Última baixa registrada: **2025-11-23**.
+- Comparação: o outro portal (`19926` / `34881719000109`, loja Ecoville Itapema) segue normal, com baixa até 21/08/2026 (1.456 faturas baixadas só depois de dez/2025).
+
+**Conclusão:** não é algo corrigível em `microvix_ingest.py` — a API já é consultada corretamente e o dado simplesmente não existe na origem pra esse portal desde então. Precisa ser verificado com quem opera o Microvix da loja POA/IGOR: se ela parou de registrar baixa de faturas nesse módulo (mudou de fluxo/ferramenta de cobrança) ou se há algum problema de configuração/integração específico dessa unidade desde final de novembro/2025.
+
+Achado à parte, sem relação direta com o gap acima: pro portal **19926** (`34881719000109`), a consulta por pagamento retorna só faturas `P` — nenhuma `R` aparece nunca (0 de 11.762 faturas a receber desse portal têm `data_baixa`, em toda a história). Também confirmado como comportamento da API (não filtro nosso): resposta bruta de `LinxFaturas` na janela de pagamento veio 100% `P` (1796/1796). Hipótese: essa loja liquida recebíveis/crediário por outro módulo do Microvix, cuja baixa não é refletida em `LinxFaturas.data_baixa` pra tipo `R`.
+
 ### Sincronização faciais.sellers ← microvix_vendedores
 
 `_ingerir_vendedores` (método `LinxVendedores`), a cada chamada, também sincroniza `faciais.sellers` via `_sincronizar_sellers(store_id, registros)`, usando os registros já retornados pela API para aquele portal — não uma nova query no banco. Motivo: `microvix_vendedores` é chaveada por `(portal, cod_vendedor)`, mas o `portal` numérico do Microvix pode ser compartilhado entre lojas da mesma rede/grupo e a tabela não tem `cnpj_emp`; então o `store_id` correto só é conhecido no momento da chamada (escopada por `cnpjEmp=portal["cnpj"]`), não é recuperável depois via SQL. `faciais.sellers` usa `(store_id, cod_vendedor)` (constraint `uq_sellers_store_cod`), não `(portal, cod_vendedor)`.
@@ -334,6 +350,7 @@ mesmo motivo do modal) que:
 - `db.py` — `criar_pessoa` usa `FLAG_NOVO_ANONIMO` (default `"C"`) → todo novo anônimo dispara Telegram.
 - `tracks.py:576` (`tracks_permanencia`) — permanência estimada em 30 min quando há só 1 registro ou diferença < 2 min (linha pode se mover; buscar por `estimado = True`).
 - `tracks_resumo` — threshold `0.73` hardcoded em vez de usar `SCORE_MINIMO`.
+- Dado (não bug de código): portal `18922` (loja POA/IGOR) sem nenhuma `data_baixa` nova em `microvix_faturas` desde 2025-11-23, confirmado na origem (API). Portal `19926` (Itapema) nunca recebe baixa pra faturas `receber_pagar='R'`, só `'P'`. Ver seção "LinxFaturas — duas consultas" para detalhes.
 
 ---
 
