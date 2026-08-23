@@ -704,6 +704,35 @@ def _ingerir_faturas(conn, portal: dict) -> int:
     return n
 
 
+def _ingerir_faturas_pagamento(conn, portal: dict) -> int:
+    """Segunda consulta a LinxFaturas, filtrando por janela de pagamento
+    (data_inicial_pag/data_fim_pag) em vez de emissão — recaptura baixas de faturas
+    emitidas fora da janela de emissão corrente de `_ingerir_faturas`. A API só aceita
+    um dos dois períodos preenchido por chamada; cursor de timestamp próprio
+    (`LinxFaturasPag`, independente do cursor por emissão) evita que uma consulta
+    pise no controle da outra. Upsert por (portal, cnpj_emp, codigo_fatura) atualiza
+    data_baixa/valor_pago de faturas antigas já existentes, sem recriar nada."""
+    metodo = "LinxFaturas"
+    metodo_ctrl = "LinxFaturasPag"
+    ts = _get_last_ts(conn, metodo_ctrl, portal["cnpj"])
+    params = {
+        "chave":            portal["chave"],
+        "cnpjEmp":          portal["cnpj"],
+        "timestamp":        ts,
+        "data_inicial_pag": _data_ini(portal, 90),
+        "data_fim_pag":     _data_fim(portal),
+    }
+    registros = _chamar_api_paginado(metodo, params)
+    log.info("[%s] %d registros recebidos (pagamento)", metodo, len(registros))
+    if not registros:
+        return 0
+    registros = _lower_keys(registros)
+    n = _upsert(conn, "microvix_faturas", registros,
+                ["portal", "cnpj_emp", "codigo_fatura"])
+    _save_ts(conn, metodo_ctrl, _max_ts(registros), portal["cnpj"])
+    return n
+
+
 def _ingerir_pedidos_venda(conn, portal: dict) -> int:
     metodo = "LinxPedidosVenda"
     _set(current_method=metodo)
@@ -844,6 +873,7 @@ _METODOS = [
     ("microvix_produtos_tabelas",                    _ingerir_produtos_tabelas),
     ("microvix_produtos_tabelas_precos",             _ingerir_produtos_tabelas_precos),
     ("microvix_faturas",                             _ingerir_faturas),
+    ("microvix_faturas_pag",                         _ingerir_faturas_pagamento),
     ("microvix_pedidos_venda",                       _ingerir_pedidos_venda),
     ("microvix_pedidos_compra",                      _ingerir_pedidos_compra),
     # sincronização derivada (não registrada em microvix_carga)

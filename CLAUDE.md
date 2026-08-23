@@ -114,7 +114,17 @@ Dois pools PostgreSQL no mesmo DSN (`postgresql://fefa_dev:Fd7493dt@72.60.58.241
 - **`POST /tracks/carga/full-load`** → dispara `run_full_load()` em thread background.
   - Body JSON: `{"cnpj": "...", "data_inicio": "YYYY-MM-DD"}`.
   - Valida que o CNPJ está em `MICROVIX_PORTAIS`.
-- `_METODOS` (`microvix_ingest.py`) hoje cobre 19 métodos Linx (bem além das 6 tabelas originais registradas em `microvix_carga`) — inclui `microvix_vendedores`, `microvix_faturas`, `microvix_pedidos_venda`, `microvix_pedidos_compra`, `microvix_produtos_tabelas(_precos)`, `microvix_fidelidade`, `microvix_metas_vendedores`, etc. Ver `doc_microvix.sql` (pasta `db-docs/lojas`) para o schema completo dessas tabelas. A última entrada de `_METODOS`, `faciais_person_purchases` (→ `_sincronizar_person_purchases`), não é um método Linx — é a sincronização derivada de NFs anônimas para `faciais.person_purchases` (ver seção "Tela Caixa").
+- `_METODOS` (`microvix_ingest.py`) hoje tem 20 entradas cobrindo 19 métodos Linx distintos (bem além das 6 tabelas originais registradas em `microvix_carga`) — inclui `microvix_vendedores`, `microvix_faturas`, `microvix_pedidos_venda`, `microvix_pedidos_compra`, `microvix_produtos_tabelas(_precos)`, `microvix_fidelidade`, `microvix_metas_vendedores`, etc. Ver `doc_microvix.sql` (pasta `db-docs/lojas`) para o schema completo dessas tabelas. `LinxFaturas` aparece em duas entradas (`microvix_faturas` e `microvix_faturas_pag`, ver seção "LinxFaturas — duas consultas" abaixo). A última entrada de `_METODOS`, `faciais_person_purchases` (→ `_sincronizar_person_purchases`), não é um método Linx — é a sincronização derivada de NFs anônimas para `faciais.person_purchases` (ver seção "Tela Caixa").
+- **Cobertura parcial do Web Service:** a spec Linx Microvix (`Especificação Web Service de Saída Padrão - v176 (1).pdf`, pasta `db-docs/lojas`) documenta ~154 métodos `Linx*`; `_METODOS` só cobre os relevantes ao escopo do projeto (clientes, vendas, produtos, vendedores, faturas/pedidos). A maioria dos métodos não implementados é de verticais não usadas aqui (fiscal/tributário, ótica, e-commerce B2C, contábil, frete/NFe).
+
+### LinxFaturas — duas consultas (emissão + pagamento)
+
+`LinxFaturas` só aceita **um** dos dois períodos preenchido por chamada — `data_inicial`/`data_fim` (emissão) **ou** `data_inicial_pag`/`data_fim_pag` (pagamento); o par não usado precisa ir `NULL` (a API omite os campos quando ausentes do request, mesmo efeito).
+
+- `_ingerir_faturas` → janela de **emissão** (`_data_ini(portal, 2)` a `_data_fim(portal)`), cursor de controle `LinxFaturas`. Só pega fatura nova.
+- `_ingerir_faturas_pagamento` → janela de **pagamento** (`_data_ini(portal, 90)` a `_data_fim(portal)`), cursor de controle próprio `LinxFaturasPag` — **não pode reusar** o cursor de `LinxFaturas`, senão uma consulta pisa no controle de avanço da outra. Recaptura baixas (`data_baixa`/`valor_pago`) de faturas emitidas fora da janela de emissão corrente; como não dá pra saber de antemão quais faturas antigas foram pagas, roda com janela móvel generosa (90 dias) a cada sync em vez de mirar uma fatura específica.
+- Ambas fazem `_upsert` na mesma tabela `microvix_faturas` por `(portal, cnpj_emp, codigo_fatura)` — a segunda consulta apenas atualiza linhas já existentes, não recria nada.
+- Registrada em `_METODOS` como `("microvix_faturas_pag", _ingerir_faturas_pagamento)`, entrada separada de `("microvix_faturas", _ingerir_faturas)` — rótulo distinto na tela `/tracks/carga` (status/log), mesma tabela de destino.
 
 ### Sincronização faciais.sellers ← microvix_vendedores
 
