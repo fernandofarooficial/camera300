@@ -244,30 +244,49 @@
       padding: 0.2rem 0.6rem;
       border-radius: 6px;
     }
-    table.compras-table {
-      width: 100%;
-      border-collapse: collapse;
+    /* Lista de compras: cards empilháveis em vez de tabela de 4 colunas — a coluna de
+       produtos espremia demais em telas estreitas quando era uma célula de tabela. */
+    .compra-item {
+      padding: 0.55rem 0;
+      border-bottom: 1px solid #1e2130;
+    }
+    .compra-item:last-child { border-bottom: none; }
+    .compra-linha {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.55rem;
+      margin-bottom: 0.4rem;
       font-size: 0.82rem;
     }
-    table.compras-table th {
-      text-align: left;
-      color: #64748b;
-      font-weight: 700;
-      text-transform: uppercase;
-      font-size: 0.65rem;
-      letter-spacing: 0.06em;
-      padding: 0.3rem 0.5rem;
-      border-bottom: 1px solid #2d3148;
+    .compra-data { font-weight: 700; color: #e2e8f0; }
+    .compra-notas { color: #64748b; font-size: 0.76rem; }
+    .compra-valor { font-weight: 700; color: #22c55e; margin-left: auto; }
+    .compra-produtos {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
     }
-    table.compras-table td {
-      padding: 0.35rem 0.5rem;
-      border-bottom: 1px solid #1e2130;
-      color: #e2e8f0;
+    .produto-chip {
+      display: inline-flex;
+      align-items: center;
+      font-size: 0.74rem;
+      background: #0f1117;
+      border: 1px solid #2d3148;
+      color: #94a3b8;
+      padding: 0.2rem 0.6rem;
+      border-radius: 999px;
+      max-width: 100%;
     }
-    table.compras-table td.valor { color: #22c55e; font-weight: 600; }
-    table.compras-table td.produtos { color: #94a3b8; max-width: 340px; }
-    .produto-item { white-space: nowrap; }
-    .produto-qtd { color: #60a5fa; font-weight: 600; }
+    /* Só o nome trunca com reticências — a quantidade (o dado mais importante) sempre
+       fica visível por inteiro, mesmo com nome de produto longo. */
+    .produto-chip .produto-nome {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
+    .produto-chip .produto-qtd { color: #60a5fa; font-weight: 700; margin-left: 0.3rem; flex-shrink: 0; }
 
     /* ---- Modal (shared) ---- */
     .modal-overlay {
@@ -540,29 +559,24 @@
         {% if c.compras %}
           <div class="info-section">
             <div class="info-section-title">Últimas compras</div>
-            <table class="compras-table">
-              <thead>
-                <tr><th>Data</th><th>Notas</th><th>Valor</th><th>Produtos</th></tr>
-              </thead>
-              <tbody>
-                {% for compra in c.compras %}
-                  <tr>
-                    <td>{{ compra.data_documento.strftime('%d/%m/%Y') }}</td>
-                    <td>{{ compra.notas }}</td>
-                    <td class="valor">R$ {{ "%.2f"|format(compra.valor)|replace('.', ',') }}</td>
-                    <td class="produtos">
-                      {% if compra.itens %}
-                        {% for item in compra.itens %}
-                          <span class="produto-item">{{ item.produto }} <span class="produto-qtd">×{{ item.quantidade }}</span></span>{% if not loop.last %}, {% endif %}
-                        {% endfor %}
-                      {% else %}
-                        <span class="cad-value empty">sem itens</span>
-                      {% endif %}
-                    </td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
+            {% for compra in c.compras %}
+              <div class="compra-item">
+                <div class="compra-linha">
+                  <span class="compra-data">{{ compra.data_documento.strftime('%d/%m/%Y') }}</span>
+                  <span class="compra-notas">{{ compra.notas }} nota{{ 's' if compra.notas != 1 else '' }}</span>
+                  <span class="compra-valor">R$ {{ "%.2f"|format(compra.valor)|replace('.', ',') }}</span>
+                </div>
+                <div class="compra-produtos">
+                  {% if compra.itens %}
+                    {% for item in compra.itens %}
+                      <span class="produto-chip"><span class="produto-nome">{{ item.produto }}</span><span class="produto-qtd">×{{ item.quantidade }}</span></span>
+                    {% endfor %}
+                  {% else %}
+                    <span class="cad-value empty">sem itens</span>
+                  {% endif %}
+                </div>
+              </div>
+            {% endfor %}
           </div>
         {% endif %}
       {% endif %}
