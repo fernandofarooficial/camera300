@@ -566,17 +566,19 @@ def tracks_clientes():
             if ids_recorrentes:
                 ph2 = ",".join(["%s"] * len(ids_recorrentes))
                 cursor.execute(f"""
-                    SELECT pp.person_id, mv.data_documento, SUM(mv.total_nf) AS valor, COUNT(*) AS notas
+                    SELECT pp.person_id, mv.data_documento, s.cnpj::varchar AS cnpj_emp,
+                           ARRAY_AGG(DISTINCT mv.documento) AS documentos,
+                           SUM(mv.total_nf) AS valor, COUNT(DISTINCT mv.documento) AS notas
                     FROM person_purchases pp
                     JOIN stores s ON s.store_id = pp.store_id
                     JOIN mv_microvix_vendas mv ON mv.cnpj_emp = s.cnpj::varchar AND mv.documento = pp.bill
                     WHERE pp.person_id IN ({ph2}) AND pp.is_cancelled = false
-                    GROUP BY pp.person_id, mv.data_documento
+                    GROUP BY pp.person_id, mv.data_documento, s.cnpj
                     ORDER BY pp.person_id, mv.data_documento DESC
                 """, ids_recorrentes)
                 compras_por_pessoa: dict = {}
                 for row in cursor.fetchall():
-                    compras_por_pessoa.setdefault(row["person_id"], []).append(row)
+                    compras_por_pessoa.setdefault(row["person_id"], []).append(dict(row))
                 for c in clientes:
                     c["compras"] = compras_por_pessoa.get(c["id_unico"], [])[:5]
 
@@ -584,6 +586,59 @@ def tracks_clientes():
         conn.rollback()
     finally:
         release_faciais_conn(conn)
+
+    # Produtos e quantidades das compras exibidas (itens da NF, direto do microvix_movimento)
+    pares_doc = set()
+    for c in clientes:
+        for compra in c["compras"]:
+            cnpj_padded = (compra["cnpj_emp"] or "").zfill(14)
+            for doc in compra["documentos"]:
+                pares_doc.add((cnpj_padded, doc))
+
+    if pares_doc:
+        pg_conn = None
+        try:
+            pg_conn = get_pg_conn()
+            pg_cur = pg_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            values_clause = ",".join(["(%s::varchar,%s::integer)"] * len(pares_doc))
+            params_doc = [v for par in pares_doc for v in par]
+            pg_cur.execute(f"""
+                SELECT mm.cnpj_emp, mm.documento,
+                       COALESCE(mp.nome, 'Produto ' || mm.cod_produto) AS produto,
+                       SUM(mm.quantidade) AS quantidade
+                FROM microvix_movimento mm
+                JOIN (VALUES {values_clause}) AS v(cnpj_emp, documento)
+                  ON v.cnpj_emp = mm.cnpj_emp AND v.documento = mm.documento
+                LEFT JOIN microvix_produtos mp ON mp.portal = mm.portal AND mp.cod_produto = mm.cod_produto
+                WHERE mm.cod_natureza_operacao = '10030'
+                  AND mm.cancelado <> 'S' AND mm.excluido <> 'S' AND mm.soma_relatorio = 'S'
+                  AND (mm.tipo_transacao = ANY (ARRAY['P','V','S']) OR mm.tipo_transacao IS NULL)
+                GROUP BY mm.cnpj_emp, mm.documento, mp.nome, mm.cod_produto
+            """, params_doc)
+            itens_por_doc: dict = {}
+            for row in pg_cur.fetchall():
+                key = (row["cnpj_emp"], row["documento"])
+                itens_por_doc.setdefault(key, []).append(row)
+            pg_cur.close()
+        except Exception as e:
+            print(f"[clientes] Erro ao buscar itens das compras: {e}")
+            itens_por_doc = {}
+        finally:
+            if pg_conn:
+                release_pg_conn(pg_conn)
+
+        for c in clientes:
+            for compra in c["compras"]:
+                cnpj_padded = (compra["cnpj_emp"] or "").zfill(14)
+                agregados: dict = {}
+                for doc in compra["documentos"]:
+                    for item in itens_por_doc.get((cnpj_padded, doc), []):
+                        agregados[item["produto"]] = agregados.get(item["produto"], 0) + (item["quantidade"] or 0)
+                compra["itens"] = sorted(
+                    ({"produto": nome, "quantidade": int(qtd) if qtd == int(qtd) else round(qtd, 2)}
+                     for nome, qtd in agregados.items()),
+                    key=lambda i: i["quantidade"], reverse=True,
+                )
 
     stores_list = [{"store_id": sid, "nome": nome} for sid, nome in sorted(STORE_NAME_MAP.items())]
     return render_template("tracks_clientes.html", clientes=clientes,

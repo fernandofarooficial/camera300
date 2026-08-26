@@ -264,6 +264,9 @@
       color: #e2e8f0;
     }
     table.compras-table td.valor { color: #22c55e; font-weight: 600; }
+    table.compras-table td.produtos { color: #94a3b8; max-width: 340px; }
+    .produto-item { white-space: nowrap; }
+    .produto-qtd { color: #60a5fa; font-weight: 600; }
 
     /* ---- Modal (shared) ---- */
     .modal-overlay {
@@ -537,7 +540,7 @@
             <div class="info-section-title">Últimas compras</div>
             <table class="compras-table">
               <thead>
-                <tr><th>Data</th><th>Notas</th><th>Valor</th></tr>
+                <tr><th>Data</th><th>Notas</th><th>Valor</th><th>Produtos</th></tr>
               </thead>
               <tbody>
                 {% for compra in c.compras %}
@@ -545,6 +548,15 @@
                     <td>{{ compra.data_documento.strftime('%d/%m/%Y') }}</td>
                     <td>{{ compra.notas }}</td>
                     <td class="valor">R$ {{ "%.2f"|format(compra.valor)|replace('.', ',') }}</td>
+                    <td class="produtos">
+                      {% if compra.itens %}
+                        {% for item in compra.itens %}
+                          <span class="produto-item">{{ item.produto }} <span class="produto-qtd">×{{ item.quantidade }}</span></span>{% if not loop.last %}, {% endif %}
+                        {% endfor %}
+                      {% else %}
+                        <span class="cad-value empty">sem itens</span>
+                      {% endif %}
+                    </td>
                   </tr>
                 {% endfor %}
               </tbody>
