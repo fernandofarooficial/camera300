@@ -252,7 +252,9 @@ Ordem de chegada dos clientes do dia atual, com dados cadastrais, histórico de 
 1. **Chegada** = primeira detecção facial do dia (`DISTINCT ON (person_id)`, `ORDER BY created_at ASC`),
    restrita a `person_type_id = 'C'`. Recapturas no mesmo dia não alteram a chegada já registrada
    (a query sempre pega a menor `created_at` do dia, independente de quantas vezes a pessoa for
-   detectada depois).
+   detectada depois). Exibida na chip "Chegou às" **só com a hora** (`strftime('%H:%M:%S')`, não
+   `fmt_timestamp`) — a data é redundante porque a tela só lista clientes de hoje (já aparece uma
+   vez só no cabeçalho, "Chegadas de hoje — DD/MM/AAAA").
 2. Lista ordenada por chegada **decrescente** (mais recente primeiro).
 3. Filtro de loja (`?store=<store_id>`, `0`/ausente = todas as lojas) — mesmo padrão de `tracks_lista`.
 4. Dados cadastrais (nome, apelido, doc, idade, gênero, telefone, e-mail, flag, notas) sempre exibidos.
