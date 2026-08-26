@@ -301,6 +301,10 @@ Reaproveita **o mesmo modal e a mesma rota** de `tracks_lista.html`/`atualizar_p
 `templates/tracks_clientes.html` — usado tanto por `/tracks/clientes` quanto por `/m/tracks/clientes`
 (diferente de Lista/Caixa, não há template mobile separado; a página é responsiva via media query).
 
+Foto do cliente (`.person-photo`/`.person-photo-placeholder`) é maior e mais destacada que o padrão
+usado em Lista/Caixa: 132px desktop / 92px mobile (vs. 72px nas outras telas), com borda azulada e
+sombra — pedido explícito (2026-08-26) para dar mais destaque visual ao rosto na tela de chegada.
+
 ### Refresh
 Sem SSE — a página tem um `setInterval` de 30s que dá `location.reload()` (refaz todas as queries
 do zero, preservando `?store=` da URL atual), pausado enquanto o modal de edição de pessoa está
