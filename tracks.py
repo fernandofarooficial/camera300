@@ -588,33 +588,39 @@ def tracks_clientes():
         release_faciais_conn(conn)
 
     # Produtos e quantidades das compras exibidas (itens da NF, direto do microvix_movimento).
-    # documento NÃO é único nem por (cnpj_emp, documento) — o Microvix reaproveita a mesma
-    # numeração em notas diferentes emitidas em datas distintas (séries diferentes). Por isso a
-    # chave de correspondência precisa incluir data_documento, igual mv_microvix_vendas já faz
-    # (GROUP BY cnpj_emp, documento, data_documento::date) — senão itens de uma nota "vizinha"
-    # com o mesmo número entram na lista errada.
+    # documento NÃO é único nem por (cnpj_emp, documento) — cada série do Microvix tem sua própria
+    # numeração sequencial e elas se sobrepõem constantemente (mesmo documento em datas distintas,
+    # e em raríssimos casos até na mesma data). A chave de correspondência precisa replicar
+    # exatamente o que mv_microvix_vendas usa: (cnpj_emp, documento, data_documento::date) +
+    # restringir à série classificada como PF da loja (store_serie_rules) — só assim os itens batem
+    # 1:1 com a NF que gerou o valor exibido, mesmo nos casos de mesma data com séries diferentes.
     pares_doc = set()
     for c in clientes:
         for compra in c["compras"]:
             cnpj_padded = (compra["cnpj_emp"] or "").zfill(14)
+            store_id = CNPJ_STORE_MAP.get(compra["cnpj_emp"])
+            if store_id is None:
+                continue
             for doc in compra["documentos"]:
-                pares_doc.add((cnpj_padded, doc, compra["data_documento"]))
+                pares_doc.add((cnpj_padded, doc, compra["data_documento"], store_id))
 
     if pares_doc:
         pg_conn = None
         try:
             pg_conn = get_pg_conn()
             pg_cur = pg_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            values_clause = ",".join(["(%s::varchar,%s::integer,%s::date)"] * len(pares_doc))
+            values_clause = ",".join(["(%s::varchar,%s::integer,%s::date,%s::integer)"] * len(pares_doc))
             params_doc = [v for par in pares_doc for v in par]
             pg_cur.execute(f"""
                 SELECT mm.cnpj_emp, mm.documento, mm.data_documento::date AS data_documento,
                        COALESCE(mp.nome, 'Produto ' || mm.cod_produto) AS produto,
                        SUM(mm.quantidade) AS quantidade
                 FROM microvix_movimento mm
-                JOIN (VALUES {values_clause}) AS v(cnpj_emp, documento, data_documento)
+                JOIN (VALUES {values_clause}) AS v(cnpj_emp, documento, data_documento, store_id)
                   ON v.cnpj_emp = mm.cnpj_emp AND v.documento = mm.documento
                   AND v.data_documento = mm.data_documento::date
+                JOIN faciais.store_serie_rules ssr
+                  ON ssr.store_id = v.store_id AND ssr.person_kind = 'PF' AND ssr.serie = mm.serie
                 LEFT JOIN microvix_produtos mp ON mp.portal = mm.portal AND mp.cod_produto = mm.cod_produto
                 WHERE mm.cod_natureza_operacao = '10030'
                   AND mm.cancelado <> 'S' AND mm.excluido <> 'S' AND mm.soma_relatorio = 'S'
