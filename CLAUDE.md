@@ -226,16 +226,34 @@ Ordem de chegada dos clientes do dia atual, com dados cadastrais, histórico de 
    `mv_microvix_vendas`: `cod_natureza_operacao='10030'`, não cancelado/excluído, `soma_relatorio='S'`,
    `tipo_transacao` em `(P,V,S)` ou nulo), com `LEFT JOIN microvix_produtos` (por `portal, cod_produto`)
    para o nome do produto. Quando há mais de uma NF no mesmo dia, quantidades do mesmo produto são
-   somadas. Consulta usa `JOIN (VALUES (...), ...) AS v(cnpj_emp, documento, data_documento)` para
-   casar as compras já identificadas — evita re-filtrar por natureza/série do zero e mantém a
+   somadas. Consulta usa `JOIN (VALUES (...), ...) AS v(cnpj_emp, documento, data_documento, store_id)`
+   para casar as compras já identificadas — evita re-filtrar por natureza/série do zero e mantém a
    correspondência 1:1 com as compras exibidas.
-   **Importante:** a chave de correspondência precisa incluir `data_documento`, não só
-   `(cnpj_emp, documento)` — o Microvix reaproveita o mesmo número de `documento` em notas fiscais
-   completamente diferentes emitidas em datas distintas (série diferente). Um bug inicial (corrigido
-   em 2026-08-26) casava só por `(cnpj_emp, documento)` e por isso misturava itens de uma NF vizinha
-   com o mesmo número numa data diferente. `mv_microvix_vendas` já agrupa por
-   `(cnpj_emp, documento, data_documento::date)` — a busca de itens replica exatamente essa mesma
-   chave de três colunas.
+
+   **`documento` não é uma chave confiável — nem com `cnpj_emp`.** Cada série do Microvix tem sua
+   própria numeração sequencial e elas se sobrepõem constantemente: o mesmo `(cnpj_emp, documento)`
+   aparece em NFs completamente diferentes emitidas em datas distintas, e em casos raríssimos até na
+   mesma data (série diferente). Investigação em 2026-08-26 (motivada por um relato de valor/produtos
+   incompatíveis numa compra da tela Clientes) mediu o problema: **7449 pares `(cnpj_emp, documento)`**
+   com mais de uma data válida no total (ambos os CNPJs — 1166 no `49104467000170`, o resto no
+   `34881719000109`), e **153 das 771 compras confirmadas em `person_purchases`** (≈20%, todas no
+   `34881719000109`/Ecoville Itapema) caem nessa ambiguidade. Um bug inicial na busca de itens casava
+   só por `(cnpj_emp, documento)` e por isso misturava itens de uma NF vizinha com o mesmo número
+   numa data diferente (ex.: pessoa com compra de R$8,00/2 itens exibindo 6 itens de duas NFs
+   distintas). Corrigido em duas camadas, replicando exatamente o critério que `mv_microvix_vendas`
+   já usa para calcular o valor:
+   - chave de correspondência inclui `data_documento::date` (como `mv_microvix_vendas` já agrupa por
+     `(cnpj_emp, documento, data_documento::date)`);
+   - `JOIN faciais.store_serie_rules` exigindo `person_kind='PF'` e `serie = mm.serie` da loja —
+     fecha os ~5 casos raros de mesma data com série diferente, que a chave de data sozinha não
+     resolveria.
+
+   **Achado relacionado, não corrigido (fora do escopo desta tela):** `POST /tracks/caixa/nf/<documento>/pessoa`
+   (`tracks_caixa_set_pessoa`, seção "Tela Caixa") busca a NF só por `documento` (+ `cnpj_emp` quando
+   informado pelo front) com `LIMIT 1`, sem desambiguar por data — nos casos de documento ambíguo,
+   pode confirmar o comprador contra a NF errada (arbitrária, a que o `LIMIT 1` retornar). Mesma causa
+   raiz desta seção, mas correção não aplicada aqui — avaliar separadamente se/como desambiguar
+   também na confirmação de comprador.
 
 ### Edição de pessoa
 Reaproveita **o mesmo modal e a mesma rota** de `tracks_lista.html`/`atualizar_pessoa`
