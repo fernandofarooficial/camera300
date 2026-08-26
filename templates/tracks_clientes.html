@@ -715,6 +715,14 @@
       btnSave.disabled = false;
     }
   }
+
+  /* Auto-refresh a cada 30s — pausa enquanto o modal de edição está aberto
+     para não descartar o que o usuário está digitando. */
+  setInterval(function() {
+    if (!document.getElementById('modal-overlay').classList.contains('open')) {
+      location.reload();
+    }
+  }, 30000);
 </script>
 
 </body>
