@@ -31,6 +31,17 @@ Serviço systemd: `camera300.service`. Mesmo servidor e mesmo acesso SSH usados 
 `retail_analytics` (e demais projetos em `/home/workuser/`) — não precisa de configuração
 adicional, só trocar o diretório e o nome do serviço.
 
+**Cuidado ao validar com `curl` logo após o restart:** gunicorn roda com `--workers 1 --worker-class
+gthread --threads 4` — só 4 threads no total pro processo inteiro. Um `curl` sem `--max-time` (ou
+abortado no meio, ex. Ctrl+C) pode deixar uma thread do worker presa numa escrita bloqueante pra um
+socket que não vai mais ser lido, e ela só libera depois do timeout de retransmissão do TCP (minutos).
+Repetir esse erro poucas vezes esgota as 4 threads e trava o serviço inteiro — **para qualquer rota**,
+não só a testada, dando a falsa impressão de que o deploy quebrou algo (aconteceu em 2026-08-26: um
+`curl` de verificação sem timeout travou `/tracks/caixa`, e tentativas seguintes de diagnóstico
+travaram até `/tracks/lista`, que não tinha relação nenhuma com a mudança). Sempre usar
+`curl --max-time <N>` ao validar deploy, e se acontecer, um `systemctl restart camera300` limpo
+resolve — não é preciso reverter o código.
+
 ---
 
 ## Arquitetura Geral
@@ -166,8 +177,18 @@ Cruza notas fiscais Microvix com faces detectadas para identificar compradores.
 2. Busca candidatos: pessoas do tipo `'C'` detectadas pelas câmeras da loja em janela de ±10 min por NF.
 3. Exibe confirmados via tabela `faciais.person_purchases`.
 
-### Constraint importante
-`documento` **não é único** no Microvix — a mesma numeração pode existir em lojas distintas. Sempre filtrar também por `cnpj_emp` em queries a `microvix_movimento`.
+### Constraint importante: documento não é único — nem com cnpj_emp
+`documento` **não é único** no Microvix: além de poder existir em lojas distintas (`cnpj_emp`
+diferente), a mesma numeração se repete entre **séries diferentes da mesma loja** — cada série tem
+sua própria numeração sequencial, e é isso (não a data) que causa o reaproveitamento. A
+chave que de fato identifica uma NF é **`(cnpj_emp, serie, documento)`**. Sempre filtrar pelos três
+campos em queries a `microvix_movimento` que precisam achar UMA nota específica (itens, confirmação
+de comprador) — filtrar só por `cnpj_emp` (sem `serie`) ainda deixa ambiguidade.
+
+Medido em 2026-08-26 (investigação motivada por um relato na tela Clientes, ver seção "Tela
+Clientes"): `(cnpj_emp, documento)` sozinho tem milhares de pares com mais de uma NF; restringindo a
+`(cnpj_emp, serie, documento)` cai pra **7 pares residuais** — todos numa anomalia pontual de dados
+de 2024 num único CNPJ/série (não o padrão sistêmico, não compensa tentar fechar via query).
 
 ### Mapeamentos carregados na inicialização (tracks.py)
 - `CNPJ_STORE_MAP` → `{cnpj_str: store_id}` lido de `faciais.stores.cnpj` (coluna `int8`, sem zeros à esquerda).
@@ -175,11 +196,32 @@ Cruza notas fiscais Microvix com faces detectadas para identificar compradores.
 - `microvix.cnpj_emp` é `varchar(14)` com zeros à esquerda → usar `.zfill(14)` ao montar o filtro de query (ex.: `cnpj_sel_padded` em `tracks_caixa`).
 - `CAMERA_STORE_MAP`, `STORE_NAME_MAP`, `CAMERA_STORE_NAME_MAP`, `STORE_CAMERAS_MAP` → derivados de `faciais.cameras`.
 
-### CNPJ na confirmação de comprador (desde commit 0053)
-`POST /tracks/caixa/nf/<documento>/pessoa` agora recebe `cnpj_emp` no body (enviado pelo front, que já sabe qual loja/CNPJ está exibindo). Se presente, filtra a NF por `documento + cnpj_emp` no lugar de só `documento` — essencial porque `documento` se repete entre lojas. Sem `cnpj_emp` no body, cai no comportamento antigo (primeira NF encontrada por `documento`, `LIMIT 1`).
+### CNPJ e série nas ações sobre uma NF (cnpj_emp desde commit 0053; série desde 2026-08-26)
+`POST /tracks/caixa/nf/<documento>/pessoa` (confirmar comprador) recebe `cnpj_emp` e `serie` no
+body, enviados pelo front a partir da própria NF sendo exibida (`nf.cnpj_emp`/`nf.serie`, já
+carregados na listagem — `tracks_caixa()` seleciona `serie` no `SELECT`/`GROUP BY` das notas desde
+2026-08-26). Quando presentes, filtram a NF por `documento + cnpj_emp + serie` — essencial porque
+`documento` se repete entre lojas **e** entre séries da mesma loja. Sem esses campos no body, cai no
+comportamento antigo (primeira NF encontrada por `documento`, `LIMIT 1`, arbitrária em caso de
+ambiguidade).
+
+`GET /tracks/caixa/nf/<documento>` (itens da NF) recebe `cnpj_emp` e `serie` como query params, mesmo
+propósito. O `LEFT JOIN microvix_produtos` também passou a filtrar por `portal` (a PK da tabela é
+`(portal, cod_produto)`) — antes duplicava cada item quando o mesmo `cod_produto` existia em portais
+diferentes (nomes de produto diferentes por portal para o mesmo código).
+
+`DELETE .../pessoa` (remover comprador) recebe `cnpj_emp` como query param, usado para resolver o
+`store_id` certo direto do `CNPJ_STORE_MAP` — antes fazia uma busca "`documento` sozinho" em
+`microvix_movimento` (`LIMIT 1`, sem nem `cnpj_emp`) que podia achar a loja errada.
 
 ### Tabelas envolvidas
-- `faciais.person_purchases` → `(person_purchase_id, person_id, store_id, bill, is_cancelled, is_identified)`. PK única por `(store_id, bill)`.
+- `faciais.person_purchases` → `(person_purchase_id, person_id, store_id, bill, is_cancelled, is_identified)`.
+  PK única por `(store_id, bill)` — **sem série nem data**. Isso significa que confirmar um
+  comprador é inerentemente "por número de documento", não "por NF específica": se duas NFs
+  diferentes da mesma loja compartilharem o número (ver constraint acima) e ambas forem confirmadas
+  em momentos diferentes na Tela Caixa, a segunda confirmação sobrescreve a primeira
+  silenciosamente (`ON CONFLICT (store_id, bill) DO UPDATE`). Limitação estrutural do schema atual,
+  não corrigida — exigiria adicionar série (e/ou data) à tabela e à constraint de unicidade.
 - `faciais.stores.cnpj` → CNPJ da loja como `int8` (sem zeros à esquerda).
 - `faciais.detection_records.store_id` → loja onde a detecção ocorreu (coluna adicionada).
 
@@ -187,10 +229,10 @@ Cruza notas fiscais Microvix com faces detectadas para identificar compradores.
 | Rota | Método | Descrição |
 |---|---|---|
 | `/tracks/caixa` ou `/m/tracks/caixa` | GET | Página principal; params: `store_id`, `data` (YYYY-MM-DD) |
-| `/tracks/caixa/nf/<documento>/pessoa` ou `/m/...` | POST | Confirma comprador; body: `{person_id, cnpj_emp, force?}` |
-| `/tracks/caixa/nf/<documento>/pessoa` ou `/m/...` | DELETE | Remove comprador confirmado |
+| `/tracks/caixa/nf/<documento>/pessoa` ou `/m/...` | POST | Confirma comprador; body: `{person_id, cnpj_emp, serie, force?}` |
+| `/tracks/caixa/nf/<documento>/pessoa` ou `/m/...` | DELETE | Remove comprador confirmado; query param: `cnpj_emp` |
 | `/tracks/caixa/pessoa/<person_id>` | GET | Dados da pessoa |
-| `/tracks/caixa/nf/<documento>` | GET | Itens da NF em JSON |
+| `/tracks/caixa/nf/<documento>` | GET | Itens da NF em JSON; query params: `cnpj_emp`, `serie` |
 | `/tracks/api/empresas` | GET | Empresas + cor de tema (ver seção "Tema por empresa") |
 
 **Validação de confirmação:** ao confirmar pessoa, verifica se ela foi detectada por câmera da loja na janela ±10 min. Se não, retorna HTTP 422 com `"pode_forcar": true`; re-enviar com `force: true` bypassa.
@@ -217,43 +259,39 @@ Ordem de chegada dos clientes do dia atual, com dados cadastrais, histórico de 
 5. **Recorrência**: conta dias distintos com detecção **antes de hoje** (qualquer loja, não só a
    filtrada) via `ARRAY_AGG(DISTINCT date(created_at))` + `COUNT DISTINCT`. Cliente com 1+ visita
    anterior é "recorrente" e tem as datas dessas visitas listadas.
-6. **Últimas compras** (só para recorrentes): até 5 dias mais recentes de compra, obtidos via
-   `person_purchases` → `stores` (para o CNPJ) → `faciais.mv_microvix_vendas` — mesma materialized
-   view usada em `vw_customer_ranking`, já filtrada para vendas PF válidas por loja
-   (`store_serie_rules`). Histórico de compras não é limitado pela loja filtrada na tela.
-7. **Produtos e quantidades por compra**: para cada um dos dias de compra exibidos, busca os itens
-   das NFs daquele dia direto em `microvix.microvix_movimento` (mesmos filtros de venda válida de
-   `mv_microvix_vendas`: `cod_natureza_operacao='10030'`, não cancelado/excluído, `soma_relatorio='S'`,
-   `tipo_transacao` em `(P,V,S)` ou nulo), com `LEFT JOIN microvix_produtos` (por `portal, cod_produto`)
-   para o nome do produto. Quando há mais de uma NF no mesmo dia, quantidades do mesmo produto são
-   somadas. Consulta usa `JOIN (VALUES (...), ...) AS v(cnpj_emp, documento, data_documento, store_id)`
-   para casar as compras já identificadas — evita re-filtrar por natureza/série do zero e mantém a
-   correspondência 1:1 com as compras exibidas.
+6. **Últimas compras + produtos/quantidades** (só para recorrentes): até 5 dias mais recentes de
+   compra. Uma única consulta direto em `microvix.microvix_movimento` — **não** via
+   `faciais.mv_microvix_vendas` (a materialized view usada em `vw_customer_ranking`), porque essa
+   view não expõe `serie` no `SELECT`/`GROUP BY`, e é a série que efetivamente identifica a NF (ver
+   abaixo). Casa cada `person_purchases` confirmado (person_id, bill, store_id, cnpj) contra
+   `microvix_movimento` por `(cnpj_emp, documento, store_id)` + `JOIN faciais.store_serie_rules`
+   (`person_kind='PF'` e `serie = mm.serie` da loja) — mesmo critério de venda válida PF que
+   `mv_microvix_vendas` usa, só que preservando a granularidade de série. Valor, contagem de notas e
+   produtos/quantidades vêm todos do mesmo conjunto de linhas retornado, agregado em Python por
+   `(person_id, data_documento::date)` — estruturalmente não tem como valor e itens virem de NFs
+   diferentes (o bug original só era possível porque valor e itens vinham de duas consultas
+   separadas). Histórico de compras não é limitado pela loja filtrada na tela.
 
    **`documento` não é uma chave confiável — nem com `cnpj_emp`.** Cada série do Microvix tem sua
-   própria numeração sequencial e elas se sobrepõem constantemente: o mesmo `(cnpj_emp, documento)`
-   aparece em NFs completamente diferentes emitidas em datas distintas, e em casos raríssimos até na
-   mesma data (série diferente). Investigação em 2026-08-26 (motivada por um relato de valor/produtos
-   incompatíveis numa compra da tela Clientes) mediu o problema: **7449 pares `(cnpj_emp, documento)`**
-   com mais de uma data válida no total (ambos os CNPJs — 1166 no `49104467000170`, o resto no
-   `34881719000109`), e **153 das 771 compras confirmadas em `person_purchases`** (≈20%, todas no
-   `34881719000109`/Ecoville Itapema) caem nessa ambiguidade. Um bug inicial na busca de itens casava
-   só por `(cnpj_emp, documento)` e por isso misturava itens de uma NF vizinha com o mesmo número
-   numa data diferente (ex.: pessoa com compra de R$8,00/2 itens exibindo 6 itens de duas NFs
-   distintas). Corrigido em duas camadas, replicando exatamente o critério que `mv_microvix_vendas`
-   já usa para calcular o valor:
-   - chave de correspondência inclui `data_documento::date` (como `mv_microvix_vendas` já agrupa por
-     `(cnpj_emp, documento, data_documento::date)`);
-   - `JOIN faciais.store_serie_rules` exigindo `person_kind='PF'` e `serie = mm.serie` da loja —
-     fecha os ~5 casos raros de mesma data com série diferente, que a chave de data sozinha não
-     resolveria.
+   própria numeração sequencial e elas se sobrepõem constantemente — é a série (não a data) a causa
+   raiz do reaproveitamento de número: `(cnpj_emp, documento)` aparece em NFs completamente
+   diferentes emitidas em séries (e datas) distintas. Investigação em 2026-08-26 (motivada por um
+   relato de valor/produtos incompatíveis numa compra desta tela) mediu o problema: milhares de
+   pares `(cnpj_emp, documento)` ambíguos no total; restringindo a `(cnpj_emp, serie, documento)`
+   cai pra **7 pares residuais** (anomalia pontual de dados de 2024 num único CNPJ/série, não o
+   padrão sistêmico — não compensa tentar fechar via query, ver seção "Tela Caixa" pro mesmo número).
 
-   **Achado relacionado, não corrigido (fora do escopo desta tela):** `POST /tracks/caixa/nf/<documento>/pessoa`
-   (`tracks_caixa_set_pessoa`, seção "Tela Caixa") busca a NF só por `documento` (+ `cnpj_emp` quando
-   informado pelo front) com `LIMIT 1`, sem desambiguar por data — nos casos de documento ambíguo,
-   pode confirmar o comprador contra a NF errada (arbitrária, a que o `LIMIT 1` retornar). Mesma causa
-   raiz desta seção, mas correção não aplicada aqui — avaliar separadamente se/como desambiguar
-   também na confirmação de comprador.
+   Histórico da correção, por já ter sido discutido e valer como registro de decisão: a primeira
+   versão do fix desambiguava só por `data_documento::date` (replicando o `GROUP BY` de
+   `mv_microvix_vendas`, que perde a série) — resolvia a maioria dos casos mas deixava ~5 residuais
+   de mesma data com série diferente sem resolver. Trocado depois pela abordagem direta por série
+   descrita acima, que fecha esses casos por construção (não filtra por data em nenhum momento) e
+   além disso simplificou o código (uma consulta em vez de duas — antes havia uma consulta separada
+   via `mv_microvix_vendas` pro valor/dia e outra em `microvix_movimento` pros itens).
+
+   **Mesma causa raiz, mesma correção aplicada na Tela Caixa** (`tracks_caixa_set_pessoa`,
+   `tracks_caixa_nf_itens`, `tracks_caixa_del_pessoa`) — ver seção "Tela Caixa", "Constraint
+   importante: documento não é único — nem com cnpj_emp".
 
 ### Edição de pessoa
 Reaproveita **o mesmo modal e a mesma rota** de `tracks_lista.html`/`atualizar_pessoa`
