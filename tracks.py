@@ -490,6 +490,107 @@ def tracks_lista():
                            store_filter=store_filter, stores_list=stores_list)
 
 
+@tracks_bp.route("/tracks/clientes")
+@tracks_bp.route("/m/tracks/clientes")
+def tracks_clientes():
+    """Clientes do dia atual, ordenados por chegada (mais recente primeiro).
+    Chegada = primeira detecção facial do dia (person_type_id='C'). Recapturas no
+    mesmo dia não alteram a chegada já registrada.
+    """
+    store_filter = request.args.get('store', 0, type=int)
+    hoje = date.today()
+
+    conn = get_faciais_conn()
+    try:
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        where_store = "AND dr.store_id = %s" if store_filter else ""
+        params = [hoje, hoje] + ([store_filter] if store_filter else [])
+        cursor.execute(f"""
+            SELECT DISTINCT ON (dr.person_id)
+                dr.person_id, dr.created_at AS chegada, dr.store_id, dr.camera_id, dr.image_path
+            FROM detection_records dr
+            JOIN people p ON p.person_id = dr.person_id
+            WHERE p.person_type_id = 'C'
+              AND dr.created_at >= %s AND dr.created_at < %s + INTERVAL '1 day'
+              {where_store}
+            ORDER BY dr.person_id, dr.created_at ASC
+        """, params)
+        chegadas = {row["person_id"]: dict(row) for row in cursor.fetchall()}
+
+        clientes = []
+        if chegadas:
+            ids = list(chegadas.keys())
+            placeholders = ",".join(["%s"] * len(ids))
+
+            cursor.execute(f"""
+                SELECT person_id AS id_unico, full_name AS nome, nickname AS apelido,
+                       document AS doc, age AS idade, gender_id AS genero,
+                       person_type_id AS flag, notes AS notas, phone AS telefone, email AS email
+                FROM people
+                WHERE person_id IN ({placeholders})
+            """, ids)
+            pessoas = {row["id_unico"]: dict(row) for row in cursor.fetchall()}
+
+            # Visitas em dias anteriores (qualquer loja) — define se o cliente é recorrente
+            cursor.execute(f"""
+                SELECT person_id,
+                       ARRAY_AGG(DISTINCT date(created_at) ORDER BY date(created_at) DESC) AS datas,
+                       COUNT(DISTINCT date(created_at)) AS qtd
+                FROM detection_records
+                WHERE person_id IN ({placeholders}) AND created_at < %s
+                GROUP BY person_id
+            """, ids + [hoje])
+            visitas_map = {row["person_id"]: row for row in cursor.fetchall()}
+
+            for pid, chegada in chegadas.items():
+                pessoa = pessoas.get(pid, {})
+                visitas = visitas_map.get(pid)
+                clientes.append({
+                    **pessoa,
+                    "id_unico":     pid,
+                    "chegada":      fmt_timestamp(chegada["chegada"]),
+                    "chegada_dt":   chegada["chegada"],
+                    "store_id":     chegada["store_id"],
+                    "loja_nome":    STORE_NAME_MAP.get(chegada["store_id"], "—") if chegada["store_id"] else "—",
+                    "foto":         HEIMDALL_IMAGE_BASE + chegada["image_path"] if chegada["image_path"] else None,
+                    "recorrente":   bool(visitas),
+                    "visitas_qtd":  visitas["qtd"] if visitas else 0,
+                    "visitas_datas": visitas["datas"] if visitas else [],
+                    "compras":      [],
+                })
+            clientes.sort(key=lambda c: c["chegada_dt"], reverse=True)
+
+            # Últimas compras por dia — só para clientes recorrentes (histórico não é limitado à loja filtrada)
+            ids_recorrentes = [c["id_unico"] for c in clientes if c["recorrente"]]
+            if ids_recorrentes:
+                ph2 = ",".join(["%s"] * len(ids_recorrentes))
+                cursor.execute(f"""
+                    SELECT pp.person_id, mv.data_documento, SUM(mv.total_nf) AS valor, COUNT(*) AS notas
+                    FROM person_purchases pp
+                    JOIN stores s ON s.store_id = pp.store_id
+                    JOIN mv_microvix_vendas mv ON mv.cnpj_emp = s.cnpj::varchar AND mv.documento = pp.bill
+                    WHERE pp.person_id IN ({ph2}) AND pp.is_cancelled = false
+                    GROUP BY pp.person_id, mv.data_documento
+                    ORDER BY pp.person_id, mv.data_documento DESC
+                """, ids_recorrentes)
+                compras_por_pessoa: dict = {}
+                for row in cursor.fetchall():
+                    compras_por_pessoa.setdefault(row["person_id"], []).append(row)
+                for c in clientes:
+                    c["compras"] = compras_por_pessoa.get(c["id_unico"], [])[:5]
+
+        cursor.close()
+        conn.rollback()
+    finally:
+        release_faciais_conn(conn)
+
+    stores_list = [{"store_id": sid, "nome": nome} for sid, nome in sorted(STORE_NAME_MAP.items())]
+    return render_template("tracks_clientes.html", clientes=clientes,
+                           store_filter=store_filter, stores_list=stores_list,
+                           hoje=hoje.strftime("%d/%m/%Y"))
+
+
 @tracks_bp.route("/tracks/permanencia")
 def tracks_permanencia():
     per_page = 5
