@@ -226,9 +226,16 @@ Ordem de chegada dos clientes do dia atual, com dados cadastrais, histórico de 
    `mv_microvix_vendas`: `cod_natureza_operacao='10030'`, não cancelado/excluído, `soma_relatorio='S'`,
    `tipo_transacao` em `(P,V,S)` ou nulo), com `LEFT JOIN microvix_produtos` (por `portal, cod_produto`)
    para o nome do produto. Quando há mais de uma NF no mesmo dia, quantidades do mesmo produto são
-   somadas. Consulta usa `JOIN (VALUES (...), ...) AS v(cnpj_emp, documento)` para casar exatamente os
-   pares `(cnpj_emp, documento)` das compras já identificadas — evita re-filtrar por natureza/série do
-   zero e mantém a correspondência 1:1 com as compras exibidas.
+   somadas. Consulta usa `JOIN (VALUES (...), ...) AS v(cnpj_emp, documento, data_documento)` para
+   casar as compras já identificadas — evita re-filtrar por natureza/série do zero e mantém a
+   correspondência 1:1 com as compras exibidas.
+   **Importante:** a chave de correspondência precisa incluir `data_documento`, não só
+   `(cnpj_emp, documento)` — o Microvix reaproveita o mesmo número de `documento` em notas fiscais
+   completamente diferentes emitidas em datas distintas (série diferente). Um bug inicial (corrigido
+   em 2026-08-26) casava só por `(cnpj_emp, documento)` e por isso misturava itens de uma NF vizinha
+   com o mesmo número numa data diferente. `mv_microvix_vendas` já agrupa por
+   `(cnpj_emp, documento, data_documento::date)` — a busca de itens replica exatamente essa mesma
+   chave de três colunas.
 
 ### Edição de pessoa
 Reaproveita **o mesmo modal e a mesma rota** de `tracks_lista.html`/`atualizar_pessoa`
