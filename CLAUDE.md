@@ -305,6 +305,21 @@ Foto do cliente (`.person-photo`/`.person-photo-placeholder`) é maior e mais de
 usado em Lista/Caixa: 132px desktop / 92px mobile (vs. 72px nas outras telas), com borda azulada e
 sombra — pedido explícito (2026-08-26) para dar mais destaque visual ao rosto na tela de chegada.
 
+**Últimas compras: cards, não tabela (2026-08-26).** A lista de "Últimas compras" (`.compra-item`)
+é renderizada como uma sequência de cards empilháveis, não uma `<table>` — a primeira versão usava
+uma tabela de 4 colunas fixas (Data/Notas/Valor/Produtos) que, no mobile, espremia a coluna de
+produtos a ponto de ficar ilegível (relatado pelo usuário testando no celular). Cada `.compra-item`
+tem uma linha de cabeçalho (`.compra-linha`: data, contagem de notas, valor) e, abaixo, os produtos
+como chips (`.produto-chip`, mesmo padrão visual de `.visita-data`) num container
+`flex; flex-wrap: wrap` — cada chip ocupa sua própria largura de conteúdo e quebra pra próxima linha
+sozinho quando não cabe, em vez de espremer dentro de uma célula de largura fixa.
+
+Dentro do chip, **o nome do produto (`.produto-nome`) trunca com reticências quando muito comprido,
+mas a quantidade (`.produto-qtd`) nunca é cortada** — fica numa `<span>` separada com
+`flex-shrink: 0` fora da área de truncamento do nome (`.produto-chip` é `inline-flex`). Uma primeira
+versão truncava o chip inteiro como uma string só, o que cortava a quantidade junto quando o nome do
+produto era longo (ex.: `PULVERIZADOR PLASTICO 500ML TRANSPAR...` escondia o `×2` que vinha depois).
+
 ### Refresh
 Sem SSE — a página tem um `setInterval` de 30s que dá `location.reload()` (refaz todas as queries
 do zero, preservando `?store=` da URL atual), pausado enquanto o modal de edição de pessoa está
