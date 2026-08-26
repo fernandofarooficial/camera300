@@ -238,6 +238,13 @@ Reaproveita **o mesmo modal e a mesma rota** de `tracks_lista.html`/`atualizar_p
 `templates/tracks_clientes.html` — usado tanto por `/tracks/clientes` quanto por `/m/tracks/clientes`
 (diferente de Lista/Caixa, não há template mobile separado; a página é responsiva via media query).
 
+### Refresh
+Sem SSE — a página tem um `setInterval` de 30s que dá `location.reload()` (refaz todas as queries
+do zero, preservando `?store=` da URL atual), pausado enquanto o modal de edição de pessoa está
+aberto (`modal-overlay.classList.contains('open')`) para não descartar o que o usuário está
+digitando. O link "↻ Atualizar" no nav e o reload após salvar edição (`salvarPessoa`) continuam
+existindo como antes, mas não são mais a única forma de ver chegadas novas.
+
 ### Escopo do filtro "cliente"
 A tela só considera `person_type_id = 'C'` (mesma flag de "Cliente" usada em Caixa/Ranking) —
 pessoas com outras flags (Anônimo, Franqueado, Empregado, etc.) não aparecem, mesmo que tenham
