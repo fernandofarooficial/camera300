@@ -201,6 +201,50 @@ Cruza notas fiscais Microvix com faces detectadas para identificar compradores.
 
 ---
 
+## Tela Clientes (`/tracks/clientes`)
+
+Ordem de chegada dos clientes do dia atual, com dados cadastrais, histórico de visitas e
+últimas compras. Função `tracks_clientes` em `tracks.py`.
+
+### Lógica
+1. **Chegada** = primeira detecção facial do dia (`DISTINCT ON (person_id)`, `ORDER BY created_at ASC`),
+   restrita a `person_type_id = 'C'`. Recapturas no mesmo dia não alteram a chegada já registrada
+   (a query sempre pega a menor `created_at` do dia, independente de quantas vezes a pessoa for
+   detectada depois).
+2. Lista ordenada por chegada **decrescente** (mais recente primeiro).
+3. Filtro de loja (`?store=<store_id>`, `0`/ausente = todas as lojas) — mesmo padrão de `tracks_lista`.
+4. Dados cadastrais (nome, apelido, doc, idade, gênero, telefone, e-mail, flag, notas) sempre exibidos.
+5. **Recorrência**: conta dias distintos com detecção **antes de hoje** (qualquer loja, não só a
+   filtrada) via `ARRAY_AGG(DISTINCT date(created_at))` + `COUNT DISTINCT`. Cliente com 1+ visita
+   anterior é "recorrente" e tem as datas dessas visitas listadas.
+6. **Últimas compras** (só para recorrentes): até 5 dias mais recentes de compra, obtidos via
+   `person_purchases` → `stores` (para o CNPJ) → `faciais.mv_microvix_vendas` — mesma materialized
+   view usada em `vw_customer_ranking`, já filtrada para vendas PF válidas por loja
+   (`store_serie_rules`). Histórico de compras não é limitado pela loja filtrada na tela.
+7. **Produtos e quantidades por compra**: para cada um dos dias de compra exibidos, busca os itens
+   das NFs daquele dia direto em `microvix.microvix_movimento` (mesmos filtros de venda válida de
+   `mv_microvix_vendas`: `cod_natureza_operacao='10030'`, não cancelado/excluído, `soma_relatorio='S'`,
+   `tipo_transacao` em `(P,V,S)` ou nulo), com `LEFT JOIN microvix_produtos` (por `portal, cod_produto`)
+   para o nome do produto. Quando há mais de uma NF no mesmo dia, quantidades do mesmo produto são
+   somadas. Consulta usa `JOIN (VALUES (...), ...) AS v(cnpj_emp, documento)` para casar exatamente os
+   pares `(cnpj_emp, documento)` das compras já identificadas — evita re-filtrar por natureza/série do
+   zero e mantém a correspondência 1:1 com as compras exibidas.
+
+### Edição de pessoa
+Reaproveita **o mesmo modal e a mesma rota** de `tracks_lista.html`/`atualizar_pessoa`
+(`POST /tracks/api/pessoa/<id_unico>`) — nenhum backend novo de edição foi criado para esta tela.
+
+### Templates
+`templates/tracks_clientes.html` — usado tanto por `/tracks/clientes` quanto por `/m/tracks/clientes`
+(diferente de Lista/Caixa, não há template mobile separado; a página é responsiva via media query).
+
+### Escopo do filtro "cliente"
+A tela só considera `person_type_id = 'C'` (mesma flag de "Cliente" usada em Caixa/Ranking) —
+pessoas com outras flags (Anônimo, Franqueado, Empregado, etc.) não aparecem, mesmo que tenham
+sido detectadas hoje.
+
+---
+
 ## Match por loja (db.py — desde commit 0040)
 
 `obter_person_id_legado(track_id, store_id=None)` aceita `store_id` opcional para restringir o match de track_id a registros da mesma loja.
@@ -295,6 +339,7 @@ mesmo motivo do modal) que:
 - `GET /tracks` → últimas 5 tracks com Heimdall
 - `GET /tracks/resumo` → resumo das últimas 30 tracks
 - `GET /tracks/lista` ou `/m/tracks/lista` → listagem paginada de pessoas (5/pág)
+- `GET /tracks/clientes` ou `/m/tracks/clientes` → ordem de chegada dos clientes do dia, com visitas e compras (ver seção "Tela Clientes")
 - `GET /tracks/tabuleiro` ou `/m/tracks/tabuleiro` → grid visual (30/pág)
 - `GET /tracks/permanencia` → permanência estimada (5/pág)
 - `GET /tracks/quadro` ou `/m/tracks/quadro` → analytics (gráficos)
