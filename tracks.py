@@ -1765,42 +1765,42 @@ def tracks_caixa_set_pessoa(documento):
     except (KeyError, ValueError, TypeError):
         return jsonify({"error": "person_id inválido"}), 400
     force    = bool(data.get("force"))
-    # cnpj_emp enviado pelo front — essencial para filtrar a NF correta,
-    # pois documento não é único no Microvix (mesma numeração em lojas distintas)
+    # cnpj_emp e data (data_lancamento, YYYY-MM-DD) enviados pelo front — essenciais para filtrar
+    # a NF correta, pois documento sozinho (nem com cnpj_emp) não é único no Microvix: se reaproveita
+    # entre lojas distintas e entre NFs de datas diferentes na mesma loja (séries diferentes). Sem
+    # a data, um documento ambíguo pode confirmar a pessoa contra uma NF errada (ver seção
+    # "Tela Clientes" no CLAUDE.md, onde o mesmo problema foi encontrado e medido).
     cnpj_emp_body = (data.get("cnpj_emp") or "").strip()
+    data_lancamento_body = (data.get("data") or "").strip()  # YYYY-MM-DD
 
     # 1. Busca a NF para obter cnpj_emp confirmado e horário
     pg_conn = None
     try:
         pg_conn = get_pg_conn()
         pg_cur = pg_conn.cursor()
+        conditions = [
+            "documento = %s",
+            "cod_natureza_operacao = '10030'",
+            "cancelado = 'N'",
+            "excluido = 'N'",
+            "(tipo_transacao IN ('P','V') OR tipo_transacao IS NULL)",
+        ]
+        params = [documento]
         if cnpj_emp_body:
-            pg_cur.execute("""
-                SELECT
-                    cnpj_emp,
-                    (data_lancamento::date + hora_lancamento::time) AS nf_dt
-                FROM microvix_movimento
-                WHERE documento = %s
-                  AND cnpj_emp = %s
-                  AND cod_natureza_operacao = '10030'
-                  AND cancelado = 'N'
-                  AND excluido = 'N'
-                  AND (tipo_transacao IN ('P','V') OR tipo_transacao IS NULL)
-                LIMIT 1
-            """, (documento, cnpj_emp_body))
-        else:
-            pg_cur.execute("""
-                SELECT
-                    cnpj_emp,
-                    (data_lancamento::date + hora_lancamento::time) AS nf_dt
-                FROM microvix_movimento
-                WHERE documento = %s
-                  AND cod_natureza_operacao = '10030'
-                  AND cancelado = 'N'
-                  AND excluido = 'N'
-                  AND (tipo_transacao IN ('P','V') OR tipo_transacao IS NULL)
-                LIMIT 1
-            """, (documento,))
+            conditions.append("cnpj_emp = %s")
+            params.append(cnpj_emp_body)
+        if data_lancamento_body:
+            conditions.append("data_lancamento::date = %s")
+            params.append(data_lancamento_body)
+        where = " AND ".join(conditions)
+        pg_cur.execute(f"""
+            SELECT
+                cnpj_emp,
+                (data_lancamento::date + hora_lancamento::time) AS nf_dt
+            FROM microvix_movimento
+            WHERE {where}
+            LIMIT 1
+        """, params)
         nf_row = pg_cur.fetchone()
         pg_cur.close()
     except Exception as e:
@@ -1902,25 +1902,31 @@ def tracks_caixa_set_pessoa(documento):
 @tracks_bp.route("/m/tracks/caixa/nf/<documento>/pessoa", methods=["DELETE"])
 def tracks_caixa_del_pessoa(documento):
     """Remove o comprador confirmado de uma nota fiscal."""
-    # Determina store_id via cnpj_emp da NF
+    # cnpj_emp enviado pelo front (nf.cnpj_emp, já conhecido pela tela) — evita resolver o
+    # store_id por uma busca "documento sozinho" em microvix_movimento, que pode achar a loja
+    # errada quando o mesmo número de documento existe em CNPJs distintos.
+    cnpj_emp_param = (request.args.get("cnpj_emp") or "").strip()
     store_id = None
-    pg_conn = None
-    try:
-        pg_conn = get_pg_conn()
-        pg_cur = pg_conn.cursor()
-        pg_cur.execute(
-            "SELECT cnpj_emp FROM microvix_movimento WHERE documento = %s LIMIT 1",
-            (documento,)
-        )
-        row = pg_cur.fetchone()
-        pg_cur.close()
-        if row:
-            store_id = CNPJ_STORE_MAP.get(_cnpj_key(row[0] or ""))
-    except Exception as e:
-        print(f"[caixa/del_pessoa] Erro ao buscar store_id: {e}")
-    finally:
-        if pg_conn:
-            release_pg_conn(pg_conn)
+    if cnpj_emp_param:
+        store_id = CNPJ_STORE_MAP.get(_cnpj_key(cnpj_emp_param))
+    else:
+        pg_conn = None
+        try:
+            pg_conn = get_pg_conn()
+            pg_cur = pg_conn.cursor()
+            pg_cur.execute(
+                "SELECT cnpj_emp FROM microvix_movimento WHERE documento = %s LIMIT 1",
+                (documento,)
+            )
+            row = pg_cur.fetchone()
+            pg_cur.close()
+            if row:
+                store_id = CNPJ_STORE_MAP.get(_cnpj_key(row[0] or ""))
+        except Exception as e:
+            print(f"[caixa/del_pessoa] Erro ao buscar store_id: {e}")
+        finally:
+            if pg_conn:
+                release_pg_conn(pg_conn)
 
     try:
         conn = get_faciais_conn()
@@ -2015,25 +2021,45 @@ def tracks_api_empresas():
 
 @tracks_bp.route("/tracks/caixa/nf/<documento>")
 def tracks_caixa_nf_itens(documento):
+    """Itens de uma NF. `cnpj_emp` e `data` (YYYY-MM-DD, referente a data_lancamento) são
+    essenciais para identificar a NF certa — documento sozinho não é único: se reaproveita
+    entre lojas distintas (cnpj_emp diferente) e entre NFs de datas diferentes na mesma loja
+    (séries diferentes). Sem esses dois filtros a query pode trazer itens de uma NF completamente
+    diferente que só coincide no número do documento (ver seção "Tela Clientes" no CLAUDE.md).
+    """
+    cnpj_emp  = (request.args.get("cnpj_emp") or "").strip()
+    data_param = request.args.get("data")  # YYYY-MM-DD
     pg_conn = None
     try:
         pg_conn = get_pg_conn()
         pg_cur = pg_conn.cursor()
-        pg_cur.execute("""
+        conditions = [
+            "m.documento = %s",
+            "m.cod_natureza_operacao = '10030'",
+            "m.cancelado = 'N'",
+            "m.excluido = 'N'",
+            "(m.tipo_transacao IN ('P','V') OR m.tipo_transacao IS NULL)",
+            "m.codigo_cliente = 1",
+        ]
+        params = [documento]
+        if cnpj_emp:
+            conditions.append("m.cnpj_emp = %s")
+            params.append(cnpj_emp)
+        if data_param:
+            conditions.append("m.data_lancamento::date = %s")
+            params.append(data_param)
+        where = " AND ".join(conditions)
+        pg_cur.execute(f"""
             SELECT
                 m.cod_produto,
                 p.nome AS produto_nome,
                 m.quantidade,
                 m.valor_liquido
             FROM microvix_movimento m
-            LEFT JOIN microvix_produtos p ON m.cod_produto = p.cod_produto
-            WHERE m.documento = %s
-              AND m.cod_natureza_operacao = '10030'
-              AND m.cancelado = 'N'
-              AND m.excluido = 'N'
-              AND m.tipo_transacao = 'V'
+            LEFT JOIN microvix_produtos p ON m.cod_produto = p.cod_produto AND m.portal = p.portal
+            WHERE {where}
             ORDER BY m.cod_produto
-        """, (documento,))
+        """, params)
         rows = pg_cur.fetchall()
         pg_cur.close()
     except Exception as e:

@@ -286,7 +286,7 @@
             {% if nf.nome_loja %}<span class="nf-label">{{ nf.nome_loja }}</span>{% endif %}
           </div>
         </div>
-        <button class="btn-itens" onclick="toggleItens(this, '{{ nf.documento }}')">Itens</button>
+        <button class="btn-itens" onclick="toggleItens(this, '{{ nf.documento }}', '{{ nf.cnpj_emp }}', '{{ nf.data }}')">Itens</button>
       </div>
 
       <div class="nf-itens" id="itens-{{ nf.documento }}"></div>
@@ -311,7 +311,7 @@
                 <span class="conf-id">ID {{ p.id_unico }}</span>
                 <span class="conf-nome">{{ p.nome or '—' }}</span>
               </div>
-              <button class="btn-remover" onclick="removerPessoa('{{ nf.documento }}')">Remover</button>
+              <button class="btn-remover" onclick="removerPessoa('{{ nf.documento }}', '{{ nf.cnpj_emp }}')">Remover</button>
             </div>
           {% else %}
             <span class="nenhum">Nenhum comprador confirmado.</span>
@@ -327,7 +327,7 @@
           </div>
           <div class="cli-scroll">
             {% for cli in nf.candidatos %}
-            <div class="cli-card" onclick="confirmarPessoa('{{ nf.documento }}', {{ cli.id_unico }}, '{{ nf.cnpj_emp }}')"
+            <div class="cli-card" onclick="confirmarPessoa('{{ nf.documento }}', {{ cli.id_unico }}, '{{ nf.cnpj_emp }}', '{{ nf.data }}')"
                  title="Confirmar como comprador">
               {% if cli.foto %}
                 <img class="cli-photo" src="{{ cli.foto }}" alt=""
@@ -354,8 +354,8 @@
         <div class="busca-row">
           <input class="busca-input" type="number" min="1"
                  id="pid-{{ nf.documento }}" placeholder="ex: 42"
-                 onkeydown="if(event.key==='Enter') buscarPessoa('{{ nf.documento }}', '{{ nf.cnpj_emp }}')" />
-          <button class="btn-buscar" onclick="buscarPessoa('{{ nf.documento }}', '{{ nf.cnpj_emp }}')">Buscar</button>
+                 onkeydown="if(event.key==='Enter') buscarPessoa('{{ nf.documento }}', '{{ nf.cnpj_emp }}', '{{ nf.data }}')" />
+          <button class="btn-buscar" onclick="buscarPessoa('{{ nf.documento }}', '{{ nf.cnpj_emp }}', '{{ nf.data }}')">Buscar</button>
         </div>
         <div class="busca-preview" id="preview-{{ nf.documento }}"></div>
       </div>
@@ -384,7 +384,7 @@
 </nav>
 
 <script>
-  function toggleItens(btn, doc) {
+  function toggleItens(btn, doc, cnpjEmp, nfData) {
     const panel = document.getElementById('itens-' + doc);
     if (panel.classList.contains('open')) {
       panel.classList.remove('open');
@@ -396,7 +396,8 @@
     if (panel.dataset.loaded) return;
     panel.dataset.loaded = '1';
     panel.innerHTML = '<div class="it-loading">Carregando…</div>';
-    fetch(`/camera300/tracks/caixa/nf/${encodeURIComponent(doc)}`)
+    const params = new URLSearchParams({ cnpj_emp: cnpjEmp || '', data: nfData || '' });
+    fetch(`/camera300/tracks/caixa/nf/${encodeURIComponent(doc)}?${params.toString()}`)
       .then(r => r.json())
       .then(itens => {
         if (!itens || !itens.length) {
@@ -414,34 +415,35 @@
       .catch(() => { panel.innerHTML = '<div class="it-error">Erro ao carregar itens.</div>'; });
   }
 
-  async function confirmarPessoa(doc, personId, cnpjEmp, force = false) {
+  async function confirmarPessoa(doc, personId, cnpjEmp, nfData, force = false) {
     try {
       const r = await fetch(`/camera300/tracks/caixa/nf/${encodeURIComponent(doc)}/pessoa`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ person_id: personId, cnpj_emp: cnpjEmp || '', force }),
+        body: JSON.stringify({ person_id: personId, cnpj_emp: cnpjEmp || '', data: nfData || '', force }),
       });
       const data = await r.json();
       if (!r.ok) {
         if (r.status === 422 && data.pode_forcar) {
           if (confirm((data.error || 'Detecção não encontrada') + '\n\nConfirmar mesmo assim?')) {
-            confirmarPessoa(doc, personId, cnpjEmp, true);
+            confirmarPessoa(doc, personId, cnpjEmp, nfData, true);
           }
           return;
         }
         alert('Erro: ' + (data.error || r.status));
         return;
       }
-      atualizarConfirmado(doc, data);
+      atualizarConfirmado(doc, data, cnpjEmp);
       limparPreview(doc);
     } catch (e) {
       alert('Erro de comunicação.');
     }
   }
 
-  async function removerPessoa(doc) {
+  async function removerPessoa(doc, cnpjEmp) {
     try {
-      const r = await fetch(`/camera300/tracks/caixa/nf/${encodeURIComponent(doc)}/pessoa`, {
+      const params = new URLSearchParams({ cnpj_emp: cnpjEmp || '' });
+      const r = await fetch(`/camera300/tracks/caixa/nf/${encodeURIComponent(doc)}/pessoa?${params.toString()}`, {
         method: 'DELETE',
       });
       if (!r.ok) { alert('Erro ao remover.'); return; }
@@ -451,7 +453,7 @@
     }
   }
 
-  async function buscarPessoa(doc, cnpjEmp) {
+  async function buscarPessoa(doc, cnpjEmp, nfData) {
     const input   = document.getElementById('pid-' + doc);
     const preview = document.getElementById('preview-' + doc);
     const pid     = parseInt(input.value, 10);
@@ -477,14 +479,14 @@
             <span class="conf-id">ID ${data.id_unico}</span>
             <span class="conf-nome">${data.nome || '—'}</span>
           </div>
-          <button class="btn-confirmar" onclick="confirmarPessoa('${doc}', ${data.id_unico}, '${cnpjEmp || ''}')">Confirmar</button>
+          <button class="btn-confirmar" onclick="confirmarPessoa('${doc}', ${data.id_unico}, '${cnpjEmp || ''}', '${nfData || ''}')">Confirmar</button>
         </div>`;
     } catch (e) {
       preview.innerHTML = '<div class="busca-erro">Erro de comunicação.</div>';
     }
   }
 
-  function atualizarConfirmado(doc, pessoa) {
+  function atualizarConfirmado(doc, pessoa, cnpjEmp) {
     const el = document.getElementById('confirmado-' + doc);
     if (!el) return;
     if (!pessoa) {
@@ -501,7 +503,7 @@
           <span class="conf-id">ID ${pessoa.id_unico}</span>
           <span class="conf-nome">${pessoa.nome || '—'}</span>
         </div>
-        <button class="btn-remover" onclick="removerPessoa('${doc}')">Remover</button>
+        <button class="btn-remover" onclick="removerPessoa('${doc}', '${cnpjEmp || ''}')">Remover</button>
       </div>`;
   }
 
