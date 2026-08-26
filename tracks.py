@@ -587,37 +587,43 @@ def tracks_clientes():
     finally:
         release_faciais_conn(conn)
 
-    # Produtos e quantidades das compras exibidas (itens da NF, direto do microvix_movimento)
+    # Produtos e quantidades das compras exibidas (itens da NF, direto do microvix_movimento).
+    # documento NÃO é único nem por (cnpj_emp, documento) — o Microvix reaproveita a mesma
+    # numeração em notas diferentes emitidas em datas distintas (séries diferentes). Por isso a
+    # chave de correspondência precisa incluir data_documento, igual mv_microvix_vendas já faz
+    # (GROUP BY cnpj_emp, documento, data_documento::date) — senão itens de uma nota "vizinha"
+    # com o mesmo número entram na lista errada.
     pares_doc = set()
     for c in clientes:
         for compra in c["compras"]:
             cnpj_padded = (compra["cnpj_emp"] or "").zfill(14)
             for doc in compra["documentos"]:
-                pares_doc.add((cnpj_padded, doc))
+                pares_doc.add((cnpj_padded, doc, compra["data_documento"]))
 
     if pares_doc:
         pg_conn = None
         try:
             pg_conn = get_pg_conn()
             pg_cur = pg_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            values_clause = ",".join(["(%s::varchar,%s::integer)"] * len(pares_doc))
+            values_clause = ",".join(["(%s::varchar,%s::integer,%s::date)"] * len(pares_doc))
             params_doc = [v for par in pares_doc for v in par]
             pg_cur.execute(f"""
-                SELECT mm.cnpj_emp, mm.documento,
+                SELECT mm.cnpj_emp, mm.documento, mm.data_documento::date AS data_documento,
                        COALESCE(mp.nome, 'Produto ' || mm.cod_produto) AS produto,
                        SUM(mm.quantidade) AS quantidade
                 FROM microvix_movimento mm
-                JOIN (VALUES {values_clause}) AS v(cnpj_emp, documento)
+                JOIN (VALUES {values_clause}) AS v(cnpj_emp, documento, data_documento)
                   ON v.cnpj_emp = mm.cnpj_emp AND v.documento = mm.documento
+                  AND v.data_documento = mm.data_documento::date
                 LEFT JOIN microvix_produtos mp ON mp.portal = mm.portal AND mp.cod_produto = mm.cod_produto
                 WHERE mm.cod_natureza_operacao = '10030'
                   AND mm.cancelado <> 'S' AND mm.excluido <> 'S' AND mm.soma_relatorio = 'S'
                   AND (mm.tipo_transacao = ANY (ARRAY['P','V','S']) OR mm.tipo_transacao IS NULL)
-                GROUP BY mm.cnpj_emp, mm.documento, mp.nome, mm.cod_produto
+                GROUP BY mm.cnpj_emp, mm.documento, mm.data_documento::date, mp.nome, mm.cod_produto
             """, params_doc)
             itens_por_doc: dict = {}
             for row in pg_cur.fetchall():
-                key = (row["cnpj_emp"], row["documento"])
+                key = (row["cnpj_emp"], row["documento"], row["data_documento"])
                 itens_por_doc.setdefault(key, []).append(row)
             pg_cur.close()
         except Exception as e:
@@ -632,7 +638,7 @@ def tracks_clientes():
                 cnpj_padded = (compra["cnpj_emp"] or "").zfill(14)
                 agregados: dict = {}
                 for doc in compra["documentos"]:
-                    for item in itens_por_doc.get((cnpj_padded, doc), []):
+                    for item in itens_por_doc.get((cnpj_padded, doc, compra["data_documento"]), []):
                         agregados[item["produto"]] = agregados.get(item["produto"], 0) + (item["quantidade"] or 0)
                 compra["itens"] = sorted(
                     ({"produto": nome, "quantidade": int(qtd) if qtd == int(qtd) else round(qtd, 2)}
