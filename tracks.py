@@ -549,7 +549,7 @@ def tracks_clientes():
                 clientes.append({
                     **pessoa,
                     "id_unico":     pid,
-                    "chegada":      fmt_timestamp(chegada["chegada"]),
+                    "chegada":      chegada["chegada"].strftime("%H:%M:%S"),
                     "chegada_dt":   chegada["chegada"],
                     "store_id":     chegada["store_id"],
                     "loja_nome":    STORE_NAME_MAP.get(chegada["store_id"], "—") if chegada["store_id"] else "—",
