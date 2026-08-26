@@ -561,96 +561,92 @@ def tracks_clientes():
                 })
             clientes.sort(key=lambda c: c["chegada_dt"], reverse=True)
 
-            # Últimas compras por dia — só para clientes recorrentes (histórico não é limitado à loja filtrada)
+            # Bills confirmados dos clientes recorrentes — busca de compras/itens é feita depois,
+            # direto em microvix_movimento (ver bloco abaixo)
             ids_recorrentes = [c["id_unico"] for c in clientes if c["recorrente"]]
+            bills = []
             if ids_recorrentes:
                 ph2 = ",".join(["%s"] * len(ids_recorrentes))
                 cursor.execute(f"""
-                    SELECT pp.person_id, mv.data_documento, s.cnpj::varchar AS cnpj_emp,
-                           ARRAY_AGG(DISTINCT mv.documento) AS documentos,
-                           SUM(mv.total_nf) AS valor, COUNT(DISTINCT mv.documento) AS notas
+                    SELECT pp.person_id, pp.bill, pp.store_id, s.cnpj::varchar AS cnpj_emp
                     FROM person_purchases pp
                     JOIN stores s ON s.store_id = pp.store_id
-                    JOIN mv_microvix_vendas mv ON mv.cnpj_emp = s.cnpj::varchar AND mv.documento = pp.bill
                     WHERE pp.person_id IN ({ph2}) AND pp.is_cancelled = false
-                    GROUP BY pp.person_id, mv.data_documento, s.cnpj
-                    ORDER BY pp.person_id, mv.data_documento DESC
                 """, ids_recorrentes)
-                compras_por_pessoa: dict = {}
-                for row in cursor.fetchall():
-                    compras_por_pessoa.setdefault(row["person_id"], []).append(dict(row))
-                for c in clientes:
-                    c["compras"] = compras_por_pessoa.get(c["id_unico"], [])[:5]
+                bills = [dict(row) for row in cursor.fetchall()]
 
         cursor.close()
         conn.rollback()
     finally:
         release_faciais_conn(conn)
 
-    # Produtos e quantidades das compras exibidas (itens da NF, direto do microvix_movimento).
-    # documento NÃO é único nem por (cnpj_emp, documento) — cada série do Microvix tem sua própria
-    # numeração sequencial e elas se sobrepõem constantemente (mesmo documento em datas distintas,
-    # e em raríssimos casos até na mesma data). A chave de correspondência precisa replicar
-    # exatamente o que mv_microvix_vendas usa: (cnpj_emp, documento, data_documento::date) +
-    # restringir à série classificada como PF da loja (store_serie_rules) — só assim os itens batem
-    # 1:1 com a NF que gerou o valor exibido, mesmo nos casos de mesma data com séries diferentes.
-    pares_doc = set()
-    for c in clientes:
-        for compra in c["compras"]:
-            cnpj_padded = (compra["cnpj_emp"] or "").zfill(14)
-            store_id = CNPJ_STORE_MAP.get(compra["cnpj_emp"])
-            if store_id is None:
-                continue
-            for doc in compra["documentos"]:
-                pares_doc.add((cnpj_padded, doc, compra["data_documento"], store_id))
-
-    if pares_doc:
+    # Últimas compras por dia + produtos/quantidades — tudo numa única consulta direto em
+    # microvix_movimento (não via mv_microvix_vendas, que perde a granularidade de série).
+    # documento NÃO é uma chave confiável nem com cnpj_emp: cada série do Microvix tem sua própria
+    # numeração sequencial e elas se sobrepõem constantemente — é a série, não a data, a causa raiz
+    # do reaproveitamento de número. A chave de correspondência aqui é (cnpj_emp, documento, store_id)
+    # + restringir a série classificada como PF da loja (faciais.store_serie_rules), replicando o
+    # mesmo critério de mv_microvix_vendas. Valor e itens vêm do mesmo conjunto de linhas — não tem
+    # como ficar inconsistente entre si como no bug original.
+    if bills:
         pg_conn = None
         try:
             pg_conn = get_pg_conn()
             pg_cur = pg_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            values_clause = ",".join(["(%s::varchar,%s::integer,%s::date,%s::integer)"] * len(pares_doc))
-            params_doc = [v for par in pares_doc for v in par]
+            values_clause = ",".join(["(%s::integer,%s::varchar,%s::integer,%s::integer)"] * len(bills))
+            params_b = []
+            for b in bills:
+                params_b += [b["person_id"], (b["cnpj_emp"] or "").zfill(14), b["bill"], b["store_id"]]
             pg_cur.execute(f"""
-                SELECT mm.cnpj_emp, mm.documento, mm.data_documento::date AS data_documento,
+                SELECT v.person_id, mm.documento, mm.data_documento::date AS dia,
                        COALESCE(mp.nome, 'Produto ' || mm.cod_produto) AS produto,
-                       SUM(mm.quantidade) AS quantidade
+                       mm.quantidade, mm.valor_total
                 FROM microvix_movimento mm
-                JOIN (VALUES {values_clause}) AS v(cnpj_emp, documento, data_documento, store_id)
+                JOIN (VALUES {values_clause}) AS v(person_id, cnpj_emp, documento, store_id)
                   ON v.cnpj_emp = mm.cnpj_emp AND v.documento = mm.documento
-                  AND v.data_documento = mm.data_documento::date
                 JOIN faciais.store_serie_rules ssr
                   ON ssr.store_id = v.store_id AND ssr.person_kind = 'PF' AND ssr.serie = mm.serie
                 LEFT JOIN microvix_produtos mp ON mp.portal = mm.portal AND mp.cod_produto = mm.cod_produto
                 WHERE mm.cod_natureza_operacao = '10030'
                   AND mm.cancelado <> 'S' AND mm.excluido <> 'S' AND mm.soma_relatorio = 'S'
                   AND (mm.tipo_transacao = ANY (ARRAY['P','V','S']) OR mm.tipo_transacao IS NULL)
-                GROUP BY mm.cnpj_emp, mm.documento, mm.data_documento::date, mp.nome, mm.cod_produto
-            """, params_doc)
-            itens_por_doc: dict = {}
-            for row in pg_cur.fetchall():
-                key = (row["cnpj_emp"], row["documento"], row["data_documento"])
-                itens_por_doc.setdefault(key, []).append(row)
+            """, params_b)
+            linhas = pg_cur.fetchall()
             pg_cur.close()
         except Exception as e:
-            print(f"[clientes] Erro ao buscar itens das compras: {e}")
-            itens_por_doc = {}
+            print(f"[clientes] Erro ao buscar compras/itens: {e}")
+            linhas = []
         finally:
             if pg_conn:
                 release_pg_conn(pg_conn)
 
+        # Agrega por (person_id, dia): valor total, qtd de notas distintas, produtos+quantidade
+        por_pessoa_dia: dict = {}
+        for row in linhas:
+            key = (row["person_id"], row["dia"])
+            grupo = por_pessoa_dia.setdefault(key, {"valor": 0.0, "documentos": set(), "produtos": {}})
+            grupo["valor"] += float(row["valor_total"] or 0)
+            grupo["documentos"].add(row["documento"])
+            grupo["produtos"][row["produto"]] = grupo["produtos"].get(row["produto"], 0) + float(row["quantidade"] or 0)
+
+        compras_por_pessoa: dict = {}
+        for (person_id, dia), grupo in por_pessoa_dia.items():
+            itens = sorted(
+                ({"produto": nome, "quantidade": int(qtd) if qtd == int(qtd) else round(qtd, 2)}
+                 for nome, qtd in grupo["produtos"].items()),
+                key=lambda i: i["quantidade"], reverse=True,
+            )
+            compras_por_pessoa.setdefault(person_id, []).append({
+                "data_documento": dia,
+                "valor": round(grupo["valor"], 2),
+                "notas": len(grupo["documentos"]),
+                "itens": itens,
+            })
+
         for c in clientes:
-            for compra in c["compras"]:
-                cnpj_padded = (compra["cnpj_emp"] or "").zfill(14)
-                agregados: dict = {}
-                for doc in compra["documentos"]:
-                    for item in itens_por_doc.get((cnpj_padded, doc, compra["data_documento"]), []):
-                        agregados[item["produto"]] = agregados.get(item["produto"], 0) + (item["quantidade"] or 0)
-                compra["itens"] = sorted(
-                    ({"produto": nome, "quantidade": int(qtd) if qtd == int(qtd) else round(qtd, 2)}
-                     for nome, qtd in agregados.items()),
-                    key=lambda i: i["quantidade"], reverse=True,
-                )
+            lst = compras_por_pessoa.get(c["id_unico"], [])
+            lst.sort(key=lambda x: x["data_documento"], reverse=True)
+            c["compras"] = lst[:5]
 
     stores_list = [{"store_id": sid, "nome": nome} for sid, nome in sorted(STORE_NAME_MAP.items())]
     return render_template("tracks_clientes.html", clientes=clientes,
@@ -1628,7 +1624,8 @@ def tracks_caixa():
                         data_lancamento::date                           AS data,
                         hora_lancamento                                 AS hora,
                         (data_lancamento::date + hora_lancamento::time) AS nf_dt,
-                        cnpj_emp
+                        cnpj_emp,
+                        serie
                     FROM microvix_movimento
                     WHERE cod_natureza_operacao = '10030'
                       AND cancelado = 'N'
@@ -1637,7 +1634,7 @@ def tracks_caixa():
                       AND codigo_cliente = 1
                       AND cnpj_emp = %s
                       AND data_lancamento::date = %s
-                    GROUP BY documento, data_lancamento::date, hora_lancamento, cnpj_emp
+                    GROUP BY documento, data_lancamento::date, hora_lancamento, cnpj_emp, serie
                     ORDER BY hora_lancamento DESC
                 """, (cnpj_sel_padded, data_param))
                 for row in pg_cur.fetchall():
@@ -1650,6 +1647,7 @@ def tracks_caixa():
                         "hora":              (row[4] or "").strip(),
                         "nf_dt":             row[5],
                         "cnpj_emp":          cnpj_emp,
+                        "serie":             row[7],
                         "store_id":          store_id_param,
                         "nome_loja":         STORE_NAME_MAP.get(store_id_param),
                         "candidatos":        [],
@@ -1765,13 +1763,14 @@ def tracks_caixa_set_pessoa(documento):
     except (KeyError, ValueError, TypeError):
         return jsonify({"error": "person_id inválido"}), 400
     force    = bool(data.get("force"))
-    # cnpj_emp e data (data_lancamento, YYYY-MM-DD) enviados pelo front — essenciais para filtrar
-    # a NF correta, pois documento sozinho (nem com cnpj_emp) não é único no Microvix: se reaproveita
-    # entre lojas distintas e entre NFs de datas diferentes na mesma loja (séries diferentes). Sem
-    # a data, um documento ambíguo pode confirmar a pessoa contra uma NF errada (ver seção
-    # "Tela Clientes" no CLAUDE.md, onde o mesmo problema foi encontrado e medido).
+    # cnpj_emp e serie enviados pelo front — essenciais para filtrar a NF correta, pois documento
+    # sozinho (nem com cnpj_emp) não é único no Microvix: cada série tem numeração sequencial
+    # própria, e séries diferentes da mesma loja podem reaproveitar o mesmo número (é essa a causa
+    # raiz do reaproveitamento — não a data). Sem a série, um documento ambíguo pode confirmar a
+    # pessoa contra uma NF errada (ver seção "Tela Clientes" no CLAUDE.md, onde o mesmo problema
+    # foi encontrado e medido).
     cnpj_emp_body = (data.get("cnpj_emp") or "").strip()
-    data_lancamento_body = (data.get("data") or "").strip()  # YYYY-MM-DD
+    serie_body    = (data.get("serie") or "").strip()
 
     # 1. Busca a NF para obter cnpj_emp confirmado e horário
     pg_conn = None
@@ -1789,9 +1788,9 @@ def tracks_caixa_set_pessoa(documento):
         if cnpj_emp_body:
             conditions.append("cnpj_emp = %s")
             params.append(cnpj_emp_body)
-        if data_lancamento_body:
-            conditions.append("data_lancamento::date = %s")
-            params.append(data_lancamento_body)
+        if serie_body:
+            conditions.append("serie = %s")
+            params.append(serie_body)
         where = " AND ".join(conditions)
         pg_cur.execute(f"""
             SELECT
@@ -2021,14 +2020,15 @@ def tracks_api_empresas():
 
 @tracks_bp.route("/tracks/caixa/nf/<documento>")
 def tracks_caixa_nf_itens(documento):
-    """Itens de uma NF. `cnpj_emp` e `data` (YYYY-MM-DD, referente a data_lancamento) são
-    essenciais para identificar a NF certa — documento sozinho não é único: se reaproveita
-    entre lojas distintas (cnpj_emp diferente) e entre NFs de datas diferentes na mesma loja
-    (séries diferentes). Sem esses dois filtros a query pode trazer itens de uma NF completamente
-    diferente que só coincide no número do documento (ver seção "Tela Clientes" no CLAUDE.md).
+    """Itens de uma NF. `cnpj_emp` e `serie` são essenciais para identificar a NF certa —
+    documento sozinho não é único: se reaproveita entre lojas distintas (cnpj_emp diferente)
+    e entre séries diferentes na mesma loja, cada uma com sua própria numeração sequencial
+    (é essa a causa raiz do reaproveitamento — não a data). Sem esses dois filtros a query
+    pode trazer itens de uma NF completamente diferente que só coincide no número do
+    documento (ver seção "Tela Clientes" no CLAUDE.md).
     """
-    cnpj_emp  = (request.args.get("cnpj_emp") or "").strip()
-    data_param = request.args.get("data")  # YYYY-MM-DD
+    cnpj_emp   = (request.args.get("cnpj_emp") or "").strip()
+    serie_param = (request.args.get("serie") or "").strip()
     pg_conn = None
     try:
         pg_conn = get_pg_conn()
@@ -2045,9 +2045,9 @@ def tracks_caixa_nf_itens(documento):
         if cnpj_emp:
             conditions.append("m.cnpj_emp = %s")
             params.append(cnpj_emp)
-        if data_param:
-            conditions.append("m.data_lancamento::date = %s")
-            params.append(data_param)
+        if serie_param:
+            conditions.append("m.serie = %s")
+            params.append(serie_param)
         where = " AND ".join(conditions)
         pg_cur.execute(f"""
             SELECT

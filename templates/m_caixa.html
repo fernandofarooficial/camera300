@@ -286,7 +286,7 @@
             {% if nf.nome_loja %}<span class="nf-label">{{ nf.nome_loja }}</span>{% endif %}
           </div>
         </div>
-        <button class="btn-itens" onclick="toggleItens(this, '{{ nf.documento }}', '{{ nf.cnpj_emp }}', '{{ nf.data }}')">Itens</button>
+        <button class="btn-itens" onclick="toggleItens(this, '{{ nf.documento }}', '{{ nf.cnpj_emp }}', '{{ nf.serie }}')">Itens</button>
       </div>
 
       <div class="nf-itens" id="itens-{{ nf.documento }}"></div>
@@ -327,7 +327,7 @@
           </div>
           <div class="cli-scroll">
             {% for cli in nf.candidatos %}
-            <div class="cli-card" onclick="confirmarPessoa('{{ nf.documento }}', {{ cli.id_unico }}, '{{ nf.cnpj_emp }}', '{{ nf.data }}')"
+            <div class="cli-card" onclick="confirmarPessoa('{{ nf.documento }}', {{ cli.id_unico }}, '{{ nf.cnpj_emp }}', '{{ nf.serie }}')"
                  title="Confirmar como comprador">
               {% if cli.foto %}
                 <img class="cli-photo" src="{{ cli.foto }}" alt=""
@@ -354,8 +354,8 @@
         <div class="busca-row">
           <input class="busca-input" type="number" min="1"
                  id="pid-{{ nf.documento }}" placeholder="ex: 42"
-                 onkeydown="if(event.key==='Enter') buscarPessoa('{{ nf.documento }}', '{{ nf.cnpj_emp }}', '{{ nf.data }}')" />
-          <button class="btn-buscar" onclick="buscarPessoa('{{ nf.documento }}', '{{ nf.cnpj_emp }}', '{{ nf.data }}')">Buscar</button>
+                 onkeydown="if(event.key==='Enter') buscarPessoa('{{ nf.documento }}', '{{ nf.cnpj_emp }}', '{{ nf.serie }}')" />
+          <button class="btn-buscar" onclick="buscarPessoa('{{ nf.documento }}', '{{ nf.cnpj_emp }}', '{{ nf.serie }}')">Buscar</button>
         </div>
         <div class="busca-preview" id="preview-{{ nf.documento }}"></div>
       </div>
@@ -384,7 +384,7 @@
 </nav>
 
 <script>
-  function toggleItens(btn, doc, cnpjEmp, nfData) {
+  function toggleItens(btn, doc, cnpjEmp, serie) {
     const panel = document.getElementById('itens-' + doc);
     if (panel.classList.contains('open')) {
       panel.classList.remove('open');
@@ -396,7 +396,7 @@
     if (panel.dataset.loaded) return;
     panel.dataset.loaded = '1';
     panel.innerHTML = '<div class="it-loading">Carregando…</div>';
-    const params = new URLSearchParams({ cnpj_emp: cnpjEmp || '', data: nfData || '' });
+    const params = new URLSearchParams({ cnpj_emp: cnpjEmp || '', serie: serie || '' });
     fetch(`/camera300/tracks/caixa/nf/${encodeURIComponent(doc)}?${params.toString()}`)
       .then(r => r.json())
       .then(itens => {
@@ -415,18 +415,18 @@
       .catch(() => { panel.innerHTML = '<div class="it-error">Erro ao carregar itens.</div>'; });
   }
 
-  async function confirmarPessoa(doc, personId, cnpjEmp, nfData, force = false) {
+  async function confirmarPessoa(doc, personId, cnpjEmp, serie, force = false) {
     try {
       const r = await fetch(`/camera300/tracks/caixa/nf/${encodeURIComponent(doc)}/pessoa`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ person_id: personId, cnpj_emp: cnpjEmp || '', data: nfData || '', force }),
+        body: JSON.stringify({ person_id: personId, cnpj_emp: cnpjEmp || '', serie: serie || '', force }),
       });
       const data = await r.json();
       if (!r.ok) {
         if (r.status === 422 && data.pode_forcar) {
           if (confirm((data.error || 'Detecção não encontrada') + '\n\nConfirmar mesmo assim?')) {
-            confirmarPessoa(doc, personId, cnpjEmp, nfData, true);
+            confirmarPessoa(doc, personId, cnpjEmp, serie, true);
           }
           return;
         }
@@ -453,7 +453,7 @@
     }
   }
 
-  async function buscarPessoa(doc, cnpjEmp, nfData) {
+  async function buscarPessoa(doc, cnpjEmp, serie) {
     const input   = document.getElementById('pid-' + doc);
     const preview = document.getElementById('preview-' + doc);
     const pid     = parseInt(input.value, 10);
@@ -479,7 +479,7 @@
             <span class="conf-id">ID ${data.id_unico}</span>
             <span class="conf-nome">${data.nome || '—'}</span>
           </div>
-          <button class="btn-confirmar" onclick="confirmarPessoa('${doc}', ${data.id_unico}, '${cnpjEmp || ''}', '${nfData || ''}')">Confirmar</button>
+          <button class="btn-confirmar" onclick="confirmarPessoa('${doc}', ${data.id_unico}, '${cnpjEmp || ''}', '${serie || ''}')">Confirmar</button>
         </div>`;
     } catch (e) {
       preview.innerHTML = '<div class="busca-erro">Erro de comunicação.</div>';
