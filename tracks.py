@@ -519,6 +519,7 @@ def tracks_clientes():
         chegadas = {row["person_id"]: dict(row) for row in cursor.fetchall()}
 
         clientes = []
+        bills = []
         if chegadas:
             ids = list(chegadas.keys())
             placeholders = ",".join(["%s"] * len(ids))
