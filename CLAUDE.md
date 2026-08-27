@@ -295,6 +295,18 @@ Ordem de chegada dos clientes do dia atual, com dados cadastrais, histórico de 
    `tracks_caixa_nf_itens`, `tracks_caixa_del_pessoa`) — ver seção "Tela Caixa", "Constraint
    importante: documento não é único — nem com cnpj_emp".
 
+7. **Ticket médio do cliente** (exibido junto do título "Últimas compras", só quando há compras):
+   `valor total gasto ÷ quantidade de notas fiscais distintas` — **todo o histórico confirmado do
+   cliente**, não só os 5 dias exibidos na lista (reaproveita o mesmo `linhas` já buscado pro item 6,
+   sem query nova; agregado por `person_id` em vez de por `(person_id, dia)`). É a definição usual
+   de ticket médio (valor/nota) — uma primeira versão dividia por quantidade de *linhas de item* em
+   vez de notas fiscais, a pedido inicial do usuário, depois corrigida pra valor/nota (2026-08-27).
+
+   **Bug corrigido em produção (2026-08-27):** `bills` só era inicializado dentro do `if chegadas:`
+   — em qualquer momento em que ninguém tivesse chegado ainda no dia (`chegadas` vazio, ex.: logo
+   após a virada de dia), o `if bills:` alguns blocos depois estourava `UnboundLocalError` → 500.
+   Corrigido inicializando `bills = []` no mesmo nível de `clientes = []`, antes do `if chegadas:`.
+
 ### Edição de pessoa
 Reaproveita **o mesmo modal e a mesma rota** de `tracks_lista.html`/`atualizar_pessoa`
 (`POST /tracks/api/pessoa/<id_unico>`) — nenhum backend novo de edição foi criado para esta tela.
