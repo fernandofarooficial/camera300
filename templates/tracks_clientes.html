@@ -231,6 +231,17 @@
       align-items: center;
       gap: 0.5rem;
     }
+    .ticket-medio {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: none;
+      letter-spacing: normal;
+      background: #f59e0b22;
+      color: #f59e0b;
+      border: 1px solid #f59e0b44;
+      padding: 0.15rem 0.55rem;
+      border-radius: 999px;
+    }
     .visitas-datas {
       display: flex;
       flex-wrap: wrap;
@@ -558,7 +569,12 @@
 
         {% if c.compras %}
           <div class="info-section">
-            <div class="info-section-title">Últimas compras</div>
+            <div class="info-section-title">
+              Últimas compras
+              {% if c.ticket_medio is not none %}
+                <span class="ticket-medio">Ticket médio: R$ {{ "%.2f"|format(c.ticket_medio)|replace('.', ',') }}</span>
+              {% endif %}
+            </div>
             {% for compra in c.compras %}
               <div class="compra-item">
                 <div class="compra-linha">

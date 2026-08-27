@@ -558,6 +558,7 @@ def tracks_clientes():
                     "visitas_qtd":  visitas["qtd"] if visitas else 0,
                     "visitas_datas": visitas["datas"] if visitas else [],
                     "compras":      [],
+                    "ticket_medio": None,
                 })
             clientes.sort(key=lambda c: c["chegada_dt"], reverse=True)
 
@@ -622,12 +623,19 @@ def tracks_clientes():
 
         # Agrega por (person_id, dia): valor total, qtd de notas distintas, produtos+quantidade
         por_pessoa_dia: dict = {}
+        # Ticket médio do cliente = valor total gasto (todo o histórico confirmado, não só os
+        # 5 dias exibidos) / quantidade de linhas de item nas NFs — não é valor/nota, é valor/linha.
+        totais_pessoa: dict = {}
         for row in linhas:
             key = (row["person_id"], row["dia"])
             grupo = por_pessoa_dia.setdefault(key, {"valor": 0.0, "documentos": set(), "produtos": {}})
             grupo["valor"] += float(row["valor_total"] or 0)
             grupo["documentos"].add(row["documento"])
             grupo["produtos"][row["produto"]] = grupo["produtos"].get(row["produto"], 0) + float(row["quantidade"] or 0)
+
+            total = totais_pessoa.setdefault(row["person_id"], {"valor": 0.0, "linhas": 0})
+            total["valor"] += float(row["valor_total"] or 0)
+            total["linhas"] += 1
 
         compras_por_pessoa: dict = {}
         for (person_id, dia), grupo in por_pessoa_dia.items():
@@ -647,6 +655,8 @@ def tracks_clientes():
             lst = compras_por_pessoa.get(c["id_unico"], [])
             lst.sort(key=lambda x: x["data_documento"], reverse=True)
             c["compras"] = lst[:5]
+            total = totais_pessoa.get(c["id_unico"])
+            c["ticket_medio"] = round(total["valor"] / total["linhas"], 2) if total and total["linhas"] else None
 
     stores_list = [{"store_id": sid, "nome": nome} for sid, nome in sorted(STORE_NAME_MAP.items())]
     return render_template("tracks_clientes.html", clientes=clientes,
