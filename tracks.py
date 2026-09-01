@@ -1,5 +1,6 @@
 import io
 import threading
+import time
 import cv2
 import requests
 import openpyxl
@@ -96,20 +97,30 @@ for _row in CAMERAS_COMPLETO:
 
 # CNPJ_STORE_MAP : microvix_cnpj (str) → store_id (int)
 # Carregado de faciais.stores.microvix_cnpj (ver migration_0037).
+# Retry no boot: quando vários serviços do VPS sobem juntos (ex. reboot), a conexão inicial ao
+# Postgres remoto pode falhar por disputa transitória de conexões; sem retry, o worker ficava com
+# o mapa vazio (tela Caixa sem lojas no dropdown) até o próximo restart manual (achado em 2026-09-01).
+_STORE_MAP_RETRY_DELAYS = [3, 12, 20]  # segundos entre tentativas (total: até 4 tentativas)
 CNPJ_STORE_MAP: dict = {}
-try:
-    _fc = get_faciais_conn()
+for _tentativa, _delay in enumerate([0] + _STORE_MAP_RETRY_DELAYS, start=1):
+    if _delay:
+        time.sleep(_delay)
     try:
-        _cur = _fc.cursor()
-        _cur.execute("SELECT store_id, cnpj FROM stores WHERE cnpj IS NOT NULL")
-        for _r in _cur.fetchall():
-            CNPJ_STORE_MAP[str(_r[1])] = int(_r[0])
-        _cur.close()
-        _fc.rollback()
-    finally:
-        release_faciais_conn(_fc)
-except Exception as _exc:
-    print(f"[tracks] Aviso: não foi possível carregar CNPJ_STORE_MAP: {_exc}")
+        _fc = get_faciais_conn()
+        try:
+            _cur = _fc.cursor()
+            _cur.execute("SELECT store_id, cnpj FROM stores WHERE cnpj IS NOT NULL")
+            for _r in _cur.fetchall():
+                CNPJ_STORE_MAP[str(_r[1])] = int(_r[0])
+            _cur.close()
+            _fc.rollback()
+        finally:
+            release_faciais_conn(_fc)
+        break
+    except Exception as _exc:
+        print(f"[tracks] Aviso: falha ao carregar CNPJ_STORE_MAP (tentativa {_tentativa}): {_exc}", flush=True)
+else:
+    print("[tracks] Aviso: CNPJ_STORE_MAP não carregado após todas as tentativas — tela Caixa ficará sem lojas até reiniciar o serviço.", flush=True)
 
 def _cnpj_key(cnpj: str) -> str:
     """Normaliza CNPJ para lookup no CNPJ_STORE_MAP.

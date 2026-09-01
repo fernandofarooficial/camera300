@@ -191,7 +191,7 @@ Clientes"): `(cnpj_emp, documento)` sozinho tem milhares de pares com mais de um
 de 2024 num único CNPJ/série (não o padrão sistêmico, não compensa tentar fechar via query).
 
 ### Mapeamentos carregados na inicialização (tracks.py)
-- `CNPJ_STORE_MAP` → `{cnpj_str: store_id}` lido de `faciais.stores.cnpj` (coluna `int8`, sem zeros à esquerda).
+- `CNPJ_STORE_MAP` → `{cnpj_str: store_id}` lido de `faciais.stores.cnpj` (coluna `int8`, sem zeros à esquerda). Carga com retry (`_STORE_MAP_RETRY_DELAYS`, até 4 tentativas) — ver seção "Correção: dropdown de lojas vazio na tela Caixa" para o motivo.
 - `_cnpj_key(cnpj)` → normaliza CNPJ para lookup no `CNPJ_STORE_MAP` (remove formatação e zeros à esquerda, `int()` round-trip). Usar sempre que comparar um `cnpj_emp` do Microvix contra `CNPJ_STORE_MAP`.
 - `microvix.cnpj_emp` é `varchar(14)` com zeros à esquerda → usar `.zfill(14)` ao montar o filtro de query (ex.: `cnpj_sel_padded` em `tracks_caixa`).
 - `CAMERA_STORE_MAP`, `STORE_NAME_MAP`, `CAMERA_STORE_NAME_MAP`, `STORE_CAMERAS_MAP` → derivados de `faciais.cameras`.
@@ -511,3 +511,38 @@ mesmo motivo do modal) que:
 **Fix em `_run_portais` (`microvix_ingest.py`):** o `rollback()` agora está dentro de try/except; se falhar com `OperationalError` ou `InterfaceError`, descarta a conexão morta, pega uma nova do pool e continua os métodos restantes.
 
 **Fix em `_sincronizar_person_purchases`:** o `faciais_conn.rollback()` e o `cur.close()` do bloco finally também foram protegidos com try/except, evitando exceção secundária quando essas conexões também caem.
+
+---
+
+## Correção: dropdown de lojas vazio na tela Caixa (2026-09-01)
+
+**Sintoma:** `/tracks/caixa` carregava normalmente, mas o `<select>` de loja vinha sem nenhuma
+`<option>` — impossível escolher loja e ver as NFs do dia.
+
+**Causa:** `CNPJ_STORE_MAP` (`tracks.py`) é carregado **uma única vez**, na inicialização do
+módulo (import-time), com uma query síncrona a `faciais.stores`. Em 2026-09-01 o VPS inteiro
+reiniciou (reboot, não só o `camera300` — todos os serviços em `/home/workuser/` subiram no mesmo
+minuto) e a disputa transitória de conexões simultâneas ao Postgres remoto (`72.60.58.241:5432`)
+fez essa query falhar bem no boot do worker. Sem retry, o processo seguiu rodando indefinidamente
+com `CNPJ_STORE_MAP = {}`, e a tela Caixa ficou sem lojas até o próximo restart manual.
+
+O `try/except` que protegia a carga original imprimia um aviso (`print(...)`, sem `flush=True`) —
+mas como o stdout do worker gunicorn é bufferizado por padrão (`PYTHONUNBUFFERED` não está setado
+no `camera300.service`) e o processo nunca chegou a encher o buffer nem foi encerrado, o aviso
+nunca apareceu no `journalctl`, dificultando o diagnóstico (nenhum erro visível nos logs apesar da
+falha real ter ocorrido).
+
+**Diagnóstico:** comparar a resposta HTTP real de `/tracks/caixa` (via `curl` direto em
+`127.0.0.1:5001`, contornando o proxy) contra um `python -c "import tracks; print(tracks.CNPJ_STORE_MAP)"`
+rodado à parte no mesmo venv — o segundo populava o mapa normalmente (a query em si nunca teve
+problema, só a tentativa específica feita no exato momento do boot). `systemctl show camera300
+--property=ActiveEnterTimestamp` confirmou o restart simultâneo de todos os serviços do VPS.
+
+**Fix em `tracks.py`:** carga de `CNPJ_STORE_MAP` agora tenta até 4 vezes
+(`_STORE_MAP_RETRY_DELAYS = [3, 12, 20]`, mesmo padrão de `_RETRY_DELAYS` já usado em `app.py` pro
+Heimdall) antes de desistir, e os `print()` de aviso passaram a usar `flush=True` para garantir que
+apareçam no `journalctl` mesmo que o processo nunca encha o buffer de stdout sozinho.
+
+**Remediação imediata (antes do fix):** `systemctl restart camera300` — recarrega o mapa do zero,
+já que a condição de disputa de conexões é transitória (passado o boot simultâneo, a mesma query
+funciona normalmente).
