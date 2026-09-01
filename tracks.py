@@ -21,53 +21,63 @@ HEATMAP_API_URL  = "http://201.71.234.84:5001/api/heatmap"
 HEATMAP_API_BASE = "http://201.71.234.84:5001"
 HEATMAP_AUTH     = ("admin", "Heat26@vision")
 
+# Retry para queries de boot (câmeras, CNPJ_STORE_MAP): quando vários serviços do VPS sobem juntos
+# (ex. reboot), a conexão inicial ao Postgres remoto pode falhar por disputa transitória de conexões;
+# sem retry, o worker ficava com os mapas vazios até o próximo restart manual (achado em 2026-09-01).
+_BOOT_QUERY_RETRY_DELAYS = [3, 12, 20]  # segundos entre tentativas (total: até 4 tentativas)
+
 
 def _carregar_cameras():
     """Carrega câmeras válidas com aliases compatíveis com o código legado."""
-    try:
-        conn = get_faciais_conn()
+    for _tentativa, _delay in enumerate([0] + _BOOT_QUERY_RETRY_DELAYS, start=1):
+        if _delay:
+            time.sleep(_delay)
         try:
-            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            cursor.execute("""
-                SELECT
-                    c.camera_id                     AS id_camera,
-                    c.camera_name                   AS camera,
-                    c.rtsp_url                      AS rstp,
-                    c.created_at                    AS camera_criada_em,
-                    ct.camera_type_id               AS id_tipo_camera,
-                    ct.camera_type_name             AS tipo_camera,
-                    s.store_id                      AS id_local,
-                    s.store_short_name              AS nome_loja,
-                    s.cep,
-                    s.address_number                AS numero,
-                    s.address_complement            AS complemento,
-                    co.company_id                   AS id_empresa,
-                    co.company_name                 AS empresa,
-                    cg.company_group_id             AS id_grupo,
-                    cg.company_group_name           AS grupo,
-                    cot.company_type_id             AS id_tipo_empresa,
-                    cot.company_type_name           AS tipo_empresa,
-                    rg.retailer_group_id            AS id_dono,
-                    rg.retailer_group_name          AS dono
-                FROM cameras c
-                LEFT JOIN camera_types  ct  ON ct.camera_type_id  = c.camera_type_id
-                LEFT JOIN stores        s   ON s.store_id          = c.store_id
-                LEFT JOIN companies     co  ON co.company_id       = s.company_id
-                LEFT JOIN company_groups cg ON cg.company_group_id = co.company_group_id
-                LEFT JOIN company_types  cot ON cot.company_type_id = co.company_type_id
-                LEFT JOIN retailer_groups rg ON rg.retailer_group_id = s.retailer_group_id
-                ORDER BY c.camera_id
-            """)
-            rows = cursor.fetchall()
-            cursor.close()
-            conn.rollback()
-        finally:
-            release_faciais_conn(conn)
-        ids = [str(r["id_camera"]) for r in rows if r.get("id_camera") is not None]
-        return ids, rows
-    except Exception as e:
-        print(f"[tracks] Erro ao carregar câmeras do banco: {e}")
-        return [], []
+            conn = get_faciais_conn()
+            try:
+                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cursor.execute("""
+                    SELECT
+                        c.camera_id                     AS id_camera,
+                        c.camera_name                   AS camera,
+                        c.rtsp_url                      AS rstp,
+                        c.created_at                    AS camera_criada_em,
+                        ct.camera_type_id               AS id_tipo_camera,
+                        ct.camera_type_name             AS tipo_camera,
+                        s.store_id                      AS id_local,
+                        s.store_short_name              AS nome_loja,
+                        s.cep,
+                        s.address_number                AS numero,
+                        s.address_complement            AS complemento,
+                        co.company_id                   AS id_empresa,
+                        co.company_name                 AS empresa,
+                        cg.company_group_id             AS id_grupo,
+                        cg.company_group_name           AS grupo,
+                        cot.company_type_id             AS id_tipo_empresa,
+                        cot.company_type_name           AS tipo_empresa,
+                        rg.retailer_group_id            AS id_dono,
+                        rg.retailer_group_name          AS dono
+                    FROM cameras c
+                    LEFT JOIN camera_types  ct  ON ct.camera_type_id  = c.camera_type_id
+                    LEFT JOIN stores        s   ON s.store_id          = c.store_id
+                    LEFT JOIN companies     co  ON co.company_id       = s.company_id
+                    LEFT JOIN company_groups cg ON cg.company_group_id = co.company_group_id
+                    LEFT JOIN company_types  cot ON cot.company_type_id = co.company_type_id
+                    LEFT JOIN retailer_groups rg ON rg.retailer_group_id = s.retailer_group_id
+                    ORDER BY c.camera_id
+                """)
+                rows = cursor.fetchall()
+                cursor.close()
+                conn.rollback()
+            finally:
+                release_faciais_conn(conn)
+            ids = [str(r["id_camera"]) for r in rows if r.get("id_camera") is not None]
+            return ids, rows
+        except Exception as e:
+            print(f"[tracks] Aviso: falha ao carregar câmeras do banco (tentativa {_tentativa}): {e}", flush=True)
+    print("[tracks] Aviso: câmeras não carregadas após todas as tentativas — Heimdall e mapas de loja "
+          "ficarão vazios até reiniciar o serviço.", flush=True)
+    return [], []
 
 
 # IDs das câmeras a consultar e lista completa carregados da view vw_cameras_completo
@@ -96,13 +106,9 @@ for _row in CAMERAS_COMPLETO:
         STORE_NAME_MAP[int(_sid)] = _nome
 
 # CNPJ_STORE_MAP : microvix_cnpj (str) → store_id (int)
-# Carregado de faciais.stores.microvix_cnpj (ver migration_0037).
-# Retry no boot: quando vários serviços do VPS sobem juntos (ex. reboot), a conexão inicial ao
-# Postgres remoto pode falhar por disputa transitória de conexões; sem retry, o worker ficava com
-# o mapa vazio (tela Caixa sem lojas no dropdown) até o próximo restart manual (achado em 2026-09-01).
-_STORE_MAP_RETRY_DELAYS = [3, 12, 20]  # segundos entre tentativas (total: até 4 tentativas)
+# Carregado de faciais.stores.microvix_cnpj (ver migration_0037). Retry: ver _BOOT_QUERY_RETRY_DELAYS.
 CNPJ_STORE_MAP: dict = {}
-for _tentativa, _delay in enumerate([0] + _STORE_MAP_RETRY_DELAYS, start=1):
+for _tentativa, _delay in enumerate([0] + _BOOT_QUERY_RETRY_DELAYS, start=1):
     if _delay:
         time.sleep(_delay)
     try:

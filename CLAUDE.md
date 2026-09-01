@@ -191,10 +191,11 @@ Clientes"): `(cnpj_emp, documento)` sozinho tem milhares de pares com mais de um
 de 2024 num único CNPJ/série (não o padrão sistêmico, não compensa tentar fechar via query).
 
 ### Mapeamentos carregados na inicialização (tracks.py)
-- `CNPJ_STORE_MAP` → `{cnpj_str: store_id}` lido de `faciais.stores.cnpj` (coluna `int8`, sem zeros à esquerda). Carga com retry (`_STORE_MAP_RETRY_DELAYS`, até 4 tentativas) — ver seção "Correção: dropdown de lojas vazio na tela Caixa" para o motivo.
+- `CNPJ_STORE_MAP` → `{cnpj_str: store_id}` lido de `faciais.stores.cnpj` (coluna `int8`, sem zeros à esquerda).
 - `_cnpj_key(cnpj)` → normaliza CNPJ para lookup no `CNPJ_STORE_MAP` (remove formatação e zeros à esquerda, `int()` round-trip). Usar sempre que comparar um `cnpj_emp` do Microvix contra `CNPJ_STORE_MAP`.
 - `microvix.cnpj_emp` é `varchar(14)` com zeros à esquerda → usar `.zfill(14)` ao montar o filtro de query (ex.: `cnpj_sel_padded` em `tracks_caixa`).
-- `CAMERA_STORE_MAP`, `STORE_NAME_MAP`, `CAMERA_STORE_NAME_MAP`, `STORE_CAMERAS_MAP` → derivados de `faciais.cameras`.
+- `CAMERA_STORE_MAP`, `STORE_NAME_MAP`, `CAMERA_STORE_NAME_MAP`, `STORE_CAMERAS_MAP` → derivados de `faciais.cameras` (via `_carregar_cameras()`).
+- Todas as cargas acima rodam com retry (`_BOOT_QUERY_RETRY_DELAYS`, até 4 tentativas) — ver seção "Correção: dropdown de lojas vazio na tela Caixa" para o motivo.
 
 ### CNPJ e série nas ações sobre uma NF (cnpj_emp desde commit 0053; série desde 2026-08-26)
 `POST /tracks/caixa/nf/<documento>/pessoa` (confirmar comprador) recebe `cnpj_emp` e `serie` no
@@ -538,10 +539,15 @@ rodado à parte no mesmo venv — o segundo populava o mapa normalmente (a query
 problema, só a tentativa específica feita no exato momento do boot). `systemctl show camera300
 --property=ActiveEnterTimestamp` confirmou o restart simultâneo de todos os serviços do VPS.
 
-**Fix em `tracks.py`:** carga de `CNPJ_STORE_MAP` agora tenta até 4 vezes
-(`_STORE_MAP_RETRY_DELAYS = [3, 12, 20]`, mesmo padrão de `_RETRY_DELAYS` já usado em `app.py` pro
-Heimdall) antes de desistir, e os `print()` de aviso passaram a usar `flush=True` para garantir que
-apareçam no `journalctl` mesmo que o processo nunca encha o buffer de stdout sozinho.
+**Fix em `tracks.py`:** carga de `CNPJ_STORE_MAP` **e** de `_carregar_cameras()` (câmeras →
+`CAMERA_IDS`/`CAMERAS_COMPLETO`, de onde vêm também `CAMERA_STORE_MAP`, `STORE_NAME_MAP`,
+`CAMERA_STORE_NAME_MAP`, `STORE_CAMERAS_MAP`) agora tentam até 4 vezes cada
+(`_BOOT_QUERY_RETRY_DELAYS = [3, 12, 20]`, constante compartilhada pelas duas, mesmo padrão de
+`_RETRY_DELAYS` já usado em `app.py` pro Heimdall) antes de desistir, e os `print()` de aviso
+passaram a usar `flush=True` para garantir que apareçam no `journalctl` mesmo que o processo nunca
+encha o buffer de stdout sozinho. `_carregar_cameras()` é o caso mais crítico dos dois — se falhar,
+`CAMERA_IDS` fica vazio e afeta a query ao Heimdall (`query_heimdall`, usada por **todo** o pipeline
+de reconhecimento facial, não só a tela Caixa), então o mesmo retry foi aplicado lá.
 
 **Remediação imediata (antes do fix):** `systemctl restart camera300` — recarrega o mapa do zero,
 já que a condição de disputa de conexões é transitória (passado o boot simultâneo, a mesma query
