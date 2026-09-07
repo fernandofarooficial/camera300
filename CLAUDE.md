@@ -173,9 +173,34 @@ Achado à parte, sem relação direta com o gap acima: pro portal **19926** (`34
 Cruza notas fiscais Microvix com faces detectadas para identificar compradores.
 
 ### Lógica
-1. Lista NFs do dia de uma loja (`cod_natureza_operacao='10030'`, `cancelado='N'`, `excluido='N'`, `codigo_cliente=1`, `tipo_transacao IN ('P','V')` ou nulo).
+1. Lista NFs do dia de uma loja (`cod_natureza_operacao='10030'`, `cancelado='N'`, `excluido='N'`, `codigo_cliente=1`, `tipo_transacao <> 'J'` ou nulo — `'J'` = Ajuste de Estoque, não é venda; todos os demais tipos são considerados faturamento).
 2. Busca candidatos: pessoas do tipo `'C'` detectadas pelas câmeras da loja em janela de ±10 min por NF.
 3. Exibe confirmados via tabela `faciais.person_purchases`.
+
+### Critério de faturamento — `tipo_transacao` (alterado em 2026-09-07)
+Único filtro de exclusão em `microvix_movimento.tipo_transacao`: **apenas `'J'` (Ajuste de
+Estoque) é desconsiderado** — todos os demais tipos (inclusive nulo) contam como faturamento.
+Antes, cada consulta restringia por uma allowlist diferente e inconsistente entre si (`= 'V'` em
+alguns lugares, `IN ('P','V')` em outros, `= ANY (ARRAY['P','V','S'])` em outro ainda), deixando de
+fora tipos de transação válidos que não estavam explicitamente listados. Padronizado em todo o
+projeto (`tracks.py`, `microvix_ingest.py`) como `(tipo_transacao <> 'J' OR tipo_transacao IS
+NULL)` — mesmo critério já usado pela materialized view `faciais.mv_microvix_vendas` (ver
+`doc_faciais.sql`, comentário da view; migration `filtro_tipo_transacao_diferente_j.sql` no
+`retail_analytics`).
+
+### Definição de pessoa física — `tipo_cliente` (alterado em 2026-09-07)
+Classificação de venda PF (pessoa física, usada na Tela Clientes — item 6 — e em
+`faciais.mv_microvix_vendas`) passou a ser feita por
+`microvix.microvix_clientes_fornecedores.tipo_cliente` (`'F'` = física, `'J'` = jurídica; PK
+`(portal, cod_cliente)`), casada com `microvix_movimento` por `(mm.portal, mm.codigo_cliente)`.
+Critério: `cf.tipo_cliente IS NULL OR cf.tipo_cliente = 'F'` (cliente sem cadastro em
+`microvix_clientes_fornecedores`, ex. venda ao consumidor sem CPF na nota, ainda conta como PF).
+
+Antes, a classificação era feita por **série** da loja, via tabela `faciais.store_serie_rules`
+(`person_kind='PF'` e `serie = mm.serie`) — tabela **removida** do schema em 2026-09 pela migration
+`descontinuar_store_serie_rules.sql` no `retail_analytics`. A troca elimina a dependência de
+`store_id` nessa classificação (`store_serie_rules` era escopada por loja; `tipo_cliente` é uma
+propriedade do cadastro do cliente/portal, não da loja).
 
 ### Constraint importante: documento não é único — nem com cnpj_emp
 `documento` **não é único** no Microvix: além de poder existir em lojas distintas (`cnpj_emp`
@@ -266,14 +291,15 @@ Ordem de chegada dos clientes do dia atual, com dados cadastrais, histórico de 
    compra. Uma única consulta direto em `microvix.microvix_movimento` — **não** via
    `faciais.mv_microvix_vendas` (a materialized view usada em `vw_customer_ranking`), porque essa
    view não expõe `serie` no `SELECT`/`GROUP BY`, e é a série que efetivamente identifica a NF (ver
-   abaixo). Casa cada `person_purchases` confirmado (person_id, bill, store_id, cnpj) contra
-   `microvix_movimento` por `(cnpj_emp, documento, store_id)` + `JOIN faciais.store_serie_rules`
-   (`person_kind='PF'` e `serie = mm.serie` da loja) — mesmo critério de venda válida PF que
-   `mv_microvix_vendas` usa, só que preservando a granularidade de série. Valor, contagem de notas e
-   produtos/quantidades vêm todos do mesmo conjunto de linhas retornado, agregado em Python por
-   `(person_id, data_documento::date)` — estruturalmente não tem como valor e itens virem de NFs
-   diferentes (o bug original só era possível porque valor e itens vinham de duas consultas
-   separadas). Histórico de compras não é limitado pela loja filtrada na tela.
+   abaixo). Casa cada `person_purchases` confirmado (person_id, bill, cnpj) contra
+   `microvix_movimento` por `(cnpj_emp, documento)` + `LEFT JOIN microvix.microvix_clientes_fornecedores`
+   (`cf.portal = mm.portal AND cf.cod_cliente = mm.codigo_cliente`, filtro `cf.tipo_cliente IS NULL
+   OR cf.tipo_cliente = 'F'`) — mesmo critério de venda válida PF que `mv_microvix_vendas` usa (ver
+   seção "Definição de pessoa física" abaixo). Valor, contagem de notas e produtos/quantidades vêm
+   todos do mesmo conjunto de linhas retornado, agregado em Python por `(person_id,
+   data_documento::date)` — estruturalmente não tem como valor e itens virem de NFs diferentes (o bug
+   original só era possível porque valor e itens vinham de duas consultas separadas). Histórico de
+   compras não é limitado pela loja filtrada na tela.
 
    **`documento` não é uma chave confiável — nem com `cnpj_emp`.** Cada série do Microvix tem sua
    própria numeração sequencial e elas se sobrepõem constantemente — é a série (não a data) a causa

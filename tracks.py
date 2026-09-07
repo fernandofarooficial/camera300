@@ -587,7 +587,7 @@ def tracks_clientes():
             if ids_recorrentes:
                 ph2 = ",".join(["%s"] * len(ids_recorrentes))
                 cursor.execute(f"""
-                    SELECT pp.person_id, pp.bill, pp.store_id, s.cnpj::varchar AS cnpj_emp
+                    SELECT pp.person_id, pp.bill, s.cnpj::varchar AS cnpj_emp
                     FROM person_purchases pp
                     JOIN stores s ON s.store_id = pp.store_id
                     WHERE pp.person_id IN ({ph2}) AND pp.is_cancelled = false
@@ -603,32 +603,34 @@ def tracks_clientes():
     # microvix_movimento (não via mv_microvix_vendas, que perde a granularidade de série).
     # documento NÃO é uma chave confiável nem com cnpj_emp: cada série do Microvix tem sua própria
     # numeração sequencial e elas se sobrepõem constantemente — é a série, não a data, a causa raiz
-    # do reaproveitamento de número. A chave de correspondência aqui é (cnpj_emp, documento, store_id)
-    # + restringir a série classificada como PF da loja (faciais.store_serie_rules), replicando o
-    # mesmo critério de mv_microvix_vendas. Valor e itens vêm do mesmo conjunto de linhas — não tem
-    # como ficar inconsistente entre si como no bug original.
+    # do reaproveitamento de número. A chave de correspondência aqui é (cnpj_emp, documento)
+    # + restringir a venda classificada como PF via microvix_clientes_fornecedores.tipo_cliente
+    # (IS NULL OR ='F'), replicando o mesmo critério de mv_microvix_vendas (2026-09 — tipo_cliente
+    # substituiu store_serie_rules/série, tabela descontinuada). Valor e itens vêm do mesmo conjunto
+    # de linhas — não tem como ficar inconsistente entre si como no bug original.
     if bills:
         pg_conn = None
         try:
             pg_conn = get_pg_conn()
             pg_cur = pg_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            values_clause = ",".join(["(%s::integer,%s::varchar,%s::integer,%s::integer)"] * len(bills))
+            values_clause = ",".join(["(%s::integer,%s::varchar,%s::integer)"] * len(bills))
             params_b = []
             for b in bills:
-                params_b += [b["person_id"], (b["cnpj_emp"] or "").zfill(14), b["bill"], b["store_id"]]
+                params_b += [b["person_id"], (b["cnpj_emp"] or "").zfill(14), b["bill"]]
             pg_cur.execute(f"""
                 SELECT v.person_id, mm.documento, mm.data_documento::date AS dia,
                        COALESCE(mp.nome, 'Produto ' || mm.cod_produto) AS produto,
                        mm.quantidade, mm.valor_total
                 FROM microvix_movimento mm
-                JOIN (VALUES {values_clause}) AS v(person_id, cnpj_emp, documento, store_id)
+                JOIN (VALUES {values_clause}) AS v(person_id, cnpj_emp, documento)
                   ON v.cnpj_emp = mm.cnpj_emp AND v.documento = mm.documento
-                JOIN faciais.store_serie_rules ssr
-                  ON ssr.store_id = v.store_id AND ssr.person_kind = 'PF' AND ssr.serie = mm.serie
+                LEFT JOIN microvix_clientes_fornecedores cf
+                  ON cf.portal = mm.portal AND cf.cod_cliente = mm.codigo_cliente
                 LEFT JOIN microvix_produtos mp ON mp.portal = mm.portal AND mp.cod_produto = mm.cod_produto
                 WHERE mm.cod_natureza_operacao = '10030'
                   AND mm.cancelado <> 'S' AND mm.excluido <> 'S' AND mm.soma_relatorio = 'S'
-                  AND (mm.tipo_transacao = ANY (ARRAY['P','V','S']) OR mm.tipo_transacao IS NULL)
+                  AND (mm.tipo_transacao <> 'J' OR mm.tipo_transacao IS NULL)
+                  AND (cf.tipo_cliente IS NULL OR cf.tipo_cliente = 'F')
             """, params_b)
             linhas = pg_cur.fetchall()
             pg_cur.close()
@@ -1114,7 +1116,7 @@ def tracks_quadro():
             WHERE cod_natureza_operacao = '10030'
               AND cancelado = 'N'
               AND excluido = 'N'
-              AND tipo_transacao = 'V'
+              AND (tipo_transacao <> 'J' OR tipo_transacao IS NULL)
               AND data_lancamento::date BETWEEN %s AND %s
             GROUP BY data_lancamento::date
             ORDER BY data_lancamento::date ASC
@@ -1151,7 +1153,7 @@ def tracks_quadro():
             WHERE m.cod_natureza_operacao = '10030'
               AND m.cancelado = 'N'
               AND m.excluido = 'N'
-              AND m.tipo_transacao = 'V'
+              AND (m.tipo_transacao <> 'J' OR m.tipo_transacao IS NULL)
               AND m.data_lancamento::date BETWEEN %s AND %s
             GROUP BY m.cod_produto, p.nome
             ORDER BY soma_valor DESC
@@ -1658,7 +1660,7 @@ def tracks_caixa():
                     WHERE cod_natureza_operacao = '10030'
                       AND cancelado = 'N'
                       AND excluido  = 'N'
-                      AND (tipo_transacao IN ('P','V') OR tipo_transacao IS NULL)
+                      AND (tipo_transacao <> 'J' OR tipo_transacao IS NULL)
                       AND codigo_cliente = 1
                       AND cnpj_emp = %s
                       AND data_lancamento::date = %s
@@ -1810,7 +1812,7 @@ def tracks_caixa_set_pessoa(documento):
             "cod_natureza_operacao = '10030'",
             "cancelado = 'N'",
             "excluido = 'N'",
-            "(tipo_transacao IN ('P','V') OR tipo_transacao IS NULL)",
+            "(tipo_transacao <> 'J' OR tipo_transacao IS NULL)",
         ]
         params = [documento]
         if cnpj_emp_body:
@@ -2066,7 +2068,7 @@ def tracks_caixa_nf_itens(documento):
             "m.cod_natureza_operacao = '10030'",
             "m.cancelado = 'N'",
             "m.excluido = 'N'",
-            "(m.tipo_transacao IN ('P','V') OR m.tipo_transacao IS NULL)",
+            "(m.tipo_transacao <> 'J' OR m.tipo_transacao IS NULL)",
             "m.codigo_cliente = 1",
         ]
         params = [documento]

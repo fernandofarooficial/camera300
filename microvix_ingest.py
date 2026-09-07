@@ -809,7 +809,7 @@ def _sincronizar_person_purchases(pg_conn, portal: dict) -> int:
         FROM microvix_movimento
         WHERE cnpj_emp                = %s
           AND cod_natureza_operacao   = '10030'
-          AND tipo_transacao          IN ('P', 'V')
+          AND (tipo_transacao <> 'J' OR tipo_transacao IS NULL)
           AND excluido                = 'N'
           AND cancelado               = 'N'
           AND codigo_cliente          = '1'
