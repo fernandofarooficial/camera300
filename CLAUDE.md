@@ -236,18 +236,48 @@ propósito. O `LEFT JOIN microvix_produtos` também passou a filtrar por `portal
 `(portal, cod_produto)`) — antes duplicava cada item quando o mesmo `cod_produto` existia em portais
 diferentes (nomes de produto diferentes por portal para o mesmo código).
 
-`DELETE .../pessoa` (remover comprador) recebe `cnpj_emp` como query param, usado para resolver o
-`store_id` certo direto do `CNPJ_STORE_MAP` — antes fazia uma busca "`documento` sozinho" em
-`microvix_movimento` (`LIMIT 1`, sem nem `cnpj_emp`) que podia achar a loja errada.
+`DELETE .../pessoa` (remover comprador) recebe `cnpj_emp` **e `serie`** (desde 2026-09-07) como
+query params — `cnpj_emp` resolve o `store_id` certo direto do `CNPJ_STORE_MAP` (antes fazia uma
+busca "`documento` sozinho" em `microvix_movimento`, `LIMIT 1`, sem nem `cnpj_emp`, que podia achar
+a loja errada); `serie` filtra a linha certa de `person_purchases` (`WHERE store_id AND bill AND
+serie`), mesmo motivo do `POST`. Sem `serie` no request (chamada antiga/cache de front antigo), cai
+no fallback por `store_id + bill` apenas.
 
 ### Tabelas envolvidas
-- `faciais.person_purchases` → `(person_purchase_id, person_id, store_id, bill, is_cancelled, is_identified)`.
-  PK única por `(store_id, bill)` — **sem série nem data**. Isso significa que confirmar um
-  comprador é inerentemente "por número de documento", não "por NF específica": se duas NFs
-  diferentes da mesma loja compartilharem o número (ver constraint acima) e ambas forem confirmadas
-  em momentos diferentes na Tela Caixa, a segunda confirmação sobrescreve a primeira
-  silenciosamente (`ON CONFLICT (store_id, bill) DO UPDATE`). Limitação estrutural do schema atual,
-  não corrigida — exigiria adicionar série (e/ou data) à tabela e à constraint de unicidade.
+- `faciais.person_purchases` → `(person_purchase_id, person_id, store_id, bill, serie, data,
+  is_cancelled, is_identified)`. PK única por `(store_id, bill, serie, data)` desde 2026-09-07
+  (colunas `serie varchar(10)` e `data date` adicionadas; constraint antiga `uq_store_bill
+  UNIQUE (store_id, bill)` trocada por `uq_store_bill_serie_data UNIQUE (store_id, bill, serie,
+  data)`). `data` = `data_documento::date` da NF (mesmo campo usado por `mv_microvix_vendas`/Tela
+  Clientes; **não** `data_lancamento`, usado na listagem/janela de detecção da Tela Caixa — os dois
+  campos não são garantidamente iguais).
+
+  Antes, a PK era só `(store_id, bill)` — **sem série nem data** — e confirmar um comprador era
+  inerentemente "por número de documento", não "por NF específica": se duas NFs diferentes da mesma
+  loja compartilhassem o número (ver constraint acima) e ambas fossem confirmadas em momentos
+  diferentes na Tela Caixa, a segunda confirmação sobrescrevia a primeira silenciosamente
+  (`ON CONFLICT (store_id, bill) DO UPDATE`). Corrigido adicionando `serie`/`data` à constraint;
+  todo INSERT/UPDATE/lookup em `person_purchases` no projeto (`tracks.py`, `microvix_ingest.py`)
+  passou a incluir `serie` (e, no INSERT de confirmação, `data`) — ver `tracks_caixa_set_pessoa`,
+  `tracks_caixa_del_pessoa`, o `confirmados` da listagem (`tracks_caixa`), o `bills`/join em
+  `tracks_clientes` e `_sincronizar_person_purchases` (`microvix_ingest.py`).
+
+  **Backfill dos dados existentes (migration única, 2026-09-07):** das 17.746 linhas existentes,
+  17.416 (98,1%) foram preenchidas retroativamente casando `(store_id, bill)` contra
+  `microvix_movimento` (mesmos filtros da listagem: `cod_natureza_operacao='10030'`,
+  `cancelado='N'`, `excluido='N'`, `tipo_transacao<>'J' OR NULL`, `codigo_cliente=1`) — só quando
+  o casamento resultava em **exatamente uma** combinação `(serie, data_documento)` distinta (sem
+  isso, ~80% pareciam "ambíguos" só porque a query de backfill não estava restrita a
+  `codigo_cliente=1`, que é o filtro real usado pra popular a tabela). As **324 linhas
+  remanescentes** (ambíguas — múltiplas combinações possíveis) e **6 sem nenhum match** ficaram com
+  `serie`/`data` `NULL` — não é resolvível via query (mesma natureza dos "7 pares residuais"
+  documentados na seção "Constraint importante" abaixo, só que em maior número aqui porque cobre
+  todo o histórico da tabela, não só documentos vistos na Tela Caixa). Linhas com `serie`/`data`
+  `NULL` continuam com o comportamento antigo (menos preciso) nas queries que dependem delas — ver
+  comentário em `tracks_clientes` (`v.serie IS NULL OR v.serie = mm.serie`).
+
+  Migration rodada ad-hoc (não commitada, via `psycopg2` direto contra o banco compartilhado) —
+  não há arquivo de migration versionado neste projeto.
 - `faciais.stores.cnpj` → CNPJ da loja como `int8` (sem zeros à esquerda).
 - `faciais.detection_records.store_id` → loja onde a detecção ocorreu (coluna adicionada).
 
@@ -256,7 +286,7 @@ diferentes (nomes de produto diferentes por portal para o mesmo código).
 |---|---|---|
 | `/tracks/caixa` ou `/m/tracks/caixa` | GET | Página principal; params: `store_id`, `data` (YYYY-MM-DD) |
 | `/tracks/caixa/nf/<documento>/pessoa` ou `/m/...` | POST | Confirma comprador; body: `{person_id, cnpj_emp, serie, force?}` |
-| `/tracks/caixa/nf/<documento>/pessoa` ou `/m/...` | DELETE | Remove comprador confirmado; query param: `cnpj_emp` |
+| `/tracks/caixa/nf/<documento>/pessoa` ou `/m/...` | DELETE | Remove comprador confirmado; query params: `cnpj_emp`, `serie` |
 | `/tracks/caixa/pessoa/<person_id>` | GET | Dados da pessoa |
 | `/tracks/caixa/nf/<documento>` | GET | Itens da NF em JSON; query params: `cnpj_emp`, `serie` |
 | `/tracks/api/empresas` | GET | Empresas + cor de tema (ver seção "Tema por empresa") |
@@ -291,8 +321,11 @@ Ordem de chegada dos clientes do dia atual, com dados cadastrais, histórico de 
    compra. Uma única consulta direto em `microvix.microvix_movimento` — **não** via
    `faciais.mv_microvix_vendas` (a materialized view usada em `vw_customer_ranking`), porque essa
    view não expõe `serie` no `SELECT`/`GROUP BY`, e é a série que efetivamente identifica a NF (ver
-   abaixo). Casa cada `person_purchases` confirmado (person_id, bill, cnpj) contra
-   `microvix_movimento` por `(cnpj_emp, documento)` + `LEFT JOIN microvix.microvix_clientes_fornecedores`
+   abaixo). Casa cada `person_purchases` confirmado (person_id, bill, serie, cnpj) contra
+   `microvix_movimento` por `(cnpj_emp, documento)` — restrito também por `serie` quando
+   `person_purchases.serie` é conhecida (`v.serie IS NULL OR v.serie = mm.serie`; bills antigas sem
+   backfill de série caem no comportamento antigo, menos preciso — ver "Tabelas envolvidas" na Tela
+   Caixa) + `LEFT JOIN microvix.microvix_clientes_fornecedores`
    (`cf.portal = mm.portal AND cf.cod_cliente = mm.codigo_cliente`, filtro `cf.tipo_cliente IS NULL
    OR cf.tipo_cliente = 'F'`) — mesmo critério de venda válida PF que `mv_microvix_vendas` usa (ver
    seção "Definição de pessoa física" abaixo). Valor, contagem de notas e produtos/quantidades vêm
@@ -526,6 +559,7 @@ mesmo motivo do modal) que:
 - `tracks.py:576` (`tracks_permanencia`) — permanência estimada em 30 min quando há só 1 registro ou diferença < 2 min (linha pode se mover; buscar por `estimado = True`).
 - `tracks_resumo` — threshold `0.73` hardcoded em vez de usar `SCORE_MINIMO`.
 - Dado (não bug de código): portal `18922` (loja POA/IGOR) sem nenhuma `data_baixa` nova em `microvix_faturas` desde 2025-11-23, confirmado na origem (API). Portal `19926` (Itapema) nunca recebe baixa pra faturas `receber_pagar='R'`, só `'P'`. Ver seção "LinxFaturas — duas consultas" para detalhes.
+- **Risco cross-projeto não verificado (2026-09-07):** a constraint `uq_store_bill UNIQUE (store_id, bill)` de `faciais.person_purchases` foi trocada por `uq_store_bill_serie_data UNIQUE (store_id, bill, serie, data)` (ver "Tabelas envolvidas" na Tela Caixa). O fluxo `manual_purchase_links` do `retail_analytics` "grava/corrige `faciais.person_purchases` diretamente" ao confirmar um vínculo manual — se esse código fizer `INSERT ... ON CONFLICT (store_id, bill)` explícito (não verificado nesta sessão, sem acesso ao repo do `retail_analytics`), essa gravação passa a falhar (`there is no unique or exclusion constraint matching the ON CONFLICT specification`) até ser ajustado lá também.
 
 ---
 

@@ -587,7 +587,7 @@ def tracks_clientes():
             if ids_recorrentes:
                 ph2 = ",".join(["%s"] * len(ids_recorrentes))
                 cursor.execute(f"""
-                    SELECT pp.person_id, pp.bill, s.cnpj::varchar AS cnpj_emp
+                    SELECT pp.person_id, pp.bill, pp.serie, s.cnpj::varchar AS cnpj_emp
                     FROM person_purchases pp
                     JOIN stores s ON s.store_id = pp.store_id
                     WHERE pp.person_id IN ({ph2}) AND pp.is_cancelled = false
@@ -603,27 +603,31 @@ def tracks_clientes():
     # microvix_movimento (não via mv_microvix_vendas, que perde a granularidade de série).
     # documento NÃO é uma chave confiável nem com cnpj_emp: cada série do Microvix tem sua própria
     # numeração sequencial e elas se sobrepõem constantemente — é a série, não a data, a causa raiz
-    # do reaproveitamento de número. A chave de correspondência aqui é (cnpj_emp, documento)
-    # + restringir a venda classificada como PF via microvix_clientes_fornecedores.tipo_cliente
-    # (IS NULL OR ='F'), replicando o mesmo critério de mv_microvix_vendas (2026-09 — tipo_cliente
-    # substituiu store_serie_rules/série, tabela descontinuada). Valor e itens vêm do mesmo conjunto
-    # de linhas — não tem como ficar inconsistente entre si como no bug original.
+    # do reaproveitamento de número. A chave de correspondência aqui é (cnpj_emp, documento, serie)
+    # — pp.serie (2026-09, ver "Adiciona série/data a person_purchases" no CLAUDE.md) restringe a
+    # NF exata quando conhecida; bills antigas sem serie (residual não resolvido no backfill) caem
+    # no comportamento antigo (todas as séries daquele documento). Também restringe a venda
+    # classificada como PF via microvix_clientes_fornecedores.tipo_cliente (IS NULL OR ='F'),
+    # replicando o mesmo critério de mv_microvix_vendas (2026-09 — tipo_cliente substituiu
+    # store_serie_rules/série, tabela descontinuada). Valor e itens vêm do mesmo conjunto de
+    # linhas — não tem como ficar inconsistente entre si como no bug original.
     if bills:
         pg_conn = None
         try:
             pg_conn = get_pg_conn()
             pg_cur = pg_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            values_clause = ",".join(["(%s::integer,%s::varchar,%s::integer)"] * len(bills))
+            values_clause = ",".join(["(%s::integer,%s::varchar,%s::integer,%s::varchar)"] * len(bills))
             params_b = []
             for b in bills:
-                params_b += [b["person_id"], (b["cnpj_emp"] or "").zfill(14), b["bill"]]
+                params_b += [b["person_id"], (b["cnpj_emp"] or "").zfill(14), b["bill"], b["serie"]]
             pg_cur.execute(f"""
                 SELECT v.person_id, mm.documento, mm.data_documento::date AS dia,
                        COALESCE(mp.nome, 'Produto ' || mm.cod_produto) AS produto,
                        mm.quantidade, mm.valor_total
                 FROM microvix_movimento mm
-                JOIN (VALUES {values_clause}) AS v(person_id, cnpj_emp, documento)
+                JOIN (VALUES {values_clause}) AS v(person_id, cnpj_emp, documento, serie)
                   ON v.cnpj_emp = mm.cnpj_emp AND v.documento = mm.documento
+                 AND (v.serie IS NULL OR v.serie = mm.serie)
                 LEFT JOIN microvix_clientes_fornecedores cf
                   ON cf.portal = mm.portal AND cf.cod_cliente = mm.codigo_cliente
                 LEFT JOIN microvix_produtos mp ON mp.portal = mm.portal AND mp.cod_produto = mm.cod_produto
@@ -1701,6 +1705,7 @@ def tracks_caixa():
                     cursor.execute("""
                         SELECT
                             pp.bill,
+                            pp.serie,
                             pp.store_id,
                             p.person_id   AS id_unico,
                             p.full_name   AS nome,
@@ -1718,10 +1723,13 @@ def tracks_caixa():
                             ORDER BY created_at DESC
                             LIMIT 1
                         ) r ON TRUE
-                        WHERE pp.bill = ANY(%s)
+                        WHERE pp.store_id = %s
+                          AND pp.bill = ANY(%s)
                           AND pp.person_id IS NOT NULL
-                    """, (docs,))
-                    confirmados = {row["bill"]: dict(row) for row in cursor.fetchall()}
+                    """, (store_id_param, docs))
+                    # Chave (bill, serie): documento sozinho não identifica a NF (mesmo número se
+                    # repete entre séries da mesma loja) — ver "Constraint importante" no CLAUDE.md.
+                    confirmados = {(row["bill"], row["serie"]): dict(row) for row in cursor.fetchall()}
                     for v in confirmados.values():
                         v["foto"] = HEIMDALL_IMAGE_BASE + v["image_path"] if v["image_path"] else None
 
@@ -1753,7 +1761,7 @@ def tracks_caixa():
                             reg["foto"] = HEIMDALL_IMAGE_BASE + reg["image_path"] if reg["image_path"] else None
 
                         for nota in notas:
-                            nota["pessoa_confirmada"] = confirmados.get(nota["documento"])
+                            nota["pessoa_confirmada"] = confirmados.get((nota["documento"], nota["serie"]))
                             if nota["nf_dt"] is None:
                                 continue
                             janela_ini = nota["nf_dt"] - timedelta(minutes=10)
@@ -1766,7 +1774,7 @@ def tracks_caixa():
                                         nota["candidatos"].append(reg)
                     else:
                         for nota in notas:
-                            nota["pessoa_confirmada"] = confirmados.get(nota["documento"])
+                            nota["pessoa_confirmada"] = confirmados.get((nota["documento"], nota["serie"]))
 
                     cursor.close()
                     conn.rollback()
@@ -1813,6 +1821,7 @@ def tracks_caixa_set_pessoa(documento):
             "cancelado = 'N'",
             "excluido = 'N'",
             "(tipo_transacao <> 'J' OR tipo_transacao IS NULL)",
+            "codigo_cliente = 1",
         ]
         params = [documento]
         if cnpj_emp_body:
@@ -1825,7 +1834,9 @@ def tracks_caixa_set_pessoa(documento):
         pg_cur.execute(f"""
             SELECT
                 cnpj_emp,
-                (data_lancamento::date + hora_lancamento::time) AS nf_dt
+                (data_lancamento::date + hora_lancamento::time) AS nf_dt,
+                serie,
+                data_documento::date AS data_doc
             FROM microvix_movimento
             WHERE {where}
             LIMIT 1
@@ -1844,6 +1855,8 @@ def tracks_caixa_set_pessoa(documento):
 
     cnpj_emp = (nf_row[0] or "").strip()
     nf_dt    = nf_row[1]
+    nf_serie = nf_row[2]
+    nf_data  = nf_row[3]
     store_id = CNPJ_STORE_MAP.get(_cnpj_key(cnpj_emp))
 
     # 2. Valida detecção da pessoa nas câmeras da loja via JOIN no banco
@@ -1888,10 +1901,10 @@ def tracks_caixa_set_pessoa(documento):
         try:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute("""
-                INSERT INTO person_purchases (store_id, bill, person_id)
-                VALUES (%s, %s, %s)
-                ON CONFLICT (store_id, bill) DO UPDATE SET person_id = EXCLUDED.person_id
-            """, (store_id or 1, documento, person_id))
+                INSERT INTO person_purchases (store_id, bill, serie, data, person_id)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (store_id, bill, serie, data) DO UPDATE SET person_id = EXCLUDED.person_id
+            """, (store_id or 1, documento, nf_serie, nf_data, person_id))
             cur.execute("""
                 SELECT
                     p.person_id   AS id_unico,
@@ -1934,7 +1947,10 @@ def tracks_caixa_del_pessoa(documento):
     # cnpj_emp enviado pelo front (nf.cnpj_emp, já conhecido pela tela) — evita resolver o
     # store_id por uma busca "documento sozinho" em microvix_movimento, que pode achar a loja
     # errada quando o mesmo número de documento existe em CNPJs distintos.
+    # serie também enviada pelo front (nf.serie) — mesmo motivo: documento se repete entre séries
+    # da mesma loja (ver "Constraint importante" no CLAUDE.md).
     cnpj_emp_param = (request.args.get("cnpj_emp") or "").strip()
+    serie_param    = (request.args.get("serie") or "").strip()
     store_id = None
     if cnpj_emp_param:
         store_id = CNPJ_STORE_MAP.get(_cnpj_key(cnpj_emp_param))
@@ -1961,7 +1977,13 @@ def tracks_caixa_del_pessoa(documento):
         conn = get_faciais_conn()
         try:
             cur = conn.cursor()
-            if store_id is not None:
+            if store_id is not None and serie_param:
+                cur.execute("""
+                    UPDATE person_purchases SET person_id = NULL
+                    WHERE store_id = %s AND bill = %s AND serie = %s
+                """, (store_id, documento, serie_param))
+            elif store_id is not None:
+                # Fallback: sem serie no request (chamada antiga), filtra só por store_id+bill
                 cur.execute("""
                     UPDATE person_purchases SET person_id = NULL
                     WHERE store_id = %s AND bill = %s

@@ -311,7 +311,7 @@
                 <span class="conf-id">ID {{ p.id_unico }}</span>
                 <span class="conf-nome">{{ p.nome or '—' }}</span>
               </div>
-              <button class="btn-remover" onclick="removerPessoa('{{ nf.documento }}', '{{ nf.cnpj_emp }}')">Remover</button>
+              <button class="btn-remover" onclick="removerPessoa('{{ nf.documento }}', '{{ nf.cnpj_emp }}', '{{ nf.serie }}')">Remover</button>
             </div>
           {% else %}
             <span class="nenhum">Nenhum comprador confirmado.</span>
@@ -433,16 +433,16 @@
         alert('Erro: ' + (data.error || r.status));
         return;
       }
-      atualizarConfirmado(doc, data, cnpjEmp);
+      atualizarConfirmado(doc, data, cnpjEmp, serie);
       limparPreview(doc);
     } catch (e) {
       alert('Erro de comunicação.');
     }
   }
 
-  async function removerPessoa(doc, cnpjEmp) {
+  async function removerPessoa(doc, cnpjEmp, serie) {
     try {
-      const params = new URLSearchParams({ cnpj_emp: cnpjEmp || '' });
+      const params = new URLSearchParams({ cnpj_emp: cnpjEmp || '', serie: serie || '' });
       const r = await fetch(`/camera300/tracks/caixa/nf/${encodeURIComponent(doc)}/pessoa?${params.toString()}`, {
         method: 'DELETE',
       });
@@ -486,7 +486,7 @@
     }
   }
 
-  function atualizarConfirmado(doc, pessoa, cnpjEmp) {
+  function atualizarConfirmado(doc, pessoa, cnpjEmp, serie) {
     const el = document.getElementById('confirmado-' + doc);
     if (!el) return;
     if (!pessoa) {
@@ -503,7 +503,7 @@
           <span class="conf-id">ID ${pessoa.id_unico}</span>
           <span class="conf-nome">${pessoa.nome || '—'}</span>
         </div>
-        <button class="btn-remover" onclick="removerPessoa('${doc}', '${cnpjEmp || ''}')">Remover</button>
+        <button class="btn-remover" onclick="removerPessoa('${doc}', '${cnpjEmp || ''}', '${serie || ''}')">Remover</button>
       </div>`;
   }
 

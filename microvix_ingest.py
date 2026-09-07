@@ -805,7 +805,7 @@ def _sincronizar_person_purchases(pg_conn, portal: dict) -> int:
     """Insere notas anônimas em faciais.person_purchases para o portal dado."""
     cur = pg_conn.cursor("sync_pp_cursor")  # cursor servidor — não carrega tudo na RAM
     cur.execute("""
-        SELECT DISTINCT documento
+        SELECT DISTINCT documento, serie, data_documento::date
         FROM microvix_movimento
         WHERE cnpj_emp                = %s
           AND cod_natureza_operacao   = '10030'
@@ -825,9 +825,9 @@ def _sincronizar_person_purchases(pg_conn, portal: dict) -> int:
                 break
             psycopg2.extras.execute_batch(
                 fc,
-                "INSERT INTO person_purchases (store_id, bill) VALUES (%s, %s)"
-                " ON CONFLICT (store_id, bill) DO NOTHING",
-                [(portal["store_id"], row[0]) for row in batch],
+                "INSERT INTO person_purchases (store_id, bill, serie, data) VALUES (%s, %s, %s, %s)"
+                " ON CONFLICT (store_id, bill, serie, data) DO NOTHING",
+                [(portal["store_id"], row[0], row[1], row[2]) for row in batch],
                 page_size=500,
             )
             faciais_conn.commit()

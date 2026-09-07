@@ -590,7 +590,7 @@
                   </div>
                   <div class="confirmado-acoes">
                     <button class="btn-acao danger"
-                            onclick="removerPessoa('{{ nf.documento }}', '{{ nf.cnpj_emp }}')">Remover</button>
+                            onclick="removerPessoa('{{ nf.documento }}', '{{ nf.cnpj_emp }}', '{{ nf.serie }}')">Remover</button>
                   </div>
                 </div>
               {% else %}
@@ -719,16 +719,16 @@
         alert('Erro: ' + (data.error || r.status));
         return;
       }
-      atualizarConfirmado(doc, data, cnpjEmp);
+      atualizarConfirmado(doc, data, cnpjEmp, serie);
       limparPreview(doc);
     } catch (e) {
       alert('Erro de comunicação.');
     }
   }
 
-  async function removerPessoa(doc, cnpjEmp) {
+  async function removerPessoa(doc, cnpjEmp, serie) {
     try {
-      const params = new URLSearchParams({ cnpj_emp: cnpjEmp || '' });
+      const params = new URLSearchParams({ cnpj_emp: cnpjEmp || '', serie: serie || '' });
       const r = await fetch(`/camera300/tracks/caixa/nf/${encodeURIComponent(doc)}/pessoa?${params.toString()}`, {
         method: 'DELETE',
       });
@@ -776,7 +776,7 @@
     }
   }
 
-  function atualizarConfirmado(doc, pessoa, cnpjEmp) {
+  function atualizarConfirmado(doc, pessoa, cnpjEmp, serie) {
     const el = document.getElementById('confirmado-' + doc);
     if (!el) return;
     if (!pessoa) {
@@ -801,7 +801,7 @@
           ${chips ? `<div class="cli-meta">${chips}</div>` : ''}
         </div>
         <div class="confirmado-acoes">
-          <button class="btn-acao danger" onclick="removerPessoa('${doc}', '${cnpjEmp || ''}')">Remover</button>
+          <button class="btn-acao danger" onclick="removerPessoa('${doc}', '${cnpjEmp || ''}', '${serie || ''}')">Remover</button>
         </div>
       </div>`;
   }
