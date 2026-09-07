@@ -612,3 +612,33 @@ de reconhecimento facial, não só a tela Caixa), então o mesmo retry foi aplic
 **Remediação imediata (antes do fix):** `systemctl restart camera300` — recarrega o mapa do zero,
 já que a condição de disputa de conexões é transitória (passado o boot simultâneo, a mesma query
 funciona normalmente).
+
+---
+
+## Correção: NF com múltiplos itens aparecendo duplicada na Tela Caixa (2026-09-07)
+
+**Sintoma:** uma mesma NF (ex.: NF #18835) aparecia como **vários cards separados** na listagem da
+Tela Caixa, cada um com parte dos itens da nota — e, ao confirmar um comprador em um dos cards, o
+mesmo comprador aparecia "confirmado" em todos os outros cards da mesma NF, dando impressão de bug
+("está repetindo após alocação").
+
+**Causa:** a query de listagem (`tracks_caixa`, `SELECT ... FROM microvix_movimento`) agrupava por
+`GROUP BY documento, data_lancamento::date, hora_lancamento, cnpj_emp, serie` — incluindo
+`hora_lancamento` (granularidade de minuto) na chave de agrupamento. Uma NF com itens lançados em
+minutos diferentes (ex.: NF #18835, 5 itens entre 13:43 e 13:48, valor total R$ 128,00) virava 4
+grupos distintos em vez de 1 — cada grupo mostrando só a soma/contagem dos itens daquele minuto
+específico. O comprador "repetindo" era na verdade o comportamento *correto* da correção de `serie`
+feita antes (ver seção "Tela Caixa" — "Tabelas envolvidas"): como os 4 cards eram, na real, a mesma
+NF (mesmo `documento`+`serie`+`cnpj_emp`), o match por `(bill, serie)` os identificava corretamente
+como a mesma nota — só que a tela ainda os exibia como 4 notas diferentes.
+
+**Fix em `tracks.py` (`tracks_caixa`, rota GET):** removido `hora_lancamento` do `GROUP BY` —
+agrupa só por `documento, data_lancamento::date, cnpj_emp, serie` (a chave real da NF). `hora`/`nf_dt`
+passaram a usar `MIN(hora_lancamento)` (horário do primeiro item lançado) em vez do valor cru da
+linha, preservando a janela de detecção (±10 min) a partir do início da compra. `itens`/`valor`
+agora somam corretamente todos os itens da NF, não só os de um minuto específico.
+
+Mesma inconsistência existia em `tracks_caixa_set_pessoa` (POST de confirmação): a busca da NF fazia
+`SELECT ... LIMIT 1` sem `ORDER BY`, pegando uma linha arbitrária entre os itens da NF (com
+`hora_lancamento` de qualquer um deles). Corrigido com `ORDER BY hora_lancamento ASC LIMIT 1` —
+mesmo critério (horário do primeiro item) usado agora na listagem.

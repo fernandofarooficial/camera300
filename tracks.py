@@ -1653,11 +1653,11 @@ def tracks_caixa():
                 pg_cur.execute("""
                     SELECT
                         documento,
-                        COUNT(*)                                        AS itens,
-                        ROUND(SUM(valor_total)::numeric, 2)             AS valor,
-                        data_lancamento::date                           AS data,
-                        hora_lancamento                                 AS hora,
-                        (data_lancamento::date + hora_lancamento::time) AS nf_dt,
+                        COUNT(*)                                            AS itens,
+                        ROUND(SUM(valor_total)::numeric, 2)                 AS valor,
+                        data_lancamento::date                               AS data,
+                        MIN(hora_lancamento)                                AS hora,
+                        (data_lancamento::date + MIN(hora_lancamento)::time) AS nf_dt,
                         cnpj_emp,
                         serie
                     FROM microvix_movimento
@@ -1668,8 +1668,8 @@ def tracks_caixa():
                       AND codigo_cliente = 1
                       AND cnpj_emp = %s
                       AND data_lancamento::date = %s
-                    GROUP BY documento, data_lancamento::date, hora_lancamento, cnpj_emp, serie
-                    ORDER BY hora_lancamento DESC
+                    GROUP BY documento, data_lancamento::date, cnpj_emp, serie
+                    ORDER BY MIN(hora_lancamento) DESC
                 """, (cnpj_sel_padded, data_param))
                 for row in pg_cur.fetchall():
                     cnpj_emp = (row[6] or "").strip()
@@ -1831,6 +1831,9 @@ def tracks_caixa_set_pessoa(documento):
             conditions.append("serie = %s")
             params.append(serie_body)
         where = " AND ".join(conditions)
+        # ORDER BY hora_lancamento ASC: uma NF pode ter vários itens lançados em minutos
+        # diferentes (ex.: NF #18835, 5 itens entre 13:43 e 13:48) — pega o horário do primeiro
+        # item, consistente com o MIN(hora_lancamento) usado na listagem (tracks_caixa).
         pg_cur.execute(f"""
             SELECT
                 cnpj_emp,
@@ -1839,6 +1842,7 @@ def tracks_caixa_set_pessoa(documento):
                 data_documento::date AS data_doc
             FROM microvix_movimento
             WHERE {where}
+            ORDER BY hora_lancamento ASC
             LIMIT 1
         """, params)
         nf_row = pg_cur.fetchone()
