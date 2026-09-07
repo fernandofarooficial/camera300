@@ -244,23 +244,32 @@ serie`), mesmo motivo do `POST`. Sem `serie` no request (chamada antiga/cache de
 no fallback por `store_id + bill` apenas.
 
 ### Tabelas envolvidas
-- `faciais.person_purchases` → `(person_purchase_id, person_id, store_id, bill, serie, data,
-  is_cancelled, is_identified)`. PK única por `(store_id, bill, serie, data)` desde 2026-09-07
-  (colunas `serie varchar(10)` e `data date` adicionadas; constraint antiga `uq_store_bill
-  UNIQUE (store_id, bill)` trocada por `uq_store_bill_serie_data UNIQUE (store_id, bill, serie,
-  data)`). `data` = `data_documento::date` da NF (mesmo campo usado por `mv_microvix_vendas`/Tela
-  Clientes; **não** `data_lancamento`, usado na listagem/janela de detecção da Tela Caixa — os dois
-  campos não são garantidamente iguais).
+- `faciais.person_purchases` → `(person_purchase_id, person_id, store_id, bill, serie,
+  is_cancelled, is_identified)`. PK única por `(store_id, bill, serie)` desde 2026-09-07 (coluna
+  `serie varchar(10)` adicionada; constraint antiga `uq_store_bill UNIQUE (store_id, bill)` trocada
+  por `uq_store_bill_serie UNIQUE (store_id, bill, serie)`).
 
-  Antes, a PK era só `(store_id, bill)` — **sem série nem data** — e confirmar um comprador era
+  Antes, a PK era só `(store_id, bill)` — **sem série** — e confirmar um comprador era
   inerentemente "por número de documento", não "por NF específica": se duas NFs diferentes da mesma
   loja compartilhassem o número (ver constraint acima) e ambas fossem confirmadas em momentos
   diferentes na Tela Caixa, a segunda confirmação sobrescrevia a primeira silenciosamente
-  (`ON CONFLICT (store_id, bill) DO UPDATE`). Corrigido adicionando `serie`/`data` à constraint;
-  todo INSERT/UPDATE/lookup em `person_purchases` no projeto (`tracks.py`, `microvix_ingest.py`)
-  passou a incluir `serie` (e, no INSERT de confirmação, `data`) — ver `tracks_caixa_set_pessoa`,
-  `tracks_caixa_del_pessoa`, o `confirmados` da listagem (`tracks_caixa`), o `bills`/join em
-  `tracks_clientes` e `_sincronizar_person_purchases` (`microvix_ingest.py`).
+  (`ON CONFLICT (store_id, bill) DO UPDATE`). Corrigido adicionando `serie` à constraint; todo
+  INSERT/UPDATE/lookup em `person_purchases` no projeto (`tracks.py`, `microvix_ingest.py`) passou
+  a incluir `serie` — ver `tracks_caixa_set_pessoa`, `tracks_caixa_del_pessoa`, o `confirmados` da
+  listagem (`tracks_caixa`), o `bills`/join em `tracks_clientes` e `_sincronizar_person_purchases`
+  (`microvix_ingest.py`).
+
+  **Coluna `data` (existiu só algumas horas, 2026-09-07):** a correção original também adicionou
+  uma coluna `data date` (`data_documento::date` da NF) e a incluiu na constraint
+  (`uq_store_bill_serie_data UNIQUE (store_id, bill, serie, data)`), pra resolver os raríssimos
+  casos em que `(store_id, bill, serie)` sozinho ainda seria ambíguo (mesma natureza dos "7 pares
+  residuais" documentados na seção "Constraint importante" abaixo). **Removida no mesmo dia**: medição
+  direta no banco mostrou **zero** grupos duplicados em `(store_id, bill, serie)` nos dados
+  existentes — a constraint só com `serie` já é suficiente na prática, e o ganho de `data` não
+  compensava a complexidade extra. Único efeito colateral: `faciais.vw_customer_ranking`
+  (`retail_analytics`) tinha acabado de ser conectada em `pp.data` nesse meio-tempo — foi ajustada de
+  volta (`CREATE OR REPLACE VIEW`, sem `pp.data`) antes da coluna ser removida, sem quebra. Ver
+  `doc_faciais.sql`/`README.md` em `db-docs/lojas` pro histórico completo dessa idas-e-vindas.
 
   **Backfill dos dados existentes (migration única, 2026-09-07):** das 17.746 linhas existentes,
   17.416 (98,1%) foram preenchidas retroativamente casando `(store_id, bill)` contra
@@ -270,11 +279,11 @@ no fallback por `store_id + bill` apenas.
   isso, ~80% pareciam "ambíguos" só porque a query de backfill não estava restrita a
   `codigo_cliente=1`, que é o filtro real usado pra popular a tabela). As **324 linhas
   remanescentes** (ambíguas — múltiplas combinações possíveis) e **6 sem nenhum match** ficaram com
-  `serie`/`data` `NULL` — não é resolvível via query (mesma natureza dos "7 pares residuais"
-  documentados na seção "Constraint importante" abaixo, só que em maior número aqui porque cobre
-  todo o histórico da tabela, não só documentos vistos na Tela Caixa). Linhas com `serie`/`data`
-  `NULL` continuam com o comportamento antigo (menos preciso) nas queries que dependem delas — ver
-  comentário em `tracks_clientes` (`v.serie IS NULL OR v.serie = mm.serie`).
+  `serie` `NULL` — não é resolvível via query (mesma natureza dos "7 pares residuais" documentados
+  na seção "Constraint importante" abaixo, só que em maior número aqui porque cobre todo o
+  histórico da tabela, não só documentos vistos na Tela Caixa). Linhas com `serie` `NULL` continuam
+  com o comportamento antigo (menos preciso) nas queries que dependem dela — ver comentário em
+  `tracks_clientes` (`v.serie IS NULL OR v.serie = mm.serie`).
 
   Migration rodada ad-hoc (não commitada, via `psycopg2` direto contra o banco compartilhado) —
   não há arquivo de migration versionado neste projeto.
@@ -559,7 +568,7 @@ mesmo motivo do modal) que:
 - `tracks.py:576` (`tracks_permanencia`) — permanência estimada em 30 min quando há só 1 registro ou diferença < 2 min (linha pode se mover; buscar por `estimado = True`).
 - `tracks_resumo` — threshold `0.73` hardcoded em vez de usar `SCORE_MINIMO`.
 - Dado (não bug de código): portal `18922` (loja POA/IGOR) sem nenhuma `data_baixa` nova em `microvix_faturas` desde 2025-11-23, confirmado na origem (API). Portal `19926` (Itapema) nunca recebe baixa pra faturas `receber_pagar='R'`, só `'P'`. Ver seção "LinxFaturas — duas consultas" para detalhes.
-- **Risco cross-projeto não verificado (2026-09-07):** a constraint `uq_store_bill UNIQUE (store_id, bill)` de `faciais.person_purchases` foi trocada por `uq_store_bill_serie_data UNIQUE (store_id, bill, serie, data)` (ver "Tabelas envolvidas" na Tela Caixa). O fluxo `manual_purchase_links` do `retail_analytics` "grava/corrige `faciais.person_purchases` diretamente" ao confirmar um vínculo manual — se esse código fizer `INSERT ... ON CONFLICT (store_id, bill)` explícito (não verificado nesta sessão, sem acesso ao repo do `retail_analytics`), essa gravação passa a falhar (`there is no unique or exclusion constraint matching the ON CONFLICT specification`) até ser ajustado lá também.
+- **Risco cross-projeto não verificado (2026-09-07):** a constraint `uq_store_bill UNIQUE (store_id, bill)` de `faciais.person_purchases` foi trocada por `uq_store_bill_serie UNIQUE (store_id, bill, serie)` (ver "Tabelas envolvidas" na Tela Caixa; a tabela passou brevemente por uma versão intermediária com `serie`+`data`, mas `data` foi removida no mesmo dia). O fluxo `manual_purchase_links` do `retail_analytics` "grava/corrige `faciais.person_purchases` diretamente" ao confirmar um vínculo manual — se esse código fizer `INSERT ... ON CONFLICT (store_id, bill)` explícito (não verificado nesta sessão, sem acesso ao repo do `retail_analytics`), essa gravação passa a falhar (`there is no unique or exclusion constraint matching the ON CONFLICT specification`) até ser ajustado lá também.
 
 ---
 

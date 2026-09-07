@@ -1838,8 +1838,7 @@ def tracks_caixa_set_pessoa(documento):
             SELECT
                 cnpj_emp,
                 (data_lancamento::date + hora_lancamento::time) AS nf_dt,
-                serie,
-                data_documento::date AS data_doc
+                serie
             FROM microvix_movimento
             WHERE {where}
             ORDER BY hora_lancamento ASC
@@ -1860,7 +1859,6 @@ def tracks_caixa_set_pessoa(documento):
     cnpj_emp = (nf_row[0] or "").strip()
     nf_dt    = nf_row[1]
     nf_serie = nf_row[2]
-    nf_data  = nf_row[3]
     store_id = CNPJ_STORE_MAP.get(_cnpj_key(cnpj_emp))
 
     # 2. Valida detecção da pessoa nas câmeras da loja via JOIN no banco
@@ -1905,10 +1903,10 @@ def tracks_caixa_set_pessoa(documento):
         try:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute("""
-                INSERT INTO person_purchases (store_id, bill, serie, data, person_id)
-                VALUES (%s, %s, %s, %s, %s)
-                ON CONFLICT (store_id, bill, serie, data) DO UPDATE SET person_id = EXCLUDED.person_id
-            """, (store_id or 1, documento, nf_serie, nf_data, person_id))
+                INSERT INTO person_purchases (store_id, bill, serie, person_id)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (store_id, bill, serie) DO UPDATE SET person_id = EXCLUDED.person_id
+            """, (store_id or 1, documento, nf_serie, person_id))
             cur.execute("""
                 SELECT
                     p.person_id   AS id_unico,
