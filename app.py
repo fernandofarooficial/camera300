@@ -9,7 +9,7 @@ from flask import Flask, jsonify, render_template, request, Response
 
 from tracks import tracks_bp, query_heimdall, HEIMDALL_IMAGE_BASE, get_best_face, CAMERA_STORE_MAP
 import psycopg2.extras
-from db import adequar_bases, admin_people
+from db import adequar_bases, admin_people, limpar_registros_nao_clientes
 from config import get_faciais_conn, release_faciais_conn, SCORE_MINIMO
 import tracer
 
@@ -437,6 +437,41 @@ def run_adequar_bases():
 @app.route('/api/adequar_bases/status')
 def adequar_bases_status():
     return jsonify({'rodando': _adequar_rodando})
+
+
+_limpeza_rodando = False
+_limpeza_resultado = None  # último resultado: {excluidos, pessoas} ou {erro}
+_limpeza_lock = threading.Lock()
+
+
+@app.route('/api/limpeza', methods=['POST'])
+def run_limpeza():
+    global _limpeza_rodando, _limpeza_resultado
+    with _limpeza_lock:
+        if _limpeza_rodando:
+            return jsonify({'success': False, 'message': 'Já em execução'}), 409
+        _limpeza_rodando = True
+        _limpeza_resultado = None
+
+    def _run():
+        global _limpeza_rodando, _limpeza_resultado
+        try:
+            excluidos, pessoas = limpar_registros_nao_clientes()
+            _limpeza_resultado = {'excluidos': excluidos, 'pessoas': pessoas}
+            tracer.trace("SISTEMA", f"limpeza: {excluidos} registro(s) excluído(s) de {pessoas} pessoa(s)")
+        except Exception as e:
+            _limpeza_resultado = {'erro': str(e)}
+            tracer.trace("SISTEMA", f"limpeza: ERRO inesperado → {e}")
+        finally:
+            _limpeza_rodando = False
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({'success': True})
+
+
+@app.route('/api/limpeza/status')
+def limpeza_status():
+    return jsonify({'rodando': _limpeza_rodando, 'resultado': _limpeza_resultado})
 
 
 if __name__ == '__main__':

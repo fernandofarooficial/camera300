@@ -39,6 +39,32 @@
     }
     .nav a:hover { background: #7c86ff22; }
 
+    .btn-limpeza {
+      background: none;
+      color: #f87171;
+      font-family: inherit;
+      font-size: 0.82rem;
+      border: 1px solid #f8717144;
+      padding: 0.3rem 0.8rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-limpeza:hover:not(:disabled) { background: #f8717122; }
+    .btn-limpeza:disabled { opacity: 0.6; cursor: wait; }
+
+    #limpeza-msg {
+      display: none;
+      font-size: 0.82rem;
+      padding: 0.6rem 0.9rem;
+      border-radius: 8px;
+      border: 1px solid #2d3148;
+      background: #1a1d27;
+      color: #cbd5e1;
+    }
+    #limpeza-msg.active { display: block; }
+    #limpeza-msg.error  { border-color: #ef444466; color: #f87171; }
+
     main { max-width: 1200px; margin: 0 auto; padding: 1.5rem; display: flex; flex-direction: column; gap: 1.5rem; }
 
     .empty-state { text-align: center; padding: 4rem 2rem; color: #475569; }
@@ -171,12 +197,15 @@
 <header>
   <h1>Tracks &mdash; Dados das Câmeras</h1>
   <nav class="nav">
+    <button class="btn-limpeza" id="btn-limpeza" onclick="executarLimpeza()">Limpeza</button>
     <a href="/camera300/tracks/heatmap" id="btn-heatmap">Mapa de Calor</a>
     <a href="/camera300/">&#8592; Checkin</a>
   </nav>
 </header>
 
 <main>
+
+  <div id="limpeza-msg"></div>
 
   <!-- Viewer -->
   <div id="viewer">
@@ -335,6 +364,56 @@
     document.getElementById('snapshot-img').src = '';
     document.querySelectorAll('tbody tr.selected').forEach(r => r.classList.remove('selected'));
     setStatus('', 'Aguardando…');
+  }
+
+  // ---- Limpeza de registros (pessoas com tipo diferente de "C") ----
+  function setLimpezaMsg(msg, isError) {
+    const el = document.getElementById('limpeza-msg');
+    el.textContent = msg;
+    el.className = 'active' + (isError ? ' error' : '');
+  }
+
+  async function executarLimpeza() {
+    if (!confirm('Para todas as pessoas com tipo diferente de "C", manter apenas os 2 registros mais antigos, '
+               + 'os 8 mais recentes e o do reference_track_id. Os demais serão EXCLUÍDOS definitivamente. Continuar?')) return;
+
+    const btn = document.getElementById('btn-limpeza');
+    btn.disabled = true;
+    setLimpezaMsg('Limpeza em execução…', false);
+    try {
+      const resp = await fetch('/camera300/api/limpeza', { method: 'POST' });
+      const data = await resp.json();
+      if (!data.success) {
+        setLimpezaMsg(data.message || 'Não foi possível iniciar a limpeza.', true);
+        btn.disabled = false;
+        return;
+      }
+      acompanharLimpeza();
+    } catch (e) {
+      setLimpezaMsg('Erro ao iniciar a limpeza: ' + e, true);
+      btn.disabled = false;
+    }
+  }
+
+  async function acompanharLimpeza() {
+    const btn = document.getElementById('btn-limpeza');
+    try {
+      const resp = await fetch('/camera300/api/limpeza/status');
+      const data = await resp.json();
+      if (data.rodando) {
+        setTimeout(acompanharLimpeza, 2000);
+        return;
+      }
+      const r = data.resultado || {};
+      if (r.erro) {
+        setLimpezaMsg('Erro na limpeza: ' + r.erro, true);
+      } else {
+        setLimpezaMsg(`Limpeza concluída: ${r.excluidos ?? 0} registro(s) excluído(s) de ${r.pessoas ?? 0} pessoa(s).`, false);
+      }
+    } catch (e) {
+      setLimpezaMsg('Erro ao consultar o status da limpeza: ' + e, true);
+    }
+    btn.disabled = false;
   }
 </script>
 

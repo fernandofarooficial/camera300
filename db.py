@@ -27,6 +27,56 @@ def adequar_bases():
     # trace("SISTEMA", f"adequar_bases: concluído — {total} registro(s) tratado(s)")
 
 
+def limpar_registros_nao_clientes():
+    """Para pessoas com person_type_id diferente de 'C', mantém só 10 detection_records: os 2 mais
+    antigos e os 8 mais recentes. Se nenhum desses 10 for do reference_track_id da pessoa, mantém
+    também o registro desse track usado como foto (com imagem, maior detection_score).
+    Retorna (registros_excluidos, pessoas_afetadas)."""
+    conn = get_faciais_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """WITH ranked AS (
+                   SELECT dr.detection_record_id, dr.person_id,
+                          ROW_NUMBER() OVER (PARTITION BY dr.person_id
+                                             ORDER BY dr.created_at ASC, dr.detection_record_id ASC) AS rn_antigo,
+                          ROW_NUMBER() OVER (PARTITION BY dr.person_id
+                                             ORDER BY dr.created_at DESC, dr.detection_record_id DESC) AS rn_recente,
+                          COALESCE(dr.track_id = p.reference_track_id, FALSE) AS is_ref,
+                          ROW_NUMBER() OVER (PARTITION BY dr.person_id, COALESCE(dr.track_id = p.reference_track_id, FALSE)
+                                             ORDER BY (dr.image_path IS NOT NULL) DESC,
+                                                      dr.detection_score DESC NULLS LAST,
+                                                      dr.detection_record_id ASC) AS rn_ref
+                   FROM detection_records dr
+                   JOIN people p ON p.person_id = dr.person_id
+                   WHERE p.person_type_id IS DISTINCT FROM 'C'
+               ), marcados AS (
+                   SELECT *,
+                          (rn_antigo <= 2 OR rn_recente <= 8) AS nos_10,
+                          BOOL_OR(is_ref AND (rn_antigo <= 2 OR rn_recente <= 8))
+                              OVER (PARTITION BY person_id) AS ref_nos_10
+                   FROM ranked
+               ), excluidos AS (
+                   DELETE FROM detection_records dr
+                   USING marcados m
+                   WHERE dr.detection_record_id = m.detection_record_id
+                     AND NOT m.nos_10
+                     AND NOT (m.is_ref AND m.rn_ref = 1 AND NOT m.ref_nos_10)
+                   RETURNING dr.person_id
+               )
+               SELECT COUNT(*), COUNT(DISTINCT person_id) FROM excluidos"""
+        )
+        excluidos, pessoas = cursor.fetchone()
+        conn.commit()
+        cursor.close()
+        return excluidos, pessoas
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        release_faciais_conn(conn)
+
+
 def atualizar_path_camera(track_id, idreg):
     image_path, camera_id, face_det_score, face_recgn_score = get_best_face(track_id)
     if image_path is not None:
