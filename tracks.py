@@ -11,7 +11,7 @@ from flask import Blueprint, render_template, jsonify, request, Response, send_f
 from requests_toolbelt import MultipartEncoder
 from datetime import datetime, timedelta, date
 
-from config import get_faciais_conn, release_faciais_conn, get_pg_conn, release_pg_conn, HEIMDALL_URL, HEIMDALL_IMAGE_BASE, HEIMDALL_START_DATE, HEIMDALL_END_DATE, HEIMDALL_CONNECT_TIMEOUT, HEIMDALL_READ_TIMEOUT, ZIONS_API_URL, ZIONS_TOKEN
+from config import get_faciais_conn, release_faciais_conn, get_pg_conn, release_pg_conn, HEIMDALL_URL, HEIMDALL_IMAGE_BASE, HEIMDALL_START_DATE, HEIMDALL_END_DATE, HEIMDALL_CONNECT_TIMEOUT, HEIMDALL_READ_TIMEOUT, ZIONS_API_URL, ZIONS_TOKEN, hoje_local, agora_local
 from tracer import trace
 
 # Limita chamadas simultâneas ao Heimdall para evitar sobrecarga do servidor
@@ -550,7 +550,7 @@ def tracks_clientes():
     mesmo dia não alteram a chegada já registrada.
     """
     store_filter = request.args.get('store', 0, type=int)
-    hoje = date.today()
+    hoje = hoje_local()
 
     conn = get_faciais_conn()
     try:
@@ -1265,7 +1265,7 @@ def tracks_tabuleiro():
 @tracks_bp.route("/m/tracks/quadro")
 def tracks_quadro():
     from datetime import date, timedelta
-    today = date.today()
+    today = hoje_local()
     week_ago = today - timedelta(days=7)
 
     d_ini = request.args.get('d_ini', week_ago.isoformat())
@@ -1579,7 +1579,7 @@ def tracks_anomalias():
     try:
         dia = date.fromisoformat(request.args.get("data", "").strip())
     except ValueError:
-        dia = date.today()
+        dia = hoje_local()
     tipo = request.args.get("tipo", "").strip()
     cond_tipo = {"intruso": "r.is_intruder", "indesejada": "r.is_unwanted"}.get(tipo, "(r.is_intruder OR r.is_unwanted)")
     if tipo not in ("intruso", "indesejada"):
@@ -1663,7 +1663,7 @@ def tracks_heatmap():
     _, cameras = _carregar_cameras()
     resultado  = None
     erro       = None
-    hoje       = datetime.now()
+    hoje       = agora_local()
     data_ini_def  = hoje.strftime("%Y-%m-%dT09:00")
     data_fim_def  = hoje.strftime("%Y-%m-%dT18:00")
     camera_id_def = request.args.get("camera_id", "")
@@ -1770,7 +1770,7 @@ _FLAG_LABEL   = {"C": "Cliente",   "A": "Anônimo",  "F": "Franqueado", "E": "Em
 
 @tracks_bp.route("/tracks/export")
 def tracks_export():
-    today     = date.today()
+    today     = hoje_local()
     week_ago  = today - timedelta(days=7)
     data_ini  = request.args.get("data_ini", week_ago.isoformat())
     data_fim  = request.args.get("data_fim", today.isoformat())
@@ -1779,7 +1779,7 @@ def tracks_export():
 
 @tracks_bp.route("/tracks/export/download")
 def tracks_export_download():
-    today    = date.today()
+    today    = hoje_local()
     week_ago = today - timedelta(days=7)
     data_ini = request.args.get("data_ini", week_ago.isoformat())
     data_fim = request.args.get("data_fim", today.isoformat())
@@ -1882,7 +1882,7 @@ def tracks_caixa():
     )
 
     # Data padrão = hoje (para pré-preencher o campo mesmo sem filtro aplicado)
-    data_display = data_param or date.today().strftime("%Y-%m-%d")
+    data_display = data_param or hoje_local().strftime("%Y-%m-%d")
 
     notas = []
 

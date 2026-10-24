@@ -115,6 +115,24 @@ Em produção a aplicação fica atrás de um proxy que expõe tudo sob o prefix
 
 ---
 
+## Fuso horário (America/Sao_Paulo)
+
+O VPS e o Postgres rodam em **UTC**, mas os dois pools de `config.py` abrem a sessão com
+`options="-c timezone=America/Sao_Paulo"` — então `now()`/`CURRENT_DATE` nas queries da aplicação, e
+por consequência todo `created_at` gravado por ela (ex.: `detection_records`, `DEFAULT now()`), estão
+em **horário de Brasília** (`timestamp` sem fuso). Conexões abertas fora dos pools (ex.: `psycopg2`
+avulso pra diagnóstico) caem em UTC — cuidado ao comparar `now()` com `created_at` nelas.
+
+Em Python, **nunca usar `date.today()`/`datetime.now()`** pra "hoje"/"agora": no servidor UTC eles
+viram o dia seguinte a partir das 21h locais (bug corrigido em 2026-10-24 — telas como Clientes,
+Caixa e Anomalias abriam vazias no fim do dia, e as janelas de data da sincronização Microvix
+começavam "amanhã"). Usar `hoje_local()` / `agora_local()` de `config.py` (`agora_local()` devolve
+datetime sem tzinfo, mesmo formato dos timestamps do banco). `microvix_ingest_full.py` (CLI
+standalone, não importa `config`) tem o próprio `_hoje_local()`. `tracer.py` usa offset fixo `-3`
+(`_TZ_SP`) só pra exibir hora no log — equivalente enquanto o Brasil não tiver horário de verão.
+
+---
+
 ## Conexões de banco
 
 Dois pools PostgreSQL no mesmo DSN (`postgresql://fefa_dev:Fd7493dt@72.60.58.241:5432/lojas`):
@@ -557,7 +575,7 @@ O usuário aponta, em cada ocorrência (`detection_record`) da Tela Lista, duas 
   tela que mostra ocorrências individuais; `m_lista.html` não tem).
 - **Tela Anomalias** (`GET /tracks/anomalias`, `tracks_anomalias.html`, botão "Anomalias" no header
   da Tela Dados): lista as ocorrências marcadas coletadas num dia (`?data=YYYY-MM-DD`, default
-  `date.today()`, data inválida cai no default) com filtro `?tipo=intruso|indesejada` (vazio =
+  `hoje_local()`, data inválida cai no default) com filtro `?tipo=intruso|indesejada` (vazio =
   qualquer uma das duas). Cada caso mostra a foto coletada lado a lado com a foto base da pessoa
   vinculada (pra conferir Intruso), hora, câmera/loja, scores, link "ID X" pra Lista já filtrada
   por pessoa+data, e os mesmos botões de alternar as anomalias (mesma rota `/anomalia`) — desmarcar

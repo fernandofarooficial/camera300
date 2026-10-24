@@ -17,7 +17,8 @@ import logging
 import os
 import sys
 import xml.etree.ElementTree as ET
-from datetime import date
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from xml.sax.saxutils import escape as xml_escape
 
 import psycopg2
@@ -35,6 +36,13 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Configuração
 # ---------------------------------------------------------------------------
+
+TZ_LOCAL = ZoneInfo("America/Sao_Paulo")  # servidor roda em UTC; datas da API são no fuso das lojas
+
+
+def _hoje_local():
+    return datetime.now(TZ_LOCAL).date()
+
 
 BASE_URL = "https://webapi.microvix.com.br/1.0/api/integracao"
 WS_USER  = "linx_export"
@@ -549,7 +557,7 @@ def ingerir_clientes(conn) -> int:
         "cnpjEmp":      CNPJ,
         "timestamp":    0,
         "data_inicial": DT_INICIO_FULL,
-        "data_fim":     str(date.today()),
+        "data_fim":     str(_hoje_local()),
     }
     log.info("[%s] consultando (full, ts=0, desde %s)", metodo, DT_INICIO_FULL)
     registros = _chamar_api_paginado(metodo, params)
@@ -571,7 +579,7 @@ def ingerir_movimento(conn) -> int:
         "cnpjEmp":      CNPJ,
         "timestamp":    0,
         "data_inicial": DT_INICIO_FULL,
-        "data_fim":     str(date.today()),
+        "data_fim":     str(_hoje_local()),
     }
     log.info("[%s] consultando (full, ts=0, desde %s)", metodo, DT_INICIO_FULL)
     registros = _chamar_api_paginado(metodo, params)
@@ -600,7 +608,7 @@ def ingerir_produtos(conn) -> int:
         "cnpjEmp":          CNPJ,
         "timestamp":        0,
         "dt_update_inicio": DT_INICIO_FULL,
-        "dt_update_fim":    str(date.today()),
+        "dt_update_fim":    str(_hoje_local()),
     }
     log.info("[%s] consultando (full, ts=0)", metodo)
     registros = _chamar_api_paginado(metodo, params)
@@ -624,7 +632,7 @@ def ingerir_produtos_detalhes(conn) -> int:
         "cnpjEmp":             CNPJ,
         "timestamp":           0,
         "data_mov_ini":        DT_INICIO_FULL,
-        "data_mov_fim":        str(date.today()),
+        "data_mov_fim":        str(_hoje_local()),
         "retornar_saldo_zero": 0,
     }
     log.info("[%s] consultando (full, ts=0)", metodo)
@@ -649,7 +657,7 @@ def ingerir_clientes_campos_adicionais(conn) -> int:
         "chave":        CHAVE,
         "cnpjEmp":      CNPJ,
         "data_inicial": DT_INICIO_FULL,
-        "data_fim":     str(date.today()),
+        "data_fim":     str(_hoje_local()),
     }
     log.info("[%s] consultando (full, desde %s)", metodo, DT_INICIO_FULL)
     registros = _chamar_api(metodo, params)
@@ -687,7 +695,7 @@ def ingerir_fidelidade(conn) -> int:
         "cnpjEmp":      CNPJ,
         "timestamp":    0,
         "data_inicial": DT_INICIO_FULL,
-        "data_fim":     str(date.today()),
+        "data_fim":     str(_hoje_local()),
     }
     log.info("[%s] consultando (full, ts=0)", metodo)
     registros = _chamar_api_paginado(metodo, params)
@@ -726,7 +734,7 @@ def ingerir_metas_vendedores(conn) -> int:
         "cnpjEmp":          CNPJ,
         "timestamp":        0,
         "data_inicial_meta": DT_INICIO_FULL,
-        "data_fim_meta":    str(date.today()),
+        "data_fim_meta":    str(_hoje_local()),
     }
     log.info("[%s] consultando (full, desde %s)", metodo, DT_INICIO_FULL)
     registros = _chamar_api_paginado(metodo, params)
@@ -764,7 +772,7 @@ def ingerir_produtos_depositos(conn) -> int:
 def ingerir_produtos_inventario(conn) -> int:
     """Snapshot do estoque na data de hoje. Não usa timestamp."""
     metodo = "LinxProdutosInventario"
-    hoje = str(date.today())
+    hoje = str(_hoje_local())
     params = {
         "chave":           CHAVE,
         "cnpjEmp":         CNPJ,
@@ -785,7 +793,7 @@ def ingerir_produtos_inventario(conn) -> int:
 def ingerir_produtos_promocoes(conn) -> int:
     """Busca promoções ativas e inativas separadamente e combina os resultados."""
     metodo = "LinxProdutosPromocoes"
-    hoje = str(date.today())
+    hoje = str(_hoje_local())
     todos: list[dict] = []
 
     for flag_ativa in ("S", "N"):
@@ -875,7 +883,7 @@ def ingerir_faturas(conn) -> int:
         "cnpjEmp":      CNPJ,
         "timestamp":    0,
         "data_inicial": DT_INICIO_FULL,
-        "data_fim":     str(date.today()),
+        "data_fim":     str(_hoje_local()),
     }
     log.info("[%s] consultando (full, ts=0, desde %s)", metodo, DT_INICIO_FULL)
     registros = _chamar_api_paginado(metodo, params)
@@ -896,7 +904,7 @@ def ingerir_pedidos_venda(conn) -> int:
         "cnpjEmp":      CNPJ,
         "timestamp":    0,
         "data_inicial": DT_INICIO_FULL,
-        "data_fim":     str(date.today()),
+        "data_fim":     str(_hoje_local()),
     }
     log.info("[%s] consultando (full, ts=0, desde %s)", metodo, DT_INICIO_FULL)
     registros = _chamar_api_paginado(metodo, params)
@@ -917,7 +925,7 @@ def ingerir_pedidos_compra(conn) -> int:
         "cnpjEmp":      CNPJ,
         "timestamp":    0,
         "data_inicial": DT_INICIO_FULL,
-        "data_fim":     str(date.today()),
+        "data_fim":     str(_hoje_local()),
     }
     log.info("[%s] consultando (full, ts=0, desde %s)", metodo, DT_INICIO_FULL)
     registros = _chamar_api_paginado(metodo, params)

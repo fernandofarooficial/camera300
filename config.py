@@ -2,6 +2,22 @@ import os
 import mysql.connector.pooling
 import psycopg2
 import psycopg2.pool
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
+
+# Fuso das lojas. O servidor roda em UTC, mas os pools abaixo já gravam/consultam timestamps em
+# America/Sao_Paulo (options timezone) — "hoje"/"agora" em Python tem que usar o mesmo fuso,
+# senão após 21h (00h UTC) date.today() já aponta pro dia seguinte.
+TZ_LOCAL = ZoneInfo("America/Sao_Paulo")
+
+
+def hoje_local() -> date:
+    return datetime.now(TZ_LOCAL).date()
+
+
+def agora_local() -> datetime:
+    """Agora no fuso das lojas, sem tzinfo (mesmo formato dos timestamps do banco)."""
+    return datetime.now(TZ_LOCAL).replace(tzinfo=None)
 
 HEIMDALL_URL             = os.environ.get("HEIMDALL_URL",             "http://201.71.234.83:6500/api/facial/recognize-by-track")
 HEIMDALL_IMAGE_BASE      = os.environ.get("HEIMDALL_IMAGE_BASE",      "http://201.71.234.83:6500/api/facial/images")

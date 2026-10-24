@@ -8,7 +8,7 @@ Roda em background thread acionada pela rota POST /tracks/carga/sync.
 import logging
 import threading
 import xml.etree.ElementTree as ET
-from datetime import date, timedelta
+from datetime import timedelta
 from xml.sax.saxutils import escape as xml_escape
 
 import psycopg2.extras
@@ -19,7 +19,7 @@ from urllib3.util.retry import Retry
 from config import (
     get_pg_conn, release_pg_conn,
     get_faciais_conn, release_faciais_conn,
-    MICROVIX_PORTAIS,
+    MICROVIX_PORTAIS, hoje_local, agora_local,
 )
 
 log = logging.getLogger(__name__)
@@ -178,12 +178,12 @@ def _lower_keys(registros: list[dict]) -> list[dict]:
 
 def _data_ini(portal: dict, dias: int) -> str:
     """Retorna a data inicial: override do portal ou hoje - N dias."""
-    return portal.get("_data_inicio") or str(date.today() - timedelta(days=dias))
+    return portal.get("_data_inicio") or str(hoje_local() - timedelta(days=dias))
 
 
 def _data_fim(portal: dict) -> str:
     """Retorna a data final: override do portal ou hoje."""
-    return portal.get("_data_fim") or str(date.today())
+    return portal.get("_data_fim") or str(hoje_local())
 
 
 # ---------------------------------------------------------------------------
@@ -523,7 +523,7 @@ def _ingerir_metas_vendedores(conn, portal: dict) -> int:
     metodo = "LinxMetasVendedores"
     _set(current_method=metodo)
     ts   = _get_last_ts(conn, metodo, portal["cnpj"])
-    hoje = date.today()
+    hoje = hoje_local()
     params = {
         "chave":             portal["chave"],
         "cnpjEmp":           portal["cnpj"],
@@ -568,7 +568,7 @@ def _ingerir_produtos_inventario(conn, portal: dict) -> int:
     # API não suporta timestamp — sempre atualiza o snapshot do estoque de hoje
     metodo = "LinxProdutosInventario"
     _set(current_method=metodo)
-    hoje = str(date.today())
+    hoje = str(hoje_local())
     params = {
         "chave":           portal["chave"],
         "cnpjEmp":         portal["cnpj"],
@@ -590,7 +590,7 @@ def _ingerir_produtos_promocoes(conn, portal: dict) -> int:
     # e vigência ampla para capturar promoções em andamento
     metodo = "LinxProdutosPromocoes"
     _set(current_method=metodo)
-    hoje = date.today()
+    hoje = hoje_local()
     todos: list[dict] = []
     for flag_ativa in ("S", "N"):
         params = {
@@ -884,7 +884,6 @@ _METODOS = [
 def _run_portais(portais: list[dict]):
     """Núcleo compartilhado: executa _METODOS para cada portal da lista."""
     import psycopg2
-    from datetime import datetime
     pg_conn = None
     try:
         pg_conn = get_pg_conn()
@@ -921,14 +920,13 @@ def _run_portais(portais: list[dict]):
     finally:
         if pg_conn:
             release_pg_conn(pg_conn)
-        _set(running=False, finished_at=datetime.now().isoformat(),
+        _set(running=False, finished_at=agora_local().isoformat(),
              current_method=None, current_cnpj=None)
 
 
 def run_incremental():
     """Executa todos os métodos de ingestão incremental para cada portal. Deve ser chamado em thread."""
-    from datetime import datetime
-    _set(running=True, started_at=datetime.now().isoformat(),
+    _set(running=True, started_at=agora_local().isoformat(),
          finished_at=None, current_method=None, current_cnpj=None, contagens={}, error=None)
     _run_portais(MICROVIX_PORTAIS)
 
@@ -938,13 +936,12 @@ def run_full_load(cnpj: str, data_inicio: str):
 
     data_inicio: data ISO (YYYY-MM-DD) de início do histórico, ex: '2024-01-01'.
     """
-    from datetime import datetime
     portal = next((p for p in MICROVIX_PORTAIS if p["cnpj"] == cnpj), None)
     if portal is None:
         log.error("run_full_load: portal não encontrado para cnpj=%s", cnpj)
         return
 
-    portal_full = {**portal, "_data_inicio": data_inicio, "_data_fim": str(date.today())}
-    _set(running=True, started_at=datetime.now().isoformat(),
+    portal_full = {**portal, "_data_inicio": data_inicio, "_data_fim": str(hoje_local())}
+    _set(running=True, started_at=agora_local().isoformat(),
          finished_at=None, current_method=None, current_cnpj=cnpj, contagens={}, error=None)
     _run_portais([portal_full])
