@@ -47,6 +47,14 @@ done
 que o worker já está aceitando conexões, não validar uma rota específica. Quando responde, o import
 de `tracks.py` (incluindo os retries de `CNPJ_STORE_MAP`/`_carregar_cameras()`, até ~35s) já terminou.
 
+**Se o loop der "Não subiu em 3 min" sem erro nenhum no `journalctl`:** checar se o log tem
+`Booting worker with pid: ...` depois do `Control socket listening`. Em 2026-10-24 o worker
+(processo filho do gunicorn, 1 thread só, ~20 MB RSS) travou logo após o fork em `futex_wait_queue`
+(`cat /proc/<pid>/wchan`), antes até de importar o `app` — sem conexão com o banco, sem linha de log,
+porta escutando com fila (`ss -ltnp | grep 5001`, `Recv-Q` crescendo). Sintoma típico de deadlock
+pós-fork (gunicorn 25 tem uma thread de control socket no master), intermitente e sem relação com o
+código deployado: um segundo `systemctl restart camera300` resolveu em 1s.
+
 Serviço systemd: `camera300.service`. Mesmo servidor e mesmo acesso SSH usados pelo
 `retail_analytics` (e demais projetos em `/home/workuser/`) — não precisa de configuração
 adicional, só trocar o diretório e o nome do serviço.
