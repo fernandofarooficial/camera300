@@ -146,6 +146,24 @@
       color: #ef4444;
     }
     .btn-delete:hover { background: #ef444433; }
+    .btn-dup {
+      flex: 0 0 auto;
+      padding: 0.28rem 0.45rem;
+      border-radius: 6px;
+      font-size: 0.65rem;
+      cursor: pointer;
+      background: #ec489922;
+      border: 1px solid #ec489944;
+      color: #ec4899;
+    }
+    .btn-dup:hover { background: #ec489933; }
+    .card.is-dup { border-color: #ec489955; }
+    .chip-dup {
+      font-size: 0.62rem;
+      font-weight: 600;
+      color: #ec4899;
+      cursor: pointer;
+    }
 
     /* ---- Modal ---- */
     #modal-overlay {
@@ -314,7 +332,7 @@
 
     <div class="grid">
       {% for p in pessoas %}
-        <div class="card">
+        <div class="card{% if p.duplicata_de %} is-dup{% endif %}">
           {% if p.foto %}
             <img class="card-photo" src="{{ p.foto }}"
                  onerror="this.outerHTML='<div class=card-placeholder>sem foto</div>'"
@@ -329,6 +347,13 @@
             {% if p.flag %}
               {% set flag_map = {'C': 'Cliente', 'A': 'Anônimo', 'F': 'Franqueado', 'E': 'Empregado', 'K': 'Criança', 'P': 'Prestador'} %}
               <span class="chip-flag">{{ flag_map.get(p.flag, p.flag) }}</span>
+            {% endif %}
+            {% if p.duplicata_de %}
+              <span class="chip-dup" data-id="{{ p.id_unico }}" data-nome="{{ p.nome or '' }}"
+                    onclick="abrirModalDuplicatas(this.dataset.id, this.dataset.nome)">Duplicata de ID {{ p.duplicata_de }}</span>
+            {% elif p.n_duplicatas %}
+              <span class="chip-dup" data-id="{{ p.id_unico }}" data-nome="{{ p.nome or '' }}"
+                    onclick="abrirModalDuplicatas(this.dataset.id, this.dataset.nome)">{{ p.n_duplicatas }} duplicata(s)</span>
             {% endif %}
             <div class="card-actions">
               <button class="btn-edit"
@@ -347,6 +372,10 @@
                 data-id="{{ p.id_unico }}"
                 data-nome="{{ p.nome or 'ID ' ~ p.id_unico }}"
                 onclick="confirmarExclusao(this)">&#128465; Excluir</button>
+              <button class="btn-dup" title="Duplicatas"
+                data-id="{{ p.id_unico }}"
+                data-nome="{{ p.nome or '' }}"
+                onclick="abrirModalDuplicatas(this.dataset.id, this.dataset.nome)">&#10697;</button>
             </div>
           </div>
         </div>
@@ -546,6 +575,8 @@
     }
   }
 </script>
+
+{% include '_duplicatas_modal.html' %}
 
 </body>
 </html>

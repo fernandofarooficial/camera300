@@ -1,0 +1,267 @@
+<!-- Modal de duplicatas (incluído por tracks_lista.html e tracks_tabuleiro.html).
+     Abre com abrirModalDuplicatas(personId, nome). -->
+<style>
+  .dup-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: #00000099;
+    z-index: 300;
+    align-items: center;
+    justify-content: center;
+  }
+  .dup-overlay.open { display: flex; }
+  .dup-box {
+    background: #1a1d27;
+    border: 1px solid #2d3148;
+    border-radius: 14px;
+    padding: 1.75rem;
+    width: 100%;
+    max-width: 480px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 24px 64px #00000088;
+  }
+  .dup-box h2 { font-size: 1rem; font-weight: 700; color: #7c86ff; margin-bottom: 0.4rem; }
+  .dup-ajuda { font-size: 0.75rem; color: #64748b; margin-bottom: 1rem; line-height: 1.4; }
+  .dup-secao {
+    font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+    color: #64748b; margin: 1rem 0 0.5rem;
+  }
+  .dup-lista { display: flex; flex-direction: column; gap: 0.4rem; }
+  .dup-item {
+    display: flex; align-items: center; gap: 0.6rem;
+    background: #0f1117; border: 1px solid #2d3148; border-radius: 8px; padding: 0.4rem 0.55rem;
+  }
+  .dup-item img, .dup-item .dup-sem-foto {
+    width: 40px; height: 40px; border-radius: 6px; object-fit: cover; flex-shrink: 0;
+    border: 1px solid #334155; background: #1a1d27;
+  }
+  .dup-item .dup-sem-foto { display: flex; align-items: center; justify-content: center; font-size: 0.55rem; color: #334155; }
+  .dup-item-txt { flex: 1; min-width: 0; font-size: 0.82rem; color: #e2e8f0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dup-item-txt .dup-id { color: #7c86ff; font-weight: 700; margin-right: 0.35rem; }
+  .dup-tag {
+    font-size: 0.62rem; font-weight: 700; padding: 0.12rem 0.45rem; border-radius: 999px;
+    background: #22c55e22; color: #22c55e; border: 1px solid #22c55e44; flex-shrink: 0;
+  }
+  .dup-btn-desv {
+    background: transparent; border: 1px solid #ef444444; color: #ef4444; border-radius: 6px;
+    font-size: 0.7rem; padding: 0.2rem 0.5rem; cursor: pointer; flex-shrink: 0;
+  }
+  .dup-btn-desv:hover { background: #ef444422; }
+  .dup-btn-desv:disabled { opacity: 0.4; cursor: not-allowed; }
+  .dup-vazio { font-size: 0.78rem; color: #475569; }
+  .dup-input-row { display: flex; gap: 0.5rem; }
+  .dup-input-row input {
+    flex: 1; background: #0f1117; border: 1px solid #2d3148; border-radius: 6px; color: #e2e8f0;
+    font-size: 0.88rem; padding: 0.5rem 0.65rem; outline: none;
+  }
+  .dup-input-row input:focus { border-color: #7c86ff88; }
+  .dup-btn {
+    background: #7c86ff22; border: 1px solid #7c86ff44; color: #7c86ff; border-radius: 6px;
+    padding: 0.45rem 0.9rem; font-size: 0.82rem; cursor: pointer; white-space: nowrap;
+  }
+  .dup-btn:hover { background: #7c86ff33; }
+  .dup-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .dup-btn-cancel { background: transparent; border-color: #2d3148; color: #94a3b8; }
+  .dup-erro { font-size: 0.8rem; color: #ef4444; margin-top: 0.6rem; display: none; white-space: pre-line; }
+  .dup-acoes { display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.25rem; }
+</style>
+
+<div id="dup-overlay" class="dup-overlay">
+  <div class="dup-box">
+    <h2 id="dup-titulo">Duplicatas</h2>
+    <div class="dup-ajuda">
+      Informe os IDs dos cadastros que são a mesma pessoa. Eles ficam vinculados ao cadastro
+      principal do grupo — nenhum registro ou compra é movido ou apagado.
+    </div>
+
+    <div class="dup-secao">Grupo atual</div>
+    <div id="dup-grupo" class="dup-lista"><div class="dup-vazio">Carregando…</div></div>
+
+    <div class="dup-secao">Adicionar duplicatas</div>
+    <div class="dup-input-row">
+      <input type="text" id="dup-ids" placeholder="ex: 123, 456, 789"
+             onkeydown="if(event.key==='Enter'){event.preventDefault();verificarDuplicatas();}" />
+      <button type="button" class="dup-btn" onclick="verificarDuplicatas()">Verificar</button>
+    </div>
+    <div id="dup-preview" class="dup-lista" style="margin-top:0.5rem"></div>
+
+    <div id="dup-erro" class="dup-erro"></div>
+
+    <div class="dup-acoes">
+      <button type="button" class="dup-btn dup-btn-cancel" onclick="fecharModalDuplicatas()">Fechar</button>
+      <button type="button" class="dup-btn" id="dup-btn-vincular" disabled onclick="confirmarDuplicatas()">Vincular</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  let _dupPersonId = null;
+  let _dupGrupoIds = [];
+  let _dupVerificados = [];
+  let _dupAlterado = false;
+
+  function _dupItem(p, extra) {
+    const el = document.createElement('div');
+    el.className = 'dup-item';
+    if (p.foto) {
+      const img = document.createElement('img');
+      img.src = p.foto;
+      img.alt = '';
+      el.appendChild(img);
+    } else {
+      const ph = document.createElement('div');
+      ph.className = 'dup-sem-foto';
+      ph.textContent = 'sem foto';
+      el.appendChild(ph);
+    }
+    const txt = document.createElement('div');
+    txt.className = 'dup-item-txt';
+    const id = document.createElement('span');
+    id.className = 'dup-id';
+    id.textContent = 'ID ' + p.id_unico;
+    txt.appendChild(id);
+    txt.appendChild(document.createTextNode((p.nome || '—') + (p.apelido ? ' (' + p.apelido + ')' : '')));
+    el.appendChild(txt);
+    if (extra) el.appendChild(extra);
+    return el;
+  }
+
+  function _dupErro(msg) {
+    const el = document.getElementById('dup-erro');
+    el.textContent = msg || '';
+    el.style.display = msg ? 'block' : 'none';
+  }
+
+  async function _dupCarregarGrupo() {
+    const grupoEl = document.getElementById('dup-grupo');
+    try {
+      const resp = await fetch(`/camera300/tracks/api/pessoa/${_dupPersonId}/duplicatas`);
+      const data = await resp.json();
+      if (!resp.ok || data.error) {
+        grupoEl.innerHTML = '';
+        _dupErro(data.error || 'Erro ao carregar grupo.');
+        return;
+      }
+      grupoEl.innerHTML = '';
+      const tag = document.createElement('span');
+      tag.className = 'dup-tag';
+      tag.textContent = 'Principal';
+      grupoEl.appendChild(_dupItem(data.principal, tag));
+      _dupGrupoIds = [data.principal.id_unico];
+      data.duplicatas.forEach(d => {
+        _dupGrupoIds.push(d.id_unico);
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'dup-btn-desv';
+        btn.textContent = 'Desvincular';
+        btn.onclick = () => desvincularDuplicata(d.id_unico, btn);
+        grupoEl.appendChild(_dupItem(d, btn));
+      });
+      if (!data.duplicatas.length) {
+        const v = document.createElement('div');
+        v.className = 'dup-vazio';
+        v.textContent = 'Nenhuma duplicata vinculada.';
+        grupoEl.appendChild(v);
+      }
+    } catch (err) {
+      grupoEl.innerHTML = '';
+      _dupErro('Falha na requisição.');
+    }
+  }
+
+  function abrirModalDuplicatas(personId, nome) {
+    _dupPersonId = personId;
+    _dupVerificados = [];
+    _dupAlterado = false;
+    document.getElementById('dup-titulo').textContent = 'Duplicatas — ' + (nome || 'ID ' + personId);
+    document.getElementById('dup-grupo').innerHTML = '<div class="dup-vazio">Carregando…</div>';
+    document.getElementById('dup-ids').value = '';
+    document.getElementById('dup-preview').innerHTML = '';
+    document.getElementById('dup-btn-vincular').disabled = true;
+    _dupErro('');
+    document.getElementById('dup-overlay').classList.add('open');
+    document.getElementById('dup-ids').focus();
+    _dupCarregarGrupo();
+  }
+
+  function fecharModalDuplicatas() {
+    document.getElementById('dup-overlay').classList.remove('open');
+    if (_dupAlterado) location.reload();
+  }
+
+  document.getElementById('dup-overlay').addEventListener('click', function(e) {
+    if (e.target === this) fecharModalDuplicatas();
+  });
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && document.getElementById('dup-overlay').classList.contains('open')) fecharModalDuplicatas();
+  });
+
+  async function verificarDuplicatas() {
+    const previewEl = document.getElementById('dup-preview');
+    const btnVinc = document.getElementById('dup-btn-vincular');
+    previewEl.innerHTML = '';
+    btnVinc.disabled = true;
+    _dupVerificados = [];
+    _dupErro('');
+
+    const ids = [...new Set((document.getElementById('dup-ids').value.match(/\d+/g) || []).map(Number))];
+    if (!ids.length) { _dupErro('Informe ao menos um ID.'); return; }
+
+    const erros = [];
+    for (const id of ids) {
+      if (_dupGrupoIds.includes(id)) { erros.push(`ID ${id} já está neste grupo.`); continue; }
+      try {
+        const resp = await fetch(`/camera300/tracks/api/pessoa/${id}`);
+        const data = await resp.json();
+        if (!resp.ok || data.error) { erros.push(data.error || `Pessoa ${id} não encontrada.`); continue; }
+        _dupVerificados.push(id);
+        previewEl.appendChild(_dupItem(data));
+      } catch (err) {
+        erros.push(`ID ${id}: falha na requisição.`);
+      }
+    }
+    _dupErro(erros.join('\n'));
+    btnVinc.disabled = _dupVerificados.length === 0;
+  }
+
+  async function confirmarDuplicatas() {
+    if (!_dupVerificados.length) return;
+    const btn = document.getElementById('dup-btn-vincular');
+    btn.disabled = true;
+    _dupErro('');
+    try {
+      const resp = await fetch(`/camera300/tracks/api/pessoa/${_dupPersonId}/duplicatas`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: _dupVerificados }),
+      });
+      const data = await resp.json();
+      if (!data.success) { _dupErro(data.error || 'Erro ao vincular.'); btn.disabled = false; return; }
+      _dupAlterado = true;
+      _dupVerificados = [];
+      document.getElementById('dup-ids').value = '';
+      document.getElementById('dup-preview').innerHTML = '';
+      _dupCarregarGrupo();
+    } catch (err) {
+      _dupErro('Falha na requisição.');
+      btn.disabled = false;
+    }
+  }
+
+  async function desvincularDuplicata(id, btn) {
+    if (!confirm(`Desvincular o ID ${id} deste grupo? Ele volta a ser um cadastro independente.`)) return;
+    btn.disabled = true;
+    try {
+      const resp = await fetch(`/camera300/tracks/api/pessoa/${id}/duplicatas`, { method: 'DELETE' });
+      const data = await resp.json();
+      if (!data.success) { _dupErro(data.error || 'Erro ao desvincular.'); btn.disabled = false; return; }
+      _dupAlterado = true;
+      _dupCarregarGrupo();
+    } catch (err) {
+      _dupErro('Falha na requisição.');
+      btn.disabled = false;
+    }
+  }
+</script>

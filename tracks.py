@@ -452,7 +452,10 @@ def tracks_lista():
                     p.age                       AS idade,
                     p.notes                     AS notas,
                     p.phone                     AS telefone,
-                    p.email                     AS email
+                    p.email                     AS email,
+                    p.duplicate_of_person_id    AS duplicata_de,
+                    (SELECT COUNT(*) FROM people d
+                     WHERE d.duplicate_of_person_id = p.person_id) AS n_duplicatas
                 FROM detection_records r
                 LEFT JOIN people p ON r.person_id = p.person_id
                 WHERE r.person_id IN ({placeholders})
@@ -476,6 +479,8 @@ def tracks_lista():
                         "telefone":      row["telefone"],
                         "email":         row["email"],
                         "track_id_base": row["track_id_base"],
+                        "duplicata_de":  row["duplicata_de"],
+                        "n_duplicatas":  row["n_duplicatas"],
                         "foto":          None,
                         "ocorrencias":   [],
                     }
@@ -918,6 +923,115 @@ def buscar_pessoa(id_unico):
     return jsonify(pessoa)
 
 
+def _principal_de(cursor, person_id):
+    """Retorna o person_id principal do grupo de duplicatas (o próprio, se não for duplicata),
+    ou None se a pessoa não existe. duplicate_of_person_id sempre aponta direto pro principal."""
+    cursor.execute("SELECT COALESCE(duplicate_of_person_id, person_id) AS principal FROM people WHERE person_id = %s",
+                   (person_id,))
+    row = cursor.fetchone()
+    return row["principal"] if row else None
+
+
+@tracks_bp.route("/tracks/api/pessoa/<int:id_unico>/duplicatas", methods=["GET"])
+def buscar_duplicatas(id_unico):
+    """Grupo de duplicatas da pessoa: o principal e todos os cadastros vinculados a ele."""
+    conn = get_faciais_conn()
+    try:
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        principal = _principal_de(cursor, id_unico)
+        if principal is None:
+            cursor.close()
+            return jsonify({"error": f"Pessoa {id_unico} não encontrada"}), 404
+        cursor.execute(
+            """
+            SELECT p.person_id AS id_unico, p.full_name AS nome, p.nickname AS apelido,
+                   p.person_type_id AS flag, p.duplicate_of_person_id AS duplicata_de,
+                   (SELECT r.image_path FROM detection_records r
+                    WHERE r.track_id = p.reference_track_id AND r.image_path IS NOT NULL
+                    ORDER BY r.detection_score DESC LIMIT 1) AS image_path
+            FROM people p
+            WHERE p.person_id = %s OR p.duplicate_of_person_id = %s
+            ORDER BY p.person_id
+            """,
+            (principal, principal),
+        )
+        pessoas = [dict(r) for r in cursor.fetchall()]
+        cursor.close()
+        conn.rollback()
+    finally:
+        release_faciais_conn(conn)
+    for p in pessoas:
+        p["foto"] = HEIMDALL_IMAGE_BASE + p["image_path"] if p["image_path"] else None
+        del p["image_path"]
+    return jsonify({
+        "principal":  next(p for p in pessoas if p["id_unico"] == principal),
+        "duplicatas": [p for p in pessoas if p["id_unico"] != principal],
+    })
+
+
+@tracks_bp.route("/tracks/api/pessoa/<int:id_unico>/duplicatas", methods=["POST"])
+def vincular_duplicatas(id_unico):
+    """Marca os cadastros em body.ids como duplicatas do grupo de id_unico. Se id_unico já é
+    duplicata, vincula ao principal dele; se algum id é principal de outro grupo, o grupo inteiro
+    é absorvido (mantém o vínculo sempre direto ao principal, sem cadeia)."""
+    data = request.get_json(silent=True) or {}
+    try:
+        ids = sorted({int(i) for i in data.get("ids", [])})
+    except (TypeError, ValueError):
+        return jsonify({"error": "ids inválidos"}), 400
+    if not ids:
+        return jsonify({"error": "Informe ao menos um ID"}), 400
+
+    conn = get_faciais_conn()
+    try:
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        principal = _principal_de(cursor, id_unico)
+        if principal is None:
+            cursor.close()
+            return jsonify({"error": f"Pessoa {id_unico} não encontrada"}), 404
+
+        ids = [i for i in ids if i != principal]
+        if not ids:
+            cursor.close()
+            return jsonify({"error": f"ID {principal} já é o cadastro principal do grupo"}), 400
+        cursor.execute("SELECT person_id FROM people WHERE person_id = ANY(%s)", (ids,))
+        encontrados = {r["person_id"] for r in cursor.fetchall()}
+        faltando = [i for i in ids if i not in encontrados]
+        if faltando:
+            cursor.close()
+            return jsonify({"error": "Pessoa(s) não encontrada(s): " + ", ".join(map(str, faltando))}), 404
+
+        cursor.execute("UPDATE people SET duplicate_of_person_id = %s WHERE duplicate_of_person_id = ANY(%s)",
+                       (principal, ids))
+        cursor.execute("UPDATE people SET duplicate_of_person_id = %s WHERE person_id = ANY(%s)",
+                       (principal, ids))
+        conn.commit()
+        cursor.close()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        release_faciais_conn(conn)
+    return jsonify({"success": True, "principal": principal})
+
+
+@tracks_bp.route("/tracks/api/pessoa/<int:id_unico>/duplicatas", methods=["DELETE"])
+def desvincular_duplicata(id_unico):
+    """Desfaz o vínculo de duplicata de id_unico (volta a ser um cadastro independente)."""
+    conn = get_faciais_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE people SET duplicate_of_person_id = NULL WHERE person_id = %s", (id_unico,))
+        conn.commit()
+        cursor.close()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        release_faciais_conn(conn)
+    return jsonify({"success": True})
+
+
 @tracks_bp.route("/tracks/api/registro/<int:reg_id>", methods=["DELETE"])
 def excluir_registro(reg_id):
     conn = get_faciais_conn()
@@ -1059,6 +1173,9 @@ def tracks_tabuleiro():
                 p.notes                     AS notas,
                 p.phone                     AS telefone,
                 p.email                     AS email,
+                p.duplicate_of_person_id    AS duplicata_de,
+                (SELECT COUNT(*) FROM people d
+                 WHERE d.duplicate_of_person_id = p.person_id) AS n_duplicatas,
                 (SELECT r.image_path FROM detection_records r
                  WHERE r.track_id = p.reference_track_id AND r.image_path IS NOT NULL
                  ORDER BY r.detection_score DESC LIMIT 1) AS image_path

@@ -485,6 +485,40 @@ Retorna: `{success, person_id, nome, pessoa_excluida}`.
 
 ---
 
+## Duplicatas de pessoa (desde 2026-10-24)
+
+Permite ao usuário informar que dois ou mais cadastros de `faciais.people` são a mesma pessoa.
+**Só vínculo, sem mesclar** (decisão do usuário): nenhum `detection_record`, `person_purchases` ou
+`manual_purchase_links` é movido ou apagado — totalmente reversível.
+
+- Coluna `faciais.people.duplicate_of_person_id` (FK `fk_people_duplicate_of` → `people`,
+  `ON DELETE SET NULL`; `chk_people_duplicate_of_self` impede auto-referência). Migration rodada
+  ad-hoc (sem arquivo versionado), mesmo padrão das anteriores.
+- **Sempre plano, sem cadeia:** cada duplicata aponta direto pro principal; o principal tem `NULL`.
+  Grupo = principal + todos que apontam pra ele (suporta 3+ duplicatas). `vincular_duplicatas`
+  (`tracks.py`) mantém essa invariante: se o ID alvo já é duplicata, vincula ao principal dele; se
+  um ID informado é principal de outro grupo, o grupo inteiro é absorvido (repontado). Excluir o
+  principal desvincula as duplicatas sozinho (FK `SET NULL`).
+- Independente de `people.review_status` (`'duplicate'` lá é do `retail_analytics`, só
+  informativo, sem apontar qual) — esse fluxo não lê nem altera `review_status`.
+- **Ainda não consolidado em lugar nenhum:** Clientes, Caixa, ranking, Quadro, pipeline de
+  reconhecimento etc. continuam tratando cada cadastro separadamente. Pra consolidar, resolver o
+  canônico com `COALESCE(p.duplicate_of_person_id, p.person_id)`.
+
+Rotas (`tracks.py`):
+- `GET /tracks/api/pessoa/<id>/duplicatas` → `{principal, duplicatas: [...]}` do grupo de `<id>` (cada item com `id_unico, nome, apelido, flag, duplicata_de, foto`).
+- `POST /tracks/api/pessoa/<id>/duplicatas` → body `{ids: [...]}`, vincula ao grupo de `<id>`.
+- `DELETE /tracks/api/pessoa/<id>/duplicatas` → desvincula `<id>` (volta a ser independente).
+
+UI: modal único em `templates/_duplicatas_modal.html` (CSS+HTML+JS próprios, prefixo `dup-`),
+incluído via `{% include %}` em `tracks_lista.html` e `tracks_tabuleiro.html` — diferente do modal de
+edição, **não** está duplicado. Botão "⧉ Duplicatas" em cada pessoa; chip rosa "Duplicata de ID X"
+(link pro principal na Lista) ou "N duplicata(s)" (abre o modal). As queries de `tracks_lista` e
+`tracks_tabuleiro` trazem `duplicata_de` e `n_duplicatas`. Templates mobile (`m_lista.html`,
+`m_tabuleiro.html`) não têm o recurso.
+
+---
+
 ## Formulário de edição de pessoa (telefone/e-mail)
 
 O modal "Editar Pessoa" está **duplicado em três templates** (mesmo HTML/JS, sem componente
@@ -570,6 +604,7 @@ thread background em `app.py`, mesmo padrão de `adequar_bases` (flag `_limpeza_
 - `DELETE /tracks/api/registro/<reg_id>` → exclui registro individual
 - `POST /tracks/api/registro/<reg_id>/mover` → move registro para outro id_unico
 - `POST /tracks/api/registro/<reg_id>/nova-pessoa` → cria nova pessoa a partir do registro
+- `GET|POST|DELETE /tracks/api/pessoa/<id_unico>/duplicatas` → grupo de duplicatas / vincular / desvincular (ver seção "Duplicatas de pessoa")
 
 ### Ingestão Microvix
 - `GET /tracks/carga` → log das 20 últimas cargas

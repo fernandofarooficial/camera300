@@ -115,6 +115,21 @@
     .chip-genero  { background: #60a5fa22; color: #60a5fa; border: 1px solid #60a5fa44; }
     .chip-flag    { background: #f59e0b22; color: #f59e0b; border: 1px solid #f59e0b44; }
     .chip-count   { background: #22c55e22; color: #22c55e; border: 1px solid #22c55e44; }
+    .chip-dup     { background: #ec489922; color: #ec4899; border: 1px solid #ec489944; text-decoration: none; }
+    .chip-dup:hover { background: #ec489933; }
+
+    .btn-dup {
+      background: #ec489922;
+      border: 1px solid #ec489944;
+      color: #ec4899;
+      border-radius: 6px;
+      padding: 0.3rem 0.75rem;
+      font-size: 0.78rem;
+      cursor: pointer;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+    .btn-dup:hover { background: #ec489933; }
 
     .person-notas {
       font-size: 0.78rem;
@@ -844,6 +859,15 @@
               <span class="chip chip-flag">{{ flag_map.get(g.flag, g.flag) }}</span>
             {% endif %}
             <span class="chip chip-count">{{ g.ocorrencias | length }} ocorrência(s)</span>
+            {% if g.duplicata_de %}
+              <a class="chip chip-dup" href="/camera300/tracks/lista?ids={{ g.duplicata_de }}"
+                 title="Ver cadastro principal">Duplicata de ID {{ g.duplicata_de }}</a>
+            {% elif g.n_duplicatas %}
+              <a class="chip chip-dup" href="/camera300/tracks/lista?ids={{ g.id_unico }}"
+                 title="Ver o grupo"
+                 onclick="event.preventDefault(); abrirModalDuplicatas(this.dataset.id, this.dataset.nome)"
+                 data-id="{{ g.id_unico }}" data-nome="{{ g.nome or '' }}">{{ g.n_duplicatas }} duplicata(s)</a>
+            {% endif %}
           </div>
           {% if g.notas %}
             <div class="person-notas">{{ g.notas }}</div>
@@ -868,6 +892,10 @@
             data-nome="{{ g.nome or 'ID ' ~ g.id_unico }}"
             data-track-id-base="{{ g.track_id_base or '' }}"
             onclick="abrirModalBase(this)">&#9776; Mudar Base</button>
+          <button class="btn-dup"
+            data-id="{{ g.id_unico }}"
+            data-nome="{{ g.nome or '' }}"
+            onclick="abrirModalDuplicatas(this.dataset.id, this.dataset.nome)">&#10697; Duplicatas</button>
           <button class="btn-delete"
             data-id="{{ g.id_unico }}"
             data-nome="{{ g.nome or 'ID ' ~ g.id_unico }}"
@@ -1564,5 +1592,7 @@
     }
   });
 </script>
+{% include '_duplicatas_modal.html' %}
+
 </body>
 </html>
