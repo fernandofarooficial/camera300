@@ -499,8 +499,6 @@ def tracks_lista():
                         "foto":          None,
                         "ocorrencias":   [],
                     }
-                if groups_dict[key]["foto"] is None and row["image_path"] and row["track_id"] == groups_dict[key]["track_id_base"]:
-                    groups_dict[key]["foto"] = HEIMDALL_IMAGE_BASE + row["image_path"]
                 if len(groups_dict[key]["ocorrencias"]) < 15:
                     groups_dict[key]["ocorrencias"].append({
                         "id":             row["id"],
@@ -514,6 +512,21 @@ def tracks_lista():
                         "indesejada":     row["is_unwanted"],
                     })
             groups = [groups_dict[k] for k in id_unicos if k in groups_dict]
+
+            # Foto base buscada à parte, sem o filtro de data: o registro do reference_track_id
+            # pode ser de outro dia que não o filtrado (e mesmo assim a foto base deve aparecer)
+            cursor.execute(f"""
+                SELECT DISTINCT ON (p.person_id) p.person_id, r.image_path
+                FROM people p
+                JOIN detection_records r ON r.track_id = p.reference_track_id
+                                        AND r.person_id = p.person_id
+                                        AND r.image_path IS NOT NULL
+                WHERE p.person_id IN ({placeholders})
+                ORDER BY p.person_id, r.created_at DESC
+            """, id_unicos)
+            for row in cursor.fetchall():
+                if row["person_id"] in groups_dict:
+                    groups_dict[row["person_id"]]["foto"] = HEIMDALL_IMAGE_BASE + row["image_path"]
 
         cursor.close()
         conn.rollback()
