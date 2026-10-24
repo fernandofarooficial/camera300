@@ -385,6 +385,12 @@ def tracks_lista():
 
     flag_filter  = request.args.get('flag',  '').strip().upper()
     store_filter = request.args.get('store', 0, type=int)
+    data_raw = request.args.get('data', '').strip()
+    try:
+        data_filter = date.fromisoformat(data_raw) if data_raw else None
+    except ValueError:
+        data_filter = None
+    data_raw = data_filter.isoformat() if data_filter else ''
     camera_ids_loja = list(STORE_CAMERAS_MAP.get(store_filter, [])) if store_filter else []
 
     offset = (page - 1) * per_page
@@ -402,6 +408,13 @@ def tracks_lista():
     if camera_ids_loja:
         conditions.append("r.camera_id = ANY(%s)")
         count_params.append(camera_ids_loja)
+    # Filtro de data restringe também as ocorrências exibidas (não só quais pessoas aparecem)
+    data_cond, data_params = "", []
+    if data_filter:
+        data_cond = " AND r.created_at >= %s AND r.created_at < %s"
+        data_params = [data_filter, data_filter + timedelta(days=1)]
+        conditions.append(data_cond[5:])
+        count_params.extend(data_params)
     where = " AND ".join(conditions)
 
     conn = get_faciais_conn()
@@ -460,9 +473,9 @@ def tracks_lista():
                      WHERE d.duplicate_of_person_id = p.person_id) AS n_duplicatas
                 FROM detection_records r
                 LEFT JOIN people p ON r.person_id = p.person_id
-                WHERE r.person_id IN ({placeholders})
+                WHERE r.person_id IN ({placeholders}){data_cond}
                 ORDER BY r.created_at DESC
-            """, id_unicos)
+            """, id_unicos + data_params)
             rows = cursor.fetchall()
 
             groups_dict = {}
@@ -512,7 +525,7 @@ def tracks_lista():
     tmpl = "m_lista.html" if "/m/" in request.path else "tracks_lista.html"
     return render_template(tmpl, groups=groups, page=page, total_pages=total_pages,
                            cameras_map=cameras_map, camera_store_map=CAMERA_STORE_NAME_MAP,
-                           ids_raw=ids_raw, flag_filter=flag_filter,
+                           ids_raw=ids_raw, flag_filter=flag_filter, data_filter=data_raw,
                            store_filter=store_filter, stores_list=stores_list)
 
 

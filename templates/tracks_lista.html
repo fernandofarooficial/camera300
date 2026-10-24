@@ -506,6 +506,17 @@
       cursor: pointer;
     }
     .filter-bar select:focus { border-color: #7c86ff88; }
+    .filter-bar input[type="date"] {
+      background: #0f1117;
+      border: 1px solid #2d3148;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.88rem;
+      padding: 0.4rem 0.6rem;
+      outline: none;
+      color-scheme: dark;
+    }
+    .filter-bar input[type="date"]:focus { border-color: #7c86ff88; }
     .filter-bar select option { background: #1a1d27; }
     .btn-filter {
       background: #7c86ff33;
@@ -820,15 +831,20 @@
       </select>
     </div>
     {% endif %}
+    <div>
+      <label for="data-input">Data da coleta</label>
+      <input type="date" id="data-input" name="data" value="{{ data_filter }}" />
+    </div>
+    {% if flag_filter %}<input type="hidden" name="flag" value="{{ flag_filter }}" />{% endif %}
     <button type="submit" class="btn-filter">&#128269; Filtrar</button>
     {% if flag_filter == 'C' %}
-      <a href="?{% if ids_raw %}ids={{ ids_raw }}&{% endif %}{% if store_filter %}store={{ store_filter }}&{% endif %}" class="btn-clientes active">&#10003; Clientes</a>
+      <a href="?{% if ids_raw %}ids={{ ids_raw }}&{% endif %}{% if store_filter %}store={{ store_filter }}&{% endif %}{% if data_filter %}data={{ data_filter }}&{% endif %}" class="btn-clientes active">&#10003; Clientes</a>
     {% else %}
-      <a href="?flag=C&{% if ids_raw %}ids={{ ids_raw }}&{% endif %}{% if store_filter %}store={{ store_filter }}&{% endif %}" class="btn-clientes">Clientes</a>
+      <a href="?flag=C&{% if ids_raw %}ids={{ ids_raw }}&{% endif %}{% if store_filter %}store={{ store_filter }}&{% endif %}{% if data_filter %}data={{ data_filter }}&{% endif %}" class="btn-clientes">Clientes</a>
     {% endif %}
-    {% if ids_raw or flag_filter or store_filter %}
+    {% if ids_raw or flag_filter or store_filter or data_filter %}
       <a href="?" class="btn-filter-clear">&#10005; Limpar</a>
-      {% if ids_raw or store_filter %}<span class="filter-active-badge">Filtro ativo</span>{% endif %}
+      {% if ids_raw or store_filter or data_filter %}<span class="filter-active-badge">Filtro ativo</span>{% endif %}
     {% endif %}
   </form>
 
@@ -987,6 +1003,7 @@
       {%- if ids_raw %}&ids={{ ids_raw }}{% endif -%}
       {%- if flag_filter %}&flag={{ flag_filter }}{% endif -%}
       {%- if store_filter %}&store={{ store_filter }}{% endif -%}
+      {%- if data_filter %}&data={{ data_filter }}{% endif -%}
     {%- endset -%}
     <div class="pagination">
       {% if page > 1 %}

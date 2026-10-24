@@ -471,6 +471,12 @@ Retorna `{company_id, company_name, background_color}` de `faciais.companies` LE
 
 ## Tela Lista — ações sobre ocorrências (`/tracks/lista`)
 
+**Filtros** (query string, todos combináveis e preservados na paginação): `ids`, `store`, `flag`
+(botão "Clientes") e `data` (`YYYY-MM-DD`, campo "Data da coleta", desde 2026-10-24). O filtro de
+`data` restringe **também as ocorrências exibidas** de cada pessoa (só as coletadas naquele dia,
+via `created_at >= data AND < data+1`, aproveitando o índice) — diferente de `store`, que só decide
+quais pessoas aparecem. Data inválida é ignorada.
+
 Cada ocorrência na faixa horizontal exibe três botões ao passar o mouse:
 
 | Botão | Cor | Ação |
