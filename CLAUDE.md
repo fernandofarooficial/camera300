@@ -24,8 +24,28 @@ uma pasta que nunca chegou a ser criada aqui.)
 ```
 ssh root@72.60.58.241
 # no VPS: /home/workuser/camera300
-git pull origin main && sudo systemctl restart camera300
+git pull origin main
+# depois, restart com espera (ver abaixo)
 ```
+
+### Restart com espera até o serviço responder
+
+Em vez de só `systemctl restart`, usar o loop abaixo: reinicia e fica sondando a porta local do
+gunicorn (`127.0.0.1:5001`, sem passar pelo proxy) até ela responder, com timeout de 3 min. Cada
+sonda usa `curl -m 2` (ver aviso de `--max-time` abaixo), então não prende thread do worker.
+
+```bash
+systemctl restart camera300; s=$(date +%s); ok=1
+until curl -s -m 2 -o /dev/null http://127.0.0.1:5001/; do
+  sleep 1
+  [ $(( $(date +%s) - s )) -gt 180 ] && { ok=0; break; }
+done
+[ $ok = 1 ] && echo "Pronto em $(( $(date +%s) - s ))s" || echo "Não subiu em 3 min — ver journalctl -u camera300 -n 100"
+```
+
+`curl -s` sem `-f` considera "no ar" qualquer resposta HTTP (inclusive 500) — o objetivo é só saber
+que o worker já está aceitando conexões, não validar uma rota específica. Quando responde, o import
+de `tracks.py` (incluindo os retries de `CNPJ_STORE_MAP`/`_carregar_cameras()`, até ~35s) já terminou.
 
 Serviço systemd: `camera300.service`. Mesmo servidor e mesmo acesso SSH usados pelo
 `retail_analytics` (e demais projetos em `/home/workuser/`) — não precisa de configuração
@@ -271,7 +291,9 @@ no fallback por `store_id + bill` apenas.
   volta (`CREATE OR REPLACE VIEW`, sem `pp.data`) antes da coluna ser removida, sem quebra. Ver
   `doc_faciais.sql`/`README.md` em `db-docs/lojas` pro histórico completo dessa idas-e-vindas.
 
-  **Backfill dos dados existentes (migration única, 2026-09-07):** das 17.746 linhas existentes,
+  **Backfill dos dados existentes (migration única, 2026-09-07 — dados apagados no mesmo dia, ver
+  seção "Reset de dados" mais abaixo; registro histórico da migration mantido aqui):** das 17.746
+  linhas existentes,
   17.416 (98,1%) foram preenchidas retroativamente casando `(store_id, bill)` contra
   `microvix_movimento` (mesmos filtros da listagem: `cod_natureza_operacao='10030'`,
   `cancelado='N'`, `excluido='N'`, `tipo_transacao<>'J' OR NULL`, `codigo_cliente=1`) — só quando
@@ -492,6 +514,21 @@ mesmo motivo do modal) que:
 
 ---
 
+## Tela Dados — botão Limpeza (desde 2026-10-23)
+
+Botão "Limpeza" em `templates/tracks_dados.html` (com `confirm()` antes de rodar) dispara
+`POST /camera300/api/limpeza` e acompanha via polling de `/camera300/api/limpeza/status`. Roda em
+thread background em `app.py`, mesmo padrão de `adequar_bases` (flag `_limpeza_rodando` +
+`_limpeza_lock`; resultado registrado no `tracer` como `SISTEMA`).
+
+`limpar_registros_nao_clientes()` (`db.py`) — uma única query (CTE + `DELETE ... RETURNING`):
+- Escopo: pessoas com `person_type_id IS DISTINCT FROM 'C'` (inclui nulo). Clientes `'C'` nunca são tocados.
+- Mantém por pessoa os **2 `detection_records` mais antigos e os 8 mais recentes** (`created_at`, desempate por `detection_record_id`); o resto é **excluído permanentemente** (sem backup).
+- Se nenhum desses 10 for do `reference_track_id` da pessoa, mantém também 1 registro desse track (o da foto: com `image_path`, maior `detection_score`).
+- Retorna `(registros_excluidos, pessoas_afetadas)`.
+
+---
+
 ## Flags de pessoa
 
 | Flag | Significado |
@@ -553,6 +590,8 @@ mesmo motivo do modal) que:
 - `GET /service-worker.js` → service worker do PWA (mobile)
 - `POST /api/adequar_bases` → adequar_bases() assíncrono
 - `GET /api/adequar_bases/status` → status
+- `POST /api/limpeza` → `limpar_registros_nao_clientes()` assíncrono (409 se já rodando) — ver seção "Tela Dados — botão Limpeza"
+- `GET /api/limpeza/status` → `{rodando, resultado}` (`resultado` = `{excluidos, pessoas}` ou `{erro}`)
 - `GET /api/traces` → trace_entries JSON
 - `GET /events` → eventos em memória
 - `POST /clear` → limpa eventos e traces
@@ -651,3 +690,22 @@ Mesma inconsistência existia em `tracks_caixa_set_pessoa` (POST de confirmaçã
 `SELECT ... LIMIT 1` sem `ORDER BY`, pegando uma linha arbitrária entre os itens da NF (com
 `hora_lancamento` de qualquer um deles). Corrigido com `ORDER BY hora_lancamento ASC LIMIT 1` —
 mesmo critério (horário do primeiro item) usado agora na listagem.
+
+---
+
+## Reset de dados: `faciais.person_purchases` truncada (2026-09-07)
+
+Depois das correções de `serie`/`tipo_transacao`/`tipo_cliente` acima, a tabela
+`faciais.person_purchases` foi **truncada por decisão do usuário** (`TRUNCATE TABLE
+faciais.person_purchases RESTART IDENTITY`) — zerou todas as linhas (confirmadas e anônimas) e
+reiniciou a sequence `person_purchase_id` em 1. Sem FK apontando para essa tabela, então a operação
+não teve efeito cascata em outras tabelas.
+
+**Consequência:** as ~940 confirmações de comprador feitas até então na Tela Caixa foram perdidas
+(sem backup, não recuperável) e precisam ser refeitas manualmente. As linhas "anônimas" (placeholder
+de NF vista, sem comprador) voltam sozinhas conforme `_sincronizar_person_purchases`
+(`microvix_ingest.py`) roda nos próximos syncs incrementais (`POST /tracks/carga/sync`) — não é
+preciso fazer nada manualmente pra essa parte.
+
+Nenhuma mudança de schema envolvida — a estrutura da tabela (colunas, constraint
+`uq_store_bill_serie`) continua a mesma descrita na seção "Tela Caixa" → "Tabelas envolvidas" acima.
