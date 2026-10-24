@@ -1573,6 +1573,197 @@ def tracks_dados():
     return render_template("tracks_dados.html", cameras=cameras)
 
 
+def _pct(parte, total):
+    return round(100.0 * parte / total, 1) if total else 0.0
+
+
+@tracks_bp.route("/tracks/relatorios")
+def tracks_relatorios():
+    """Relatório estatístico de coletas, duplicatas e anomalias num período (default: últimos 7 dias)."""
+    hoje = hoje_local()
+    try:
+        data_ini = date.fromisoformat(request.args.get("data_ini", "").strip())
+    except ValueError:
+        data_ini = hoje - timedelta(days=6)
+    try:
+        data_fim = date.fromisoformat(request.args.get("data_fim", "").strip())
+    except ValueError:
+        data_fim = hoje
+    if data_ini > data_fim:
+        data_ini, data_fim = data_fim, data_ini
+    periodo = (data_ini, data_fim + timedelta(days=1))
+
+    conn = get_faciais_conn()
+    try:
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        # Coletas por dia/câmera/loja/tipo de pessoa — agregado no Python pra montar todos os recortes
+        cursor.execute(
+            """
+            SELECT r.created_at::date AS dia, r.camera_id, r.store_id, p.person_type_id AS flag,
+                   COUNT(*) AS coletas,
+                   COUNT(*) FILTER (WHERE r.is_intruder) AS intruso,
+                   COUNT(*) FILTER (WHERE r.is_unwanted) AS indesejada,
+                   COUNT(*) FILTER (WHERE r.is_intruder AND r.is_unwanted) AS ambas,
+                   COUNT(*) FILTER (WHERE r.person_id IS NULL) AS sem_pessoa
+            FROM detection_records r
+            LEFT JOIN people p ON p.person_id = r.person_id
+            WHERE r.created_at >= %s AND r.created_at < %s
+            GROUP BY 1, 2, 3, 4
+            """,
+            periodo,
+        )
+        linhas = cursor.fetchall()
+
+        # Contagens distintas não somam entre recortes: consultadas à parte
+        cursor.execute(
+            """
+            SELECT COUNT(DISTINCT r.person_id) AS pessoas,
+                   COUNT(DISTINCT COALESCE(p.duplicate_of_person_id, p.person_id)) AS pessoas_unicas
+            FROM detection_records r
+            JOIN people p ON p.person_id = r.person_id
+            WHERE r.created_at >= %s AND r.created_at < %s
+            """,
+            periodo,
+        )
+        distintos = cursor.fetchone()
+        cursor.execute(
+            """
+            SELECT r.created_at::date AS dia, COUNT(DISTINCT r.person_id) AS pessoas
+            FROM detection_records r
+            WHERE r.created_at >= %s AND r.created_at < %s AND r.person_id IS NOT NULL
+            GROUP BY 1
+            """,
+            periodo,
+        )
+        pessoas_dia = {r["dia"]: r["pessoas"] for r in cursor.fetchall()}
+        cursor.execute(
+            """
+            SELECT p.person_type_id AS flag, COUNT(DISTINCT r.person_id) AS pessoas
+            FROM detection_records r
+            JOIN people p ON p.person_id = r.person_id
+            WHERE r.created_at >= %s AND r.created_at < %s
+            GROUP BY 1
+            """,
+            periodo,
+        )
+        pessoas_flag = {r["flag"]: r["pessoas"] for r in cursor.fetchall()}
+
+        # Cadastros criados no período e quantos deles já foram marcados como duplicata
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS novas,
+                   COUNT(*) FILTER (WHERE duplicate_of_person_id IS NOT NULL) AS novas_duplicadas
+            FROM people
+            WHERE created_at >= %s AND created_at < %s
+            """,
+            periodo,
+        )
+        novas = cursor.fetchone()
+
+        # Duplicatas: o vínculo não tem data, então o total é o estado atual; o período entra nas
+        # coletas de cada grupo
+        cursor.execute(
+            """
+            SELECT COUNT(DISTINCT duplicate_of_person_id) AS grupos, COUNT(*) AS duplicadas
+            FROM people WHERE duplicate_of_person_id IS NOT NULL
+            """
+        )
+        dup_total = cursor.fetchone()
+        cursor.execute(
+            """
+            SELECT g.principal AS id_unico, pp.full_name AS nome,
+                   (SELECT COUNT(*) FROM people d WHERE d.duplicate_of_person_id = g.principal) AS n_duplicatas,
+                   COUNT(*) AS coletas,
+                   COUNT(*) FILTER (WHERE r.person_id <> g.principal) AS coletas_em_duplicatas
+            FROM (SELECT person_id, COALESCE(duplicate_of_person_id, person_id) AS principal FROM people) g
+            JOIN people pp ON pp.person_id = g.principal
+            JOIN detection_records r ON r.person_id = g.person_id
+                                    AND r.created_at >= %s AND r.created_at < %s
+            WHERE EXISTS (SELECT 1 FROM people d WHERE d.duplicate_of_person_id = g.principal)
+            GROUP BY g.principal, pp.full_name
+            ORDER BY coletas DESC
+            """,
+            periodo,
+        )
+        grupos_periodo = cursor.fetchall()
+
+        cursor.close()
+        conn.rollback()
+    finally:
+        release_faciais_conn(conn)
+
+    campos = ("coletas", "intruso", "indesejada", "ambas", "sem_pessoa")
+
+    def _vazio():
+        return dict.fromkeys(campos, 0)
+
+    def _somar(alvo, linha):
+        for k in campos:
+            alvo[k] += linha[k]
+
+    totais = _vazio()
+    por_dia, por_camera, por_loja, por_flag = {}, {}, {}, {}
+    for l in linhas:
+        _somar(totais, l)
+        _somar(por_dia.setdefault(l["dia"], _vazio()), l)
+        _somar(por_camera.setdefault(l["camera_id"], _vazio()), l)
+        _somar(por_loja.setdefault(l["store_id"] or CAMERA_STORE_MAP.get(l["camera_id"]), _vazio()), l)
+        _somar(por_flag.setdefault(l["flag"], _vazio()), l)
+
+    dias_semana = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
+    dias = []
+    d = data_ini
+    while d <= data_fim:
+        dias.append({"data": d.strftime("%d/%m"), "dia_semana": dias_semana[d.weekday()],
+                     "pessoas": pessoas_dia.get(d, 0), **por_dia.get(d, _vazio())})
+        d += timedelta(days=1)
+
+    cameras_map = {c["id_camera"]: c.get("camera") or str(c["id_camera"]) for c in CAMERAS_COMPLETO if c.get("id_camera") is not None}
+    flag_map = {"C": "Cliente", "A": "Anônimo", "F": "Franqueado", "E": "Empregado", "K": "Criança", "P": "Prestador"}
+
+    def _recorte(dic, rotulo):
+        out = [{"chave": k, "rotulo": rotulo(k), **v,
+                "pct_intruso": _pct(v["intruso"], v["coletas"]),
+                "pct_indesejada": _pct(v["indesejada"], v["coletas"])} for k, v in dic.items()]
+        return sorted(out, key=lambda x: -x["coletas"])
+
+    def _rotulo_camera(k):
+        if not k:
+            return "Sem câmera"
+        loja = CAMERA_STORE_NAME_MAP.get(k)
+        return (cameras_map.get(k) or f"Câm. {k}") + (f" · {loja}" if loja else "")
+
+    lojas = _recorte(por_loja, lambda k: STORE_NAME_MAP.get(k, f"Loja {k}") if k else "Sem loja")
+    cameras = _recorte(por_camera, _rotulo_camera)
+    flags = _recorte(por_flag, lambda k: flag_map.get(k, k) if k else "Sem pessoa")
+    for f in flags:
+        f["pessoas"] = pessoas_flag.get(f["chave"], 0)
+
+    n_dias = (data_fim - data_ini).days + 1
+    resumo = {
+        **totais,
+        "pessoas": distintos["pessoas"],
+        "pessoas_unicas": distintos["pessoas_unicas"],
+        "media_dia": round(totais["coletas"] / n_dias, 1),
+        "pct_intruso": _pct(totais["intruso"], totais["coletas"]),
+        "pct_indesejada": _pct(totais["indesejada"], totais["coletas"]),
+        "novas": novas["novas"],
+        "novas_duplicadas": novas["novas_duplicadas"],
+        "pct_novas_duplicadas": _pct(novas["novas_duplicadas"], novas["novas"]),
+        "grupos": dup_total["grupos"],
+        "duplicadas": dup_total["duplicadas"],
+        "coletas_em_duplicatas": sum(g["coletas_em_duplicatas"] for g in grupos_periodo),
+    }
+    return render_template(
+        "tracks_relatorios.html",
+        data_ini=data_ini.isoformat(), data_fim=data_fim.isoformat(),
+        periodo_br=f"{data_ini.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}", n_dias=n_dias,
+        resumo=resumo, dias=dias, max_dia=max([x["coletas"] for x in dias] + [1]),
+        lojas=lojas, cameras=cameras, flags=flags, grupos=grupos_periodo,
+    )
+
+
 @tracks_bp.route("/tracks/anomalias")
 def tracks_anomalias():
     """Ocorrências marcadas como Intruso e/ou Indesejada coletadas num dia (default: hoje)."""

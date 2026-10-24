@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tracks — Relatórios</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface-2: #1e2130;
+      --border: #2d3148;
+      --ink: #e2e8f0;
+      --ink-2: #94a3b8;
+      --muted: #64748b;
+      --accent: #7c86ff;
+      --intr: #f97316;
+      --indes: #a855f7;
+      --dup: #ec4899;
+      --bar: #7c86ff;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+    }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    header h1 { font-size: 1.2rem; font-weight: 600; color: var(--accent); }
+
+    .nav { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+    .nav a, .nav button {
+      color: var(--accent);
+      background: none;
+      font-family: inherit;
+      text-decoration: none;
+      font-size: 0.82rem;
+      border: 1px solid #7c86ff44;
+      padding: 0.3rem 0.8rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .nav a:hover, .nav button:hover { background: #7c86ff22; }
+
+    main { max-width: 1200px; margin: 0 auto; padding: 1.5rem; display: flex; flex-direction: column; gap: 1.25rem; }
+
+    /* ---- Filtros ---- */
+    .filter-bar {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.85rem 1.1rem;
+      display: flex;
+      gap: 0.75rem;
+      align-items: flex-end;
+      flex-wrap: wrap;
+    }
+    .filter-bar label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      display: block;
+      margin-bottom: 0.3rem;
+    }
+    .filter-bar input[type="date"] {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--ink);
+      font-size: 0.88rem;
+      padding: 0.4rem 0.6rem;
+      outline: none;
+      color-scheme: dark;
+    }
+    .filter-bar input[type="date"]:focus { border-color: #7c86ff88; }
+    .btn {
+      background: #7c86ff22;
+      border: 1px solid #7c86ff44;
+      color: var(--accent);
+      border-radius: 6px;
+      padding: 0.45rem 1rem;
+      font-size: 0.85rem;
+      font-family: inherit;
+      cursor: pointer;
+    }
+    .btn:hover { background: #7c86ff33; }
+    .btn-ghost { background: transparent; border-color: var(--border); color: var(--ink-2); padding: 0.45rem 0.7rem; font-size: 0.78rem; }
+    .btn-ghost:hover { background: #ffffff0d; }
+    .periodo { margin-left: auto; font-size: 0.8rem; color: var(--ink-2); }
+
+    /* ---- Seções ---- */
+    section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.1rem 1.25rem;
+    }
+    section h2 { font-size: 0.95rem; font-weight: 700; color: var(--ink); margin-bottom: 0.25rem; }
+    section .sub { font-size: 0.75rem; color: var(--muted); margin-bottom: 0.9rem; line-height: 1.4; }
+
+    /* ---- KPIs ---- */
+    .kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 0.75rem; }
+    .kpi {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.85rem 1rem;
+      border-top: 3px solid var(--k, var(--accent));
+    }
+    .kpi .rot { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); }
+    .kpi .val { font-size: 1.75rem; font-weight: 700; color: var(--ink); margin: 0.2rem 0 0.15rem; font-variant-numeric: tabular-nums; }
+    .kpi .det { font-size: 0.74rem; color: var(--ink-2); line-height: 1.35; }
+
+    /* ---- Gráfico de colunas (uma série) ---- */
+    .chart { position: relative; }
+    .chart-plot {
+      display: flex;
+      align-items: flex-end;
+      gap: 2px;
+      height: 200px;
+      border-bottom: 1px solid var(--border);
+      background-image: linear-gradient(to top, #2d314855 1px, transparent 1px);
+      background-size: 100% 25%;
+    }
+    .col { flex: 1; height: 100%; display: flex; align-items: flex-end; cursor: default; min-width: 0; }
+    .col .bar {
+      width: 100%;
+      max-width: 36px;
+      margin: 0 auto;
+      background: var(--bar);
+      border-radius: 4px 4px 0 0;
+      min-height: 1px;
+      transition: opacity 0.15s;
+    }
+    .chart-plot:hover .col .bar { opacity: 0.45; }
+    .chart-plot .col:hover .bar { opacity: 1; }
+    .chart-x { display: flex; gap: 2px; margin-top: 0.35rem; }
+    .chart-x span { flex: 1; min-width: 0; text-align: center; font-size: 0.62rem; color: var(--muted); white-space: nowrap; overflow: hidden; }
+    .chart-y { position: absolute; right: 0; top: -1.1rem; font-size: 0.65rem; color: var(--muted); }
+    .tooltip {
+      position: absolute;
+      pointer-events: none;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.5rem 0.65rem;
+      font-size: 0.75rem;
+      color: var(--ink);
+      box-shadow: 0 8px 24px #00000066;
+      display: none;
+      white-space: nowrap;
+      z-index: 5;
+      line-height: 1.5;
+    }
+    .tooltip b { color: var(--ink); }
+    .tooltip .t-muted { color: var(--ink-2); }
+
+    /* ---- Tabelas ---- */
+    .tabela-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    thead th {
+      text-align: left;
+      font-size: 0.66rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--muted);
+      padding: 0.45rem 0.6rem;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    tbody td { padding: 0.45rem 0.6rem; border-bottom: 1px solid #2d314866; color: var(--ink); white-space: nowrap; }
+    tbody tr:hover td { background: #ffffff06; }
+    th.n, td.n { text-align: right; font-variant-numeric: tabular-nums; }
+    td.rot { white-space: normal; min-width: 140px; }
+    td .pct { color: var(--ink-2); font-size: 0.72rem; margin-left: 0.25rem; }
+    .inline-bar { display: inline-block; height: 6px; border-radius: 3px; background: var(--bar); vertical-align: middle; margin-right: 0.45rem; }
+    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 0.35rem; vertical-align: middle; }
+    .dot-intr { background: var(--intr); }
+    .dot-indes { background: var(--indes); }
+    td a { color: var(--accent); text-decoration: none; font-weight: 700; }
+    td a:hover { text-decoration: underline; }
+    .vazio { font-size: 0.8rem; color: var(--muted); padding: 0.5rem 0; }
+
+    .duas { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+    @media (max-width: 860px) { .duas { grid-template-columns: 1fr; } }
+    @media (max-width: 600px) {
+      header { padding: 0.85rem 1rem; }
+      main { padding: 1rem; }
+      .periodo { margin-left: 0; }
+    }
+    @media print {
+      header .nav, .filter-bar form, .filter-bar .btn, .filter-bar .btn-ghost { display: none; }
+      header { position: static; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Tracks &mdash; Relatórios</h1>
+  <nav class="nav">
+    <button type="button" onclick="window.print()">Imprimir</button>
+    <a href="/camera300/tracks/anomalias">Anomalias</a>
+    <a href="/camera300/tracks/lista">Lista</a>
+    <a href="/camera300/tracks/dados">&#8592; Dados</a>
+  </nav>
+</header>
+
+<main>
+  <form class="filter-bar" method="get" action="" id="form-periodo">
+    <div>
+      <label for="data-ini">De</label>
+      <input type="date" id="data-ini" name="data_ini" value="{{ data_ini }}" />
+    </div>
+    <div>
+      <label for="data-fim">Até</label>
+      <input type="date" id="data-fim" name="data_fim" value="{{ data_fim }}" />
+    </div>
+    <button type="submit" class="btn">Gerar relatório</button>
+    <button type="button" class="btn-ghost" onclick="periodoRapido(0)">Hoje</button>
+    <button type="button" class="btn-ghost" onclick="periodoRapido(6)">7 dias</button>
+    <button type="button" class="btn-ghost" onclick="periodoRapido(29)">30 dias</button>
+    <button type="button" class="btn-ghost" onclick="periodoRapido('mes')">Este mês</button>
+    <span class="periodo">{{ periodo_br }} · {{ n_dias }} dia(s)</span>
+  </form>
+
+  <!-- ===================== KPIs ===================== -->
+  <div class="kpis">
+    <div class="kpi">
+      <div class="rot">Coletas</div>
+      <div class="val">{{ resumo.coletas }}</div>
+      <div class="det">média de {{ resumo.media_dia }}/dia{% if resumo.sem_pessoa %} · {{ resumo.sem_pessoa }} sem pessoa{% endif %}</div>
+    </div>
+    <div class="kpi">
+      <div class="rot">Pessoas coletadas</div>
+      <div class="val">{{ resumo.pessoas }}</div>
+      <div class="det">{{ resumo.pessoas_unicas }} pessoa(s) real(is) juntando duplicatas</div>
+    </div>
+    <div class="kpi" style="--k: var(--intr)">
+      <div class="rot">Intruso</div>
+      <div class="val">{{ resumo.intruso }}</div>
+      <div class="det">{{ resumo.pct_intruso }}% das coletas</div>
+    </div>
+    <div class="kpi" style="--k: var(--indes)">
+      <div class="rot">Indesejada</div>
+      <div class="val">{{ resumo.indesejada }}</div>
+      <div class="det">{{ resumo.pct_indesejada }}% das coletas{% if resumo.ambas %} · {{ resumo.ambas }} também intruso{% endif %}</div>
+    </div>
+    <div class="kpi">
+      <div class="rot">Novos cadastros</div>
+      <div class="val">{{ resumo.novas }}</div>
+      <div class="det">{{ resumo.novas_duplicadas }} já marcado(s) como duplicata ({{ resumo.pct_novas_duplicadas }}%)</div>
+    </div>
+    <div class="kpi" style="--k: var(--dup)">
+      <div class="rot">Duplicatas</div>
+      <div class="val">{{ resumo.duplicadas }}</div>
+      <div class="det">cadastro(s) em {{ resumo.grupos }} grupo(s) — total atual</div>
+    </div>
+  </div>
+
+  <!-- ===================== Coletas por dia ===================== -->
+  <section>
+    <h2>Coletas por dia</h2>
+    <div class="sub">Passe o mouse numa coluna para ver o detalhe do dia. A tabela abaixo traz os mesmos números.</div>
+    {% if resumo.coletas %}
+      {% set passo = ((dias | length) / 15) | round(0, 'ceil') | int %}
+      {% set passo = passo if passo > 0 else 1 %}
+      <div class="chart" id="chart-dias">
+        <span class="chart-y">máx. {{ max_dia }}</span>
+        <div class="chart-plot">
+          {% for d in dias %}
+            <div class="col"
+                 data-dia="{{ d.dia_semana }} {{ d.data }}" data-coletas="{{ d.coletas }}" data-pessoas="{{ d.pessoas }}"
+                 data-intruso="{{ d.intruso }}" data-indesejada="{{ d.indesejada }}">
+              <div class="bar" style="height: {{ (100 * d.coletas / max_dia) | round(1) }}%{% if not d.coletas %}; opacity: 0{% endif %}"></div>
+            </div>
+          {% endfor %}
+        </div>
+        <div class="chart-x">
+          {% for d in dias %}
+            <span>{% if loop.index0 % passo == 0 %}{{ d.data }}{% endif %}</span>
+          {% endfor %}
+        </div>
+        <div class="tooltip" id="tooltip"></div>
+      </div>
+    {% else %}
+      <div class="vazio">Nenhuma coleta no período.</div>
+    {% endif %}
+
+    <div class="tabela-wrap" style="margin-top: 1rem;">
+      <table>
+        <thead>
+          <tr>
+            <th>Dia</th>
+            <th class="n">Coletas</th>
+            <th class="n">Pessoas</th>
+            <th class="n"><span class="dot dot-intr"></span>Intruso</th>
+            <th class="n"><span class="dot dot-indes"></span>Indesejada</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for d in dias | reverse %}
+            <tr>
+              <td>{{ d.dia_semana }} {{ d.data }}</td>
+              <td class="n">{{ d.coletas }}</td>
+              <td class="n">{{ d.pessoas }}</td>
+              <td class="n">{{ d.intruso }}</td>
+              <td class="n">{{ d.indesejada }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===================== Anomalias por loja / câmera ===================== -->
+  {% macro tabela_recorte(linhas, titulo_col, max_col) %}
+    <div class="tabela-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>{{ titulo_col }}</th>
+            <th class="n">Coletas</th>
+            <th class="n"><span class="dot dot-intr"></span>Intruso</th>
+            <th class="n"><span class="dot dot-indes"></span>Indesejada</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for l in linhas %}
+            <tr>
+              <td class="rot">{{ l.rotulo }}</td>
+              <td class="n"><span class="inline-bar" style="width: {{ (60 * l.coletas / max_col) | round(0) | int + 2 }}px"></span>{{ l.coletas }}</td>
+              <td class="n">{{ l.intruso }}<span class="pct">{{ l.pct_intruso }}%</span></td>
+              <td class="n">{{ l.indesejada }}<span class="pct">{{ l.pct_indesejada }}%</span></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endmacro %}
+
+  <div class="duas">
+    <section>
+      <h2>Por loja</h2>
+      <div class="sub">Coletas e taxa de anomalia (% das coletas da loja).</div>
+      {% if lojas %}{{ tabela_recorte(lojas, 'Loja', lojas[0].coletas or 1) }}{% else %}<div class="vazio">Sem dados.</div>{% endif %}
+    </section>
+    <section>
+      <h2>Por tipo de pessoa</h2>
+      <div class="sub">Tipo atual do cadastro vinculado à coleta.</div>
+      {% if flags %}
+        <div class="tabela-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Tipo</th>
+                <th class="n">Coletas</th>
+                <th class="n">Pessoas</th>
+                <th class="n"><span class="dot dot-intr"></span>Intruso</th>
+                <th class="n"><span class="dot dot-indes"></span>Indesejada</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for l in flags %}
+                <tr>
+                  <td class="rot">{{ l.rotulo }}</td>
+                  <td class="n"><span class="inline-bar" style="width: {{ (60 * l.coletas / (flags[0].coletas or 1)) | round(0) | int + 2 }}px"></span>{{ l.coletas }}</td>
+                  <td class="n">{{ l.pessoas }}</td>
+                  <td class="n">{{ l.intruso }}<span class="pct">{{ l.pct_intruso }}%</span></td>
+                  <td class="n">{{ l.indesejada }}<span class="pct">{{ l.pct_indesejada }}%</span></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}<div class="vazio">Sem dados.</div>{% endif %}
+    </section>
+  </div>
+
+  <section>
+    <h2>Por câmera</h2>
+    <div class="sub">Taxa alta de Indesejada numa câmera costuma indicar problema de posição, luz ou foco.</div>
+    {% if cameras %}{{ tabela_recorte(cameras, 'Câmera', cameras[0].coletas or 1) }}{% else %}<div class="vazio">Sem dados.</div>{% endif %}
+  </section>
+
+  <!-- ===================== Duplicatas ===================== -->
+  <section>
+    <h2>Duplicatas com coletas no período</h2>
+    <div class="sub">
+      Grupos de cadastros marcados como a mesma pessoa que tiveram coletas no período
+      ({{ resumo.coletas_em_duplicatas }} coleta(s) caíram em cadastros duplicados em vez do principal).
+      O vínculo de duplicata não guarda data, então não dá pra filtrar por quando foi marcado.
+    </div>
+    {% if grupos %}
+      <div class="tabela-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Cadastro principal</th>
+              <th class="n">Duplicatas</th>
+              <th class="n">Coletas do grupo</th>
+              <th class="n">Em duplicatas</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for g in grupos %}
+              <tr>
+                <td class="rot"><a href="/camera300/tracks/lista?ids={{ g.id_unico }}">ID {{ g.id_unico }}</a> {{ g.nome or '—' }}</td>
+                <td class="n">{{ g.n_duplicatas }}</td>
+                <td class="n">{{ g.coletas }}</td>
+                <td class="n">{{ g.coletas_em_duplicatas }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="vazio">Nenhum grupo de duplicatas com coletas no período.</div>
+    {% endif %}
+  </section>
+</main>
+
+<script>
+  function _iso(d) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  function periodoRapido(dias) {
+    const hoje = new Date();
+    const ini = dias === 'mes' ? new Date(hoje.getFullYear(), hoje.getMonth(), 1)
+                               : new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() - dias);
+    document.getElementById('data-ini').value = _iso(ini);
+    document.getElementById('data-fim').value = _iso(hoje);
+    document.getElementById('form-periodo').submit();
+  }
+
+  (function () {
+    const chart = document.getElementById('chart-dias');
+    if (!chart) return;
+    const tip = document.getElementById('tooltip');
+    chart.querySelectorAll('.col').forEach(col => {
+      col.addEventListener('mouseenter', () => {
+        const d = col.dataset;
+        tip.innerHTML =
+          `<b>${d.dia}</b><br>${d.coletas} coleta(s)<br>` +
+          `<span class="t-muted">${d.pessoas} pessoa(s)</span><br>` +
+          `<span class="dot dot-intr"></span>${d.intruso} intruso · ` +
+          `<span class="dot dot-indes"></span>${d.indesejada} indesejada`;
+        tip.style.display = 'block';
+        const cr = chart.getBoundingClientRect(), r = col.getBoundingClientRect();
+        let left = r.left - cr.left + r.width / 2 - tip.offsetWidth / 2;
+        left = Math.max(0, Math.min(left, cr.width - tip.offsetWidth));
+        tip.style.left = left + 'px';
+        tip.style.top = '-0.5rem';
+      });
+      col.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+    });
+  })();
+</script>
+
+</body>
+</html>

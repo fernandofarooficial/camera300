@@ -583,6 +583,33 @@ O usuário aponta, em cada ocorrência (`detection_record`) da Tela Lista, duas 
 
 ---
 
+## Relatórios (`/tracks/relatorios`, desde 2026-10-24)
+
+Relatório estatístico de coletas, duplicatas e anomalias num período escolhido pelo usuário
+(`?data_ini=&data_fim=`, default últimos 7 dias até `hoje_local()`; datas invertidas são trocadas,
+inválidas caem no default; atalhos Hoje / 7 dias / 30 dias / Este mês e botão Imprimir).
+Botão "Relatórios" no header da Tela Dados. Função `tracks_relatorios` (`tracks.py`), template
+`tracks_relatorios.html`. Período = coletas com `created_at` no intervalo (mesmo critério de data
+da Lista/Anomalias).
+
+- **KPIs:** coletas (média/dia, sem pessoa), pessoas coletadas (distintas, e "reais" juntando
+  duplicatas via `COALESCE(duplicate_of_person_id, person_id)`), Intruso e Indesejada (n e % das
+  coletas), novos cadastros (`people.created_at` no período) e quantos deles já são duplicata,
+  total de duplicatas.
+- **Coletas por dia:** gráfico de colunas (uma série, tooltip no hover) + tabela com os mesmos
+  números e anomalias por dia.
+- **Por loja / por tipo de pessoa / por câmera:** coletas e taxa de Intruso/Indesejada. Loja vem
+  de `detection_records.store_id`, com fallback por `CAMERA_STORE_MAP` quando nulo. Tipo de pessoa é
+  o `person_type_id` **atual** do cadastro, não o da época da coleta.
+- **Duplicatas:** o vínculo (`people.duplicate_of_person_id`) **não tem data** — o total de
+  duplicatas é o estado atual, não do período; o período entra só nas coletas de cada grupo
+  (tabela de grupos com coleta no período e quantas caíram num cadastro duplicado em vez do
+  principal). As anomalias também não guardam quando foram marcadas — contam pela data da coleta.
+- Uma query agregada por `(dia, camera_id, store_id, flag)` monta todos os recortes em Python;
+  contagens distintas (pessoas) vão em queries à parte porque não somam entre recortes.
+
+---
+
 ## Formulário de edição de pessoa (telefone/e-mail)
 
 O modal "Editar Pessoa" está **duplicado em três templates** (mesmo HTML/JS, sem componente
@@ -651,6 +678,7 @@ thread background em `app.py`, mesmo padrão de `adequar_bases` (flag `_limpeza_
 - `GET /tracks/permanencia` → permanência estimada (5/pág)
 - `GET /tracks/quadro` ou `/m/tracks/quadro` → analytics (gráficos)
 - `GET /tracks/dados` → página de dados/câmeras
+- `GET /tracks/relatorios` → relatório estatístico de coletas/duplicatas/anomalias (params: `data_ini`, `data_fim`; ver seção "Relatórios")
 - `GET /tracks/anomalias` → ocorrências Intruso/Indesejada de um dia (params: `data`, `tipo`; ver seção "Anomalias de facial")
 - `GET /tracks/heatmap` → página do mapa de calor (params: `camera_id`, `data_ini`, `data_fim`)
 - `GET /tracks/heatmap/img` → proxy autenticado de imagens do heatmap (param `url`)
