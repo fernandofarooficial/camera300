@@ -227,6 +227,29 @@
     .oc-btn-del:hover  { background: #ef444422; border-color: #ef444499; }
     .oc-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
+    /* ---- Anomalias da ocorrência (Intruso / Indesejada) ---- */
+    .oc-btn-anom { width: auto; padding: 0 0.3rem; font-size: 0.56rem; font-weight: 700; }
+    .oc-btn-intr  { color: #f97316; border-color: #f9731644; }
+    .oc-btn-intr:hover  { background: #f9731622; border-color: #f9731699; }
+    .oc-btn-indes { color: #a855f7; border-color: #a855f744; }
+    .oc-btn-indes:hover { background: #a855f722; border-color: #a855f799; }
+    .occurrence.oc-intruso    .oc-btn-intr  { background: #f97316; color: #0f1117; border-color: #f97316; }
+    .occurrence.oc-indesejada .oc-btn-indes { background: #a855f7; color: #0f1117; border-color: #a855f7; }
+    .occurrence.oc-intruso img    { border: 2px solid #f97316; }
+    .occurrence.oc-indesejada img { outline: 2px solid #a855f7; outline-offset: 1px; }
+    .oc-badge {
+      display: none;
+      font-size: 0.52rem;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      padding: 0.05rem 0.35rem;
+      border-radius: 999px;
+    }
+    .oc-badge-intr  { background: #f9731622; color: #f97316; border: 1px solid #f9731655; }
+    .oc-badge-indes { background: #a855f722; color: #a855f7; border: 1px solid #a855f755; }
+    .occurrence.oc-intruso    .oc-badge-intr  { display: inline-block; }
+    .occurrence.oc-indesejada .oc-badge-indes { display: inline-block; }
+
     /* ---- Action buttons (person) ---- */
     .btn-actions { display: flex; gap: 0.5rem; margin-left: auto; flex-shrink: 0; }
 
@@ -905,7 +928,7 @@
 
       <div class="occurrences">
         {% for oc in g.ocorrencias %}
-          <div class="occurrence"
+          <div class="occurrence{% if oc.intruso %} oc-intruso{% endif %}{% if oc.indesejada %} oc-indesejada{% endif %}"
                data-reg-id="{{ oc.id }}"
                data-reg-date="{{ oc.created_at or '' }}"
                data-reg-cam="{{ oc.camera_id or '' }}"
@@ -920,6 +943,8 @@
             {% else %}
               <div class="occurrence-placeholder">N/A</div>
             {% endif %}
+            <span class="oc-badge oc-badge-intr">INTRUSO</span>
+            <span class="oc-badge oc-badge-indes">INDESEJADA</span>
             <span class="occurrence-date">{{ oc.created_at or '—' }}</span>
             {% if oc.camera_id %}
               <span class="occurrence-date" style="color:#7c86ff">{{ cameras_map.get(oc.camera_id) or ('Câm. ' ~ oc.camera_id) }}</span>
@@ -941,6 +966,14 @@
                       onclick="novaPessoaDeRegistro(this)">&#10133;</button>
               <button class="oc-btn oc-btn-del" title="Excluir ocorrência"
                       onclick="excluirRegistro(this)">&#128465;</button>
+            </div>
+            <div class="oc-actions">
+              <button class="oc-btn oc-btn-anom oc-btn-intr"
+                      title="Intruso: rosto vinculado a uma pessoa que não é a dele"
+                      onclick="alternarAnomalia(this, 'intruso')">INTR</button>
+              <button class="oc-btn oc-btn-anom oc-btn-indes"
+                      title="Indesejada: foto ruim pra reconhecimento (de costas, obstáculo, escura/clara, sem resolução, chapéu...)"
+                      onclick="alternarAnomalia(this, 'indesejada')">INDES</button>
             </div>
           </div>
         {% endfor %}
@@ -1239,6 +1272,30 @@
       }
     } catch (err) {
       alert('Falha na requisição.');
+      btn.disabled = false;
+    }
+  }
+
+  async function alternarAnomalia(btn, tipo) {
+    const oc = btn.closest('.occurrence');
+    const classe = tipo === 'intruso' ? 'oc-intruso' : 'oc-indesejada';
+    btn.disabled = true;
+    try {
+      const resp = await fetch(`/camera300/tracks/api/registro/${oc.dataset.regId}/anomalia`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [tipo]: !oc.classList.contains(classe) }),
+      });
+      const data = await resp.json();
+      if (data.success) {
+        oc.classList.toggle('oc-intruso', data.intruso);
+        oc.classList.toggle('oc-indesejada', data.indesejada);
+      } else {
+        alert('Erro ao marcar anomalia: ' + (data.error || 'desconhecido'));
+      }
+    } catch (err) {
+      alert('Falha na requisição.');
+    } finally {
       btn.disabled = false;
     }
   }

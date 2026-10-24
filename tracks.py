@@ -443,6 +443,8 @@ def tracks_lista():
                     r.camera_id,
                     r.detection_score           AS face_det_score,
                     r.recognition_score,
+                    r.is_intruder,
+                    r.is_unwanted,
                     p.full_name                 AS nome,
                     p.nickname                  AS apelido,
                     p.person_type_id            AS flag,
@@ -495,6 +497,8 @@ def tracks_lista():
                         "camera_id":      row["camera_id"],
                         "face_det_score":    fmt_score_nd(row["face_det_score"])    if row.get("face_det_score")    is not None else None,
                         "recognition_score": fmt_score_nd(row["recognition_score"]) if row.get("recognition_score") is not None else None,
+                        "intruso":        row["is_intruder"],
+                        "indesejada":     row["is_unwanted"],
                     })
             groups = [groups_dict[k] for k in id_unicos if k in groups_dict]
 
@@ -1048,6 +1052,39 @@ def excluir_registro(reg_id):
     return jsonify({"success": True})
 
 
+_ANOMALIA_COLUNAS = {"intruso": "is_intruder", "indesejada": "is_unwanted"}
+
+
+@tracks_bp.route("/tracks/api/registro/<int:reg_id>/anomalia", methods=["POST"])
+def marcar_anomalia(reg_id):
+    """Marca/desmarca anomalias de um registro. Body: {intruso?: bool, indesejada?: bool} —
+    só os campos enviados são alterados (independentes entre si)."""
+    data = request.get_json(silent=True) or {}
+    campos = {col: data[k] for k, col in _ANOMALIA_COLUNAS.items() if k in data}
+    if not campos or not all(isinstance(v, bool) for v in campos.values()):
+        return jsonify({"error": "Informe intruso e/ou indesejada (true/false)"}), 400
+    conn = get_faciais_conn()
+    try:
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        sets = ", ".join(f"{col} = %s" for col in campos)
+        cursor.execute(
+            f"""UPDATE detection_records SET {sets} WHERE detection_record_id = %s
+                RETURNING is_intruder AS intruso, is_unwanted AS indesejada""",
+            list(campos.values()) + [reg_id],
+        )
+        row = cursor.fetchone()
+        conn.commit()
+        cursor.close()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        release_faciais_conn(conn)
+    if row is None:
+        return jsonify({"error": "Registro não encontrado"}), 404
+    return jsonify({"success": True, **row})
+
+
 @tracks_bp.route("/tracks/api/registro/<int:reg_id>/mover", methods=["POST"])
 def mover_registro(reg_id):
     data = request.get_json(silent=True)
@@ -1067,7 +1104,7 @@ def mover_registro(reg_id):
         row = cursor.fetchone()
         id_unico_original = row["id_unico"] if row else None
 
-        cursor.execute("UPDATE detection_records SET person_id = %s WHERE detection_record_id = %s", (id_unico, reg_id))
+        cursor.execute("UPDATE detection_records SET person_id = %s, is_intruder = FALSE WHERE detection_record_id = %s", (id_unico, reg_id))
 
         pessoa_excluida = False
         if id_unico_original and id_unico_original != id_unico:
@@ -1120,7 +1157,7 @@ def nova_pessoa_de_registro(reg_id):
             (full_name, nickname, new_id),
         )
         cursor.execute(
-            "UPDATE detection_records SET person_id = %s WHERE detection_record_id = %s",
+            "UPDATE detection_records SET person_id = %s, is_intruder = FALSE WHERE detection_record_id = %s",
             (new_id, reg_id),
         )
 

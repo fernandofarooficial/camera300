@@ -519,6 +519,31 @@ edição, **não** está duplicado. Botão "⧉ Duplicatas" em cada pessoa; chip
 
 ---
 
+## Anomalias de facial: Intruso / Indesejada (desde 2026-10-24)
+
+O usuário aponta, em cada ocorrência (`detection_record`) da Tela Lista, duas anomalias
+**independentes** (a mesma foto pode ter as duas):
+
+| Anomalia | Coluna | Significado |
+|---|---|---|
+| Intruso | `detection_records.is_intruder` | Rosto vinculado a uma pessoa (`person_id`) que não é a dele |
+| Indesejada | `detection_records.is_unwanted` | Foto ruim pra reconhecimento: de costas, obstáculo na frente, muito escura/clara, sem resolução, chapéu grande etc. |
+
+- Ambas `boolean NOT NULL DEFAULT false`. Só marcação — nada no pipeline de reconhecimento, na
+  escolha de foto base ("Mudar Base") nem na Limpeza (`limpar_registros_nao_clientes`) lê essas
+  colunas ainda.
+- `POST /tracks/api/registro/<reg_id>/anomalia` → body `{intruso?: bool, indesejada?: bool}`, só os
+  campos enviados mudam; retorna o estado final `{success, intruso, indesejada}`.
+- **Intruso é limpo ao mover o registro** (`mover_registro` e `nova_pessoa_de_registro` gravam
+  `is_intruder = FALSE` junto com o novo `person_id`): depois de corrigido o vínculo, o registro
+  deixa de ser intruso. Indesejada não muda ao mover (é propriedade da foto).
+- UI (`tracks_lista.html`): segunda linha de botões no hover da ocorrência, `INTR` (laranja) e
+  `INDES` (roxo), que alternam o estado. Marcado: borda laranja (intruso) / contorno roxo
+  (indesejada) na foto + badge `INTRUSO`/`INDESEJADA` sempre visível. Só na Lista desktop (é a única
+  tela que mostra ocorrências individuais; `m_lista.html` não tem).
+
+---
+
 ## Formulário de edição de pessoa (telefone/e-mail)
 
 O modal "Editar Pessoa" está **duplicado em três templates** (mesmo HTML/JS, sem componente
@@ -604,6 +629,7 @@ thread background em `app.py`, mesmo padrão de `adequar_bases` (flag `_limpeza_
 - `DELETE /tracks/api/registro/<reg_id>` → exclui registro individual
 - `POST /tracks/api/registro/<reg_id>/mover` → move registro para outro id_unico
 - `POST /tracks/api/registro/<reg_id>/nova-pessoa` → cria nova pessoa a partir do registro
+- `POST /tracks/api/registro/<reg_id>/anomalia` → marca/desmarca Intruso/Indesejada (ver seção "Anomalias de facial")
 - `GET|POST|DELETE /tracks/api/pessoa/<id_unico>/duplicatas` → grupo de duplicatas / vincular / desvincular (ver seção "Duplicatas de pessoa")
 
 ### Ingestão Microvix
