@@ -53,7 +53,16 @@ de `tracks.py` (incluindo os retries de `CNPJ_STORE_MAP`/`_carregar_cameras()`, 
 (`cat /proc/<pid>/wchan`), antes até de importar o `app` — sem conexão com o banco, sem linha de log,
 porta escutando com fila (`ss -ltnp | grep 5001`, `Recv-Q` crescendo). Sintoma típico de deadlock
 pós-fork (gunicorn 25 tem uma thread de control socket no master), intermitente e sem relação com o
-código deployado: um segundo `systemctl restart camera300` resolveu em 1s.
+código deployado: um segundo `systemctl restart camera300` resolveu em 1s. Repetiu em 2 de ~7
+restarts no mesmo dia.
+
+**Mitigação aplicada (2026-10-24):** `--no-control-socket` adicionado ao `ExecStart` do
+`camera300.service` no VPS (backup do unit anterior em `/etc/systemd/system/camera300.service.bak-*`)
+— o master passou de 2 threads pra 1 e o `gunicorn.ctl` deixou de ser criado. O projeto não usa o
+control socket (CLI de controle do gunicorn), então não há perda. Causa não confirmada por stack
+trace (hipótese forte: fork com lock segurado pela thread do control socket); se o travamento voltar
+mesmo assim, capturar a pilha do worker preso com `py-spy dump --pid <pid>` antes de reiniciar. O
+`ExecStartPre=/bin/rm -f .../gunicorn.ctl` do unit ficou inofensivo (arquivo não existe mais).
 
 Serviço systemd: `camera300.service`. Mesmo servidor e mesmo acesso SSH usados pelo
 `retail_analytics` (e demais projetos em `/home/workuser/`) — não precisa de configuração
