@@ -555,6 +555,13 @@ O usuário aponta, em cada ocorrência (`detection_record`) da Tela Lista, duas 
   `INDES` (roxo), que alternam o estado. Marcado: borda laranja (intruso) / contorno roxo
   (indesejada) na foto + badge `INTRUSO`/`INDESEJADA` sempre visível. Só na Lista desktop (é a única
   tela que mostra ocorrências individuais; `m_lista.html` não tem).
+- **Tela Anomalias** (`GET /tracks/anomalias`, `tracks_anomalias.html`, botão "Anomalias" no header
+  da Tela Dados): lista as ocorrências marcadas coletadas num dia (`?data=YYYY-MM-DD`, default
+  `date.today()`, data inválida cai no default) com filtro `?tipo=intruso|indesejada` (vazio =
+  qualquer uma das duas). Cada caso mostra a foto coletada lado a lado com a foto base da pessoa
+  vinculada (pra conferir Intruso), hora, câmera/loja, scores, link "ID X" pra Lista já filtrada
+  por pessoa+data, e os mesmos botões de alternar as anomalias (mesma rota `/anomalia`) — desmarcar
+  não remove o card da tela até recarregar. Sem paginação.
 
 ---
 
@@ -626,6 +633,7 @@ thread background em `app.py`, mesmo padrão de `adequar_bases` (flag `_limpeza_
 - `GET /tracks/permanencia` → permanência estimada (5/pág)
 - `GET /tracks/quadro` ou `/m/tracks/quadro` → analytics (gráficos)
 - `GET /tracks/dados` → página de dados/câmeras
+- `GET /tracks/anomalias` → ocorrências Intruso/Indesejada de um dia (params: `data`, `tipo`; ver seção "Anomalias de facial")
 - `GET /tracks/heatmap` → página do mapa de calor (params: `camera_id`, `data_ini`, `data_fim`)
 - `GET /tracks/heatmap/img` → proxy autenticado de imagens do heatmap (param `url`)
 - `GET /tracks/snapshot/<camera_id>` → frame RTSP via OpenCV

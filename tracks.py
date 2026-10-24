@@ -1573,6 +1573,73 @@ def tracks_dados():
     return render_template("tracks_dados.html", cameras=cameras)
 
 
+@tracks_bp.route("/tracks/anomalias")
+def tracks_anomalias():
+    """Ocorrências marcadas como Intruso e/ou Indesejada coletadas num dia (default: hoje)."""
+    try:
+        dia = date.fromisoformat(request.args.get("data", "").strip())
+    except ValueError:
+        dia = date.today()
+    tipo = request.args.get("tipo", "").strip()
+    cond_tipo = {"intruso": "r.is_intruder", "indesejada": "r.is_unwanted"}.get(tipo, "(r.is_intruder OR r.is_unwanted)")
+    if tipo not in ("intruso", "indesejada"):
+        tipo = ""
+
+    conn = get_faciais_conn()
+    try:
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor.execute(
+            f"""
+            SELECT r.detection_record_id AS id, r.image_path, r.created_at, r.camera_id,
+                   r.detection_score, r.recognition_score,
+                   r.is_intruder AS intruso, r.is_unwanted AS indesejada,
+                   r.person_id AS id_unico, p.full_name AS nome, p.nickname AS apelido,
+                   p.person_type_id AS flag,
+                   (SELECT b.image_path FROM detection_records b
+                    WHERE b.track_id = p.reference_track_id AND b.person_id = p.person_id
+                      AND b.image_path IS NOT NULL
+                    ORDER BY b.created_at DESC LIMIT 1) AS base_image_path
+            FROM detection_records r
+            LEFT JOIN people p ON p.person_id = r.person_id
+            WHERE r.created_at >= %s AND r.created_at < %s AND {cond_tipo}
+            ORDER BY r.created_at DESC
+            """,
+            (dia, dia + timedelta(days=1)),
+        )
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.rollback()
+    finally:
+        release_faciais_conn(conn)
+
+    cameras_map = {c["id_camera"]: c.get("camera") or str(c["id_camera"]) for c in CAMERAS_COMPLETO if c.get("id_camera") is not None}
+    casos = []
+    for r in rows:
+        casos.append({
+            "id":         r["id"],
+            "image_url":  HEIMDALL_IMAGE_BASE + r["image_path"] if r["image_path"] else None,
+            "base_url":   HEIMDALL_IMAGE_BASE + r["base_image_path"] if r["base_image_path"] else None,
+            "hora":       r["created_at"].strftime("%H:%M:%S") if r["created_at"] else "—",
+            "camera":     cameras_map.get(r["camera_id"]) or (f"Câm. {r['camera_id']}" if r["camera_id"] else "—"),
+            "loja":       CAMERA_STORE_NAME_MAP.get(r["camera_id"], ""),
+            "face_det_score":    fmt_score_nd(r["detection_score"])   if r["detection_score"]   is not None else None,
+            "recognition_score": fmt_score_nd(r["recognition_score"]) if r["recognition_score"] is not None else None,
+            "intruso":    r["intruso"],
+            "indesejada": r["indesejada"],
+            "id_unico":   r["id_unico"],
+            "nome":       r["nome"],
+            "apelido":    r["apelido"],
+            "flag":       r["flag"],
+        })
+    totais = {
+        "total":      len(casos),
+        "intruso":    sum(1 for c in casos if c["intruso"]),
+        "indesejada": sum(1 for c in casos if c["indesejada"]),
+    }
+    return render_template("tracks_anomalias.html", casos=casos, totais=totais,
+                           data=dia.isoformat(), data_br=dia.strftime("%d/%m/%Y"), tipo=tipo)
+
+
 def _prefixar_urls_heatmap(resultado):
     def _proxy(path, download=False):
         if not path or not path.startswith("/"):

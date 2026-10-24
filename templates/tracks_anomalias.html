@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tracks — Anomalias</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #1a1d27;
+      border-bottom: 1px solid #2d3148;
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    header h1 { font-size: 1.2rem; font-weight: 600; color: #7c86ff; }
+
+    .nav { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+    .nav a {
+      color: #7c86ff;
+      text-decoration: none;
+      font-size: 0.82rem;
+      border: 1px solid #7c86ff44;
+      padding: 0.3rem 0.8rem;
+      border-radius: 6px;
+      transition: background 0.2s;
+    }
+    .nav a:hover { background: #7c86ff22; }
+
+    main { max-width: 1400px; margin: 0 auto; padding: 1.5rem; }
+
+    /* ---- Filtros ---- */
+    .filter-bar {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 10px;
+      padding: 0.85rem 1.1rem;
+      margin-bottom: 1.25rem;
+      display: flex;
+      gap: 0.75rem;
+      align-items: flex-end;
+      flex-wrap: wrap;
+    }
+    .filter-bar label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #64748b;
+      display: block;
+      margin-bottom: 0.3rem;
+    }
+    .filter-bar input[type="date"], .filter-bar select {
+      background: #0f1117;
+      border: 1px solid #2d3148;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.88rem;
+      padding: 0.4rem 0.6rem;
+      outline: none;
+      color-scheme: dark;
+    }
+    .filter-bar input[type="date"]:focus, .filter-bar select:focus { border-color: #7c86ff88; }
+    .btn-filter {
+      background: #7c86ff22;
+      border: 1px solid #7c86ff44;
+      color: #7c86ff;
+      border-radius: 6px;
+      padding: 0.45rem 1rem;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+    .btn-filter:hover { background: #7c86ff33; }
+
+    .resumo { display: flex; gap: 0.5rem; margin-left: auto; flex-wrap: wrap; }
+    .resumo span {
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 0.25rem 0.65rem;
+      border-radius: 999px;
+    }
+    .res-total { background: #7c86ff22; color: #7c86ff; border: 1px solid #7c86ff44; }
+    .res-intr  { background: #f9731622; color: #f97316; border: 1px solid #f9731644; }
+    .res-indes { background: #a855f722; color: #a855f7; border: 1px solid #a855f744; }
+
+    .empty-state { text-align: center; padding: 4rem 2rem; color: #475569; }
+
+    /* ---- Casos ---- */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 1rem;
+    }
+    .caso {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 10px;
+      padding: 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.55rem;
+    }
+    .fotos { display: flex; gap: 0.5rem; }
+    .foto-bloco { flex: 1; display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; }
+    .foto-bloco span { font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; }
+    .foto-bloco img, .foto-vazia {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      object-fit: cover;
+      border-radius: 6px;
+      border: 1px solid #2d3148;
+      background: #0f1117;
+      display: block;
+    }
+    .foto-vazia { display: flex; align-items: center; justify-content: center; color: #334155; font-size: 0.65rem; }
+    .caso.oc-intruso .foto-coletada img    { border: 2px solid #f97316; }
+    .caso.oc-indesejada .foto-coletada img { outline: 2px solid #a855f7; outline-offset: 1px; }
+
+    .badges { display: flex; gap: 0.3rem; flex-wrap: wrap; }
+    .badge {
+      display: none;
+      font-size: 0.6rem;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      padding: 0.1rem 0.45rem;
+      border-radius: 999px;
+    }
+    .badge-intr  { background: #f9731622; color: #f97316; border: 1px solid #f9731655; }
+    .badge-indes { background: #a855f722; color: #a855f7; border: 1px solid #a855f755; }
+    .caso.oc-intruso .badge-intr    { display: inline-block; }
+    .caso.oc-indesejada .badge-indes { display: inline-block; }
+
+    .pessoa { font-size: 0.8rem; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .pessoa a { color: #7c86ff; font-weight: 700; text-decoration: none; margin-right: 0.3rem; }
+    .pessoa a:hover { text-decoration: underline; }
+    .meta { font-size: 0.7rem; color: #64748b; line-height: 1.45; }
+    .meta .cam { color: #7c86ff; }
+    .meta .scores { color: #22c55e; font-weight: 700; }
+    .meta .scores .r { color: #60a5fa; }
+
+    .acoes { display: flex; gap: 0.35rem; }
+    .btn-anom {
+      flex: 1;
+      background: transparent;
+      border-radius: 6px;
+      padding: 0.28rem 0;
+      font-size: 0.68rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-anom:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-intr  { color: #f97316; border: 1px solid #f9731644; }
+    .btn-intr:hover  { background: #f9731622; }
+    .btn-indes { color: #a855f7; border: 1px solid #a855f744; }
+    .btn-indes:hover { background: #a855f722; }
+    .caso.oc-intruso .btn-intr    { background: #f97316; color: #0f1117; border-color: #f97316; }
+    .caso.oc-indesejada .btn-indes { background: #a855f7; color: #0f1117; border-color: #a855f7; }
+
+    @media (max-width: 600px) {
+      header { padding: 0.85rem 1rem; }
+      main { padding: 1rem; }
+      .resumo { margin-left: 0; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Tracks &mdash; Anomalias</h1>
+  <nav class="nav">
+    <a href="/camera300/tracks/lista">Lista</a>
+    <a href="/camera300/tracks/dados">&#8592; Dados</a>
+  </nav>
+</header>
+
+<main>
+  <form class="filter-bar" method="get" action="">
+    <div>
+      <label for="data-input">Data da coleta</label>
+      <input type="date" id="data-input" name="data" value="{{ data }}" />
+    </div>
+    <div>
+      <label for="tipo-select">Anomalia</label>
+      <select id="tipo-select" name="tipo">
+        <option value="" {% if not tipo %}selected{% endif %}>Intruso e Indesejada</option>
+        <option value="intruso" {% if tipo == 'intruso' %}selected{% endif %}>Só Intruso</option>
+        <option value="indesejada" {% if tipo == 'indesejada' %}selected{% endif %}>Só Indesejada</option>
+      </select>
+    </div>
+    <button type="submit" class="btn-filter">&#128269; Filtrar</button>
+    <div class="resumo">
+      <span class="res-total">{{ totais.total }} caso(s) em {{ data_br }}</span>
+      <span class="res-intr">{{ totais.intruso }} intruso(s)</span>
+      <span class="res-indes">{{ totais.indesejada }} indesejada(s)</span>
+    </div>
+  </form>
+
+  {% if not casos %}
+    <div class="empty-state">Nenhuma anomalia marcada em {{ data_br }}.</div>
+  {% else %}
+    {% set flag_map = {'C': 'Cliente', 'A': 'Anônimo', 'F': 'Franqueado', 'E': 'Empregado', 'K': 'Criança', 'P': 'Prestador'} %}
+    <div class="grid">
+      {% for c in casos %}
+        <div class="caso{% if c.intruso %} oc-intruso{% endif %}{% if c.indesejada %} oc-indesejada{% endif %}"
+             data-reg-id="{{ c.id }}">
+          <div class="fotos">
+            <div class="foto-bloco foto-coletada">
+              <span>Coletada</span>
+              {% if c.image_url %}
+                <img src="{{ c.image_url }}" alt="coletada"
+                     onerror="this.outerHTML='<div class=foto-vazia>N/A</div>'" />
+              {% else %}
+                <div class="foto-vazia">N/A</div>
+              {% endif %}
+            </div>
+            <div class="foto-bloco">
+              <span>Base da pessoa</span>
+              {% if c.base_url %}
+                <img src="{{ c.base_url }}" alt="base"
+                     onerror="this.outerHTML='<div class=foto-vazia>sem foto</div>'" />
+              {% else %}
+                <div class="foto-vazia">sem foto</div>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="badges">
+            <span class="badge badge-intr">INTRUSO</span>
+            <span class="badge badge-indes">INDESEJADA</span>
+          </div>
+
+          <div class="pessoa">
+            {% if c.id_unico %}
+              <a href="/camera300/tracks/lista?ids={{ c.id_unico }}&data={{ data }}" title="Abrir na Lista">ID {{ c.id_unico }}</a>
+              {{ c.nome or '—' }}{% if c.flag %} · {{ flag_map.get(c.flag, c.flag) }}{% endif %}
+            {% else %}
+              <span style="color:#64748b">Sem pessoa vinculada</span>
+            {% endif %}
+          </div>
+
+          <div class="meta">
+            {{ c.hora }} · <span class="cam">{{ c.camera }}</span>{% if c.loja %} · {{ c.loja }}{% endif %}
+            {% if c.face_det_score or c.recognition_score %}
+              <br><span class="scores">
+                {%- if c.face_det_score %}D:{{ c.face_det_score }}{% endif %}
+                {%- if c.face_det_score and c.recognition_score %} {% endif %}
+                {%- if c.recognition_score %}<span class="r">R:{{ c.recognition_score }}</span>{% endif %}
+              </span>
+            {% endif %}
+          </div>
+
+          <div class="acoes">
+            <button type="button" class="btn-anom btn-intr"
+                    title="Intruso: rosto vinculado a uma pessoa que não é a dele"
+                    onclick="alternarAnomalia(this, 'intruso')">INTRUSO</button>
+            <button type="button" class="btn-anom btn-indes"
+                    title="Indesejada: foto ruim pra reconhecimento"
+                    onclick="alternarAnomalia(this, 'indesejada')">INDESEJADA</button>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+</main>
+
+<script>
+  async function alternarAnomalia(btn, tipo) {
+    const caso = btn.closest('.caso');
+    const classe = tipo === 'intruso' ? 'oc-intruso' : 'oc-indesejada';
+    btn.disabled = true;
+    try {
+      const resp = await fetch(`/camera300/tracks/api/registro/${caso.dataset.regId}/anomalia`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [tipo]: !caso.classList.contains(classe) }),
+      });
+      const data = await resp.json();
+      if (data.success) {
+        caso.classList.toggle('oc-intruso', data.intruso);
+        caso.classList.toggle('oc-indesejada', data.indesejada);
+      } else {
+        alert('Erro ao marcar anomalia: ' + (data.error || 'desconhecido'));
+      }
+    } catch (err) {
+      alert('Falha na requisição.');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+</script>
+
+</body>
+</html>
