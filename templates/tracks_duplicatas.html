@@ -192,6 +192,31 @@
     }
     .acoes a:hover, .acoes button:hover { background: #7c86ff22; }
 
+    /* ---- Tratamento ---- */
+    .trat-linha { display: flex; gap: 0.35rem; flex-wrap: wrap; margin-top: 0.35rem; align-items: center; }
+    .trat-linha select, .trat-linha input {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.72rem;
+      padding: 0.22rem 0.35rem;
+      outline: none;
+      font-family: inherit;
+      color-scheme: dark;
+    }
+    .trat-linha select:focus, .trat-linha input:focus { border-color: #7c86ff88; }
+    .trat-linha input { width: 88px; display: none; }
+    .trat-linha.outro input { display: inline-block; }
+    .chip-compras {
+      font-size: 0.6rem; font-weight: 700; padding: 0.1rem 0.45rem; border-radius: 999px;
+      background: #f59e0b22; color: #f59e0b; border: 1px solid #f59e0b44;
+    }
+    .tag-mantida { background: #64748b22; color: #94a3b8; border: 1px solid #64748b44; }
+    .acoes .btn-aplicar { color: #22c55e; border-color: #22c55e44; }
+    .acoes .btn-aplicar:hover { background: #22c55e22; }
+    .acoes .btn-aplicar:disabled { opacity: 0.4; cursor: not-allowed; }
+
     @media (max-width: 600px) {
       header { padding: 0.85rem 1rem; }
       main { padding: 1rem; }
@@ -241,9 +266,24 @@
           {{ flag_map.get(p.flag, p.flag or 'Sem flag') }} · cadastro {{ p.cadastro }}<br>
           {{ p.coletas }} coleta(s) · última {{ p.ultima_coleta }}
         </div>
+        {% if not principal %}
+          <div class="trat-linha">
+            <select class="trat-acao" data-id="{{ p.id_unico }}" data-coletas="{{ p.coletas }}"
+                    data-compras="{{ p.compras }}" onchange="mudouAcao(this)">
+              <option value="">— sem ação —</option>
+              <option value="manter">Manter como duplicata</option>
+              <option value="juntar">Juntar ao principal</option>
+              <option value="outro">Juntar a outro ID…</option>
+              <option value="excluir">Excluir (com as coletas)</option>
+            </select>
+            <input type="text" class="trat-destino" placeholder="ID destino" inputmode="numeric" />
+            {% if p.compras %}<span class="chip-compras" title="Compras confirmadas / vínculos manuais de NF">{{ p.compras }} compra(s)</span>{% endif %}
+          </div>
+        {% endif %}
       </div>
       <div class="membro-lado">
         {% if principal %}<span class="tag tag-principal">PRINCIPAL</span>{% else %}<span class="tag tag-dup">DUPLICATA</span>
+          {% if p.situacao == 'mantida' %}<span class="tag tag-mantida" title="Já tratada: mantida como duplicata">MANTIDA</span>{% endif %}
           <button type="button" class="btn-principal" data-id="{{ p.id_unico }}"
                   title="Tornar este cadastro o principal do grupo"
                   onclick="tornarPrincipal(this)">&#9733; Tornar principal</button>
@@ -269,6 +309,8 @@
             <a href="/camera300/tracks/lista?ids={{ g.ids }}" title="Abrir todos os cadastros do grupo na Lista">Ver na Lista</a>
             <button type="button" data-id="{{ g.id_unico }}" data-nome="{{ g.principal.nome or '' }}"
                     onclick="abrirModalDuplicatas(this.dataset.id, this.dataset.nome)">&#10697; Gerenciar</button>
+            <button type="button" class="btn-aplicar" data-principal="{{ g.id_unico }}"
+                    onclick="aplicarTratamento(this)">&#10003; Aplicar tratamento</button>
           </div>
         </div>
       {% endfor %}
@@ -279,6 +321,60 @@
 {% include "_duplicatas_modal.html" %}
 
 <script>
+  function mudouAcao(sel) {
+    const linha = sel.closest('.trat-linha');
+    linha.classList.toggle('outro', sel.value === 'outro');
+    if (sel.value === 'outro') linha.querySelector('.trat-destino').focus();
+  }
+
+  async function aplicarTratamento(btn) {
+    const grupo = btn.closest('.grupo');
+    const principal = Number(btn.dataset.principal);
+    const acoes = [], resumo = [], erros = [];
+    grupo.querySelectorAll('.trat-acao').forEach(sel => {
+      if (!sel.value) return;
+      const id = Number(sel.dataset.id);
+      const coletas = sel.dataset.coletas, compras = Number(sel.dataset.compras);
+      if (sel.value === 'manter') {
+        acoes.push({ id, acao: 'manter' });
+        resumo.push(`• ${id}: manter como duplicata`);
+      } else if (sel.value === 'juntar' || sel.value === 'outro') {
+        let destino = principal;
+        if (sel.value === 'outro') {
+          destino = parseInt(sel.closest('.trat-linha').querySelector('.trat-destino').value.trim(), 10);
+          if (!destino) { erros.push(`ID ${id}: informe o ID destino.`); return; }
+        }
+        acoes.push({ id, acao: 'juntar', destino });
+        resumo.push(`• ${id}: juntar ao ${destino} (${coletas} coleta(s)` + (compras ? `, ${compras} compra(s)` : '') + ' vão junto)');
+      } else if (sel.value === 'excluir') {
+        acoes.push({ id, acao: 'excluir' });
+        resumo.push(`• ${id}: EXCLUIR o cadastro e ${coletas} coleta(s) — definitivo`);
+      }
+    });
+    if (erros.length) { alert(erros.join('\n')); return; }
+    if (!acoes.length) { alert('Escolha uma ação em pelo menos uma duplicata.'); return; }
+    if (!confirm('Aplicar o tratamento do grupo ' + principal + '?\n\n' + resumo.join('\n') +
+                 '\n\nA estatística da duplicata é mantida.')) return;
+    btn.disabled = true;
+    try {
+      const resp = await fetch(`/camera300/tracks/api/duplicatas/${principal}/tratar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ acoes }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (resp.ok && data.success) {
+        location.reload();
+      } else {
+        alert('Tratamento não aplicado (nada foi alterado):\n' + (data.error || 'Erro ' + resp.status));
+        btn.disabled = false;
+      }
+    } catch (err) {
+      alert('Falha na requisição.');
+      btn.disabled = false;
+    }
+  }
+
   async function tornarPrincipal(btn) {
     const id = btn.dataset.id;
     if (!confirm(`Tornar o ID ${id} o cadastro principal do grupo? O principal atual passa a ser duplicata dele.`)) return;

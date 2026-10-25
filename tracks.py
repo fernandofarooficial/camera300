@@ -2,6 +2,7 @@ import io
 import threading
 import time
 import cv2
+import re
 import requests
 import openpyxl
 import psycopg2.extras
@@ -910,9 +911,8 @@ def atualizar_base_pessoa(id_unico):
 def excluir_pessoa(id_unico):
     conn = get_faciais_conn()
     try:
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM detection_records WHERE person_id = %s", (id_unico,))
-        cursor.execute("DELETE FROM people WHERE person_id = %s", (id_unico,))
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        _excluir_pessoa_e_coletas(cursor, id_unico)
         conn.commit()
         cursor.close()
     except Exception:
@@ -961,6 +961,97 @@ def _principal_de(cursor, person_id):
                    (person_id,))
     row = cursor.fetchone()
     return row["principal"] if row else None
+
+
+# ---- Estatística permanente de anomalias/duplicatas (faciais.quality_events) ----
+# Os eventos são criados ao marcar e fechados com o tratamento aplicado. Gatilhos no banco cobrem o
+# que for excluído por fora (Limpeza, outros sistemas) como coleta_removida/pessoa_removida, então
+# aqui o evento é sempre fechado ANTES da exclusão, pra ficar registrado o tratamento certo.
+# Funções auxiliares recebem cursor RealDictCursor.
+
+def _abrir_eventos_grupo(cursor, principal):
+    """Garante um evento de duplicata aberto pra cada duplicata do grupo de principal."""
+    cursor.execute("SELECT fn_quality_dup_open(person_id, %s) FROM people WHERE duplicate_of_person_id = %s",
+                   (principal, principal))
+
+
+def _fechar_eventos_coleta(cursor, reg_ids, tratamento, tipos=("intruso", "indesejada"), destino=None):
+    """Fecha os eventos de anomalia pendentes das coletas reg_ids com o tratamento informado."""
+    if not reg_ids:
+        return
+    cursor.execute(
+        """
+        UPDATE quality_events SET treatment = %s, treated_at = now(), target_person_id = %s
+        WHERE detection_record_id = ANY(%s) AND event_type = ANY(%s) AND treatment = 'pendente'
+        """,
+        (tratamento, destino, list(reg_ids), list(tipos)),
+    )
+
+
+def _fechar_evento_duplicata(cursor, person_id, tratamento, destino=None, coletas=None):
+    cursor.execute(
+        """
+        UPDATE quality_events
+        SET treatment = %s, treated_at = now(), target_person_id = %s, affected_records = %s
+        WHERE event_type = 'duplicata' AND person_id = %s AND treatment IN ('pendente', 'mantida')
+        """,
+        (tratamento, destino, coletas, person_id),
+    )
+
+
+def _trocar_principal(cursor, novo, antigo):
+    """novo (duplicata de antigo) vira o principal do grupo; o evento de duplicata passa pro antigo."""
+    cursor.execute(
+        """
+        UPDATE people
+        SET duplicate_of_person_id = CASE WHEN person_id = %(novo)s THEN NULL ELSE %(novo)s END
+        WHERE person_id = %(antigo)s OR duplicate_of_person_id = %(antigo)s
+        """,
+        {"novo": novo, "antigo": antigo},
+    )
+    cursor.execute("SELECT fn_quality_dup_swap(%s, %s)", (novo, antigo))
+
+
+def _vinculos_da_pessoa(cursor, person_id):
+    """O que se perderia ao apagar a pessoa: compras confirmadas, vínculos manuais de NF e duplicatas."""
+    cursor.execute(
+        """
+        SELECT (SELECT COUNT(*) FROM person_purchases WHERE person_id = %(p)s) AS compras,
+               (SELECT COUNT(*) FROM manual_purchase_links WHERE person_id = %(p)s) AS vinculos_manuais,
+               (SELECT COUNT(*) FROM people WHERE duplicate_of_person_id = %(p)s) AS duplicatas
+        """,
+        {"p": person_id},
+    )
+    return cursor.fetchone()
+
+
+def _excluir_pessoa_e_coletas(cursor, person_id):
+    """Exclui a pessoa e todas as coletas dela, registrando o tratamento nos eventos. Se for principal
+    de um grupo, promove antes a duplicata de menor ID (o grupo não se desfaz). Retorna nº de coletas."""
+    cursor.execute("SELECT MIN(person_id) AS novo FROM people WHERE duplicate_of_person_id = %s", (person_id,))
+    novo = cursor.fetchone()["novo"]
+    if novo is not None:
+        _trocar_principal(cursor, novo, person_id)
+    cursor.execute("SELECT detection_record_id FROM detection_records WHERE person_id = %s", (person_id,))
+    reg_ids = [r["detection_record_id"] for r in cursor.fetchall()]
+    _fechar_eventos_coleta(cursor, reg_ids, "coleta_excluida")
+    _fechar_evento_duplicata(cursor, person_id, "pessoa_excluida", coletas=len(reg_ids))
+    cursor.execute("DELETE FROM detection_records WHERE person_id = %s", (person_id,))
+    cursor.execute("DELETE FROM people WHERE person_id = %s", (person_id,))
+    return len(reg_ids)
+
+
+def _excluir_pessoa_se_vazia(cursor, person_id):
+    """Depois de mover uma coleta: apaga a pessoa de origem se ficou sem coletas — exceto se tiver
+    compras, vínculos manuais ou duplicatas, que se perderiam junto. Retorna True se apagou."""
+    cursor.execute("SELECT COUNT(*) AS total FROM detection_records WHERE person_id = %s", (person_id,))
+    if cursor.fetchone()["total"] > 0:
+        return False
+    if any(_vinculos_da_pessoa(cursor, person_id).values()):
+        return False
+    _fechar_evento_duplicata(cursor, person_id, "pessoa_excluida", coletas=0)
+    cursor.execute("DELETE FROM people WHERE person_id = %s", (person_id,))
+    return True
 
 
 @tracks_bp.route("/tracks/api/pessoa/<int:id_unico>/duplicatas", methods=["GET"])
@@ -1041,6 +1132,7 @@ def vincular_duplicatas(id_unico):
             "UPDATE people SET duplicate_of_person_id = %s WHERE person_id = ANY(%s) OR duplicate_of_person_id = ANY(%s)",
             (principal, absorvidos, absorvidos),
         )
+        _abrir_eventos_grupo(cursor, principal)
         conn.commit()
         cursor.close()
     except Exception:
@@ -1058,6 +1150,11 @@ def desvincular_duplicata(id_unico):
     try:
         cursor = conn.cursor()
         cursor.execute("UPDATE people SET duplicate_of_person_id = NULL WHERE person_id = %s", (id_unico,))
+        # Desvincular sem ter tratado = foi engano na marcação: o evento some da estatística
+        cursor.execute(
+            "DELETE FROM quality_events WHERE event_type = 'duplicata' AND person_id = %s AND treatment = 'pendente'",
+            (id_unico,),
+        )
         conn.commit()
         cursor.close()
     except Exception:
@@ -1082,14 +1179,7 @@ def tornar_principal(id_unico):
         if antigo == id_unico:
             cursor.close()
             return jsonify({"success": True, "principal": id_unico})
-        cursor.execute(
-            """
-            UPDATE people
-            SET duplicate_of_person_id = CASE WHEN person_id = %(novo)s THEN NULL ELSE %(novo)s END
-            WHERE person_id = %(antigo)s OR duplicate_of_person_id = %(antigo)s
-            """,
-            {"novo": id_unico, "antigo": antigo},
-        )
+        _trocar_principal(cursor, id_unico, antigo)
         conn.commit()
         cursor.close()
     except Exception:
@@ -1100,11 +1190,123 @@ def tornar_principal(id_unico):
     return jsonify({"success": True, "principal": id_unico, "principal_anterior": antigo})
 
 
+_CAMPOS_CADASTRO = ("full_name", "nickname", "document", "crm_key", "birth_date", "age",
+                    "gender_id", "notes", "phone", "email")
+
+
+def _campo_vazio(campo, valor):
+    """Campo de cadastro sem informação útil — inclui os nomes provisórios AnônimoXXX / AXXX."""
+    if valor is None or (isinstance(valor, str) and not valor.strip()):
+        return True
+    if campo == "full_name":
+        return re.fullmatch(r"Anônimo\d+", valor.strip()) is not None
+    if campo == "nickname":
+        return re.fullmatch(r"A\d+", valor.strip()) is not None
+    return False
+
+
+def _juntar_pessoa(cursor, origem, destino):
+    """Junta origem em destino: coletas, compras e vínculos manuais de NF passam pro destino, campos
+    vazios do cadastro do destino recebem os da origem (sem sobrescrever) e a origem é apagada.
+    Retorna o nº de coletas movidas."""
+    cursor.execute(f"SELECT person_id, {', '.join(_CAMPOS_CADASTRO)} FROM people WHERE person_id = ANY(%s)",
+                   ([origem, destino],))
+    rows = {r["person_id"]: r for r in cursor.fetchall()}
+    o, d = rows[origem], rows[destino]
+    preencher = {c: o[c] for c in _CAMPOS_CADASTRO if _campo_vazio(c, d[c]) and not _campo_vazio(c, o[c])}
+    if preencher:
+        sets = ", ".join(f"{c} = %s" for c in preencher)
+        cursor.execute(f"UPDATE people SET {sets} WHERE person_id = %s", list(preencher.values()) + [destino])
+    cursor.execute("UPDATE detection_records SET person_id = %s WHERE person_id = %s", (destino, origem))
+    coletas = cursor.rowcount
+    cursor.execute("UPDATE person_purchases SET person_id = %s WHERE person_id = %s", (destino, origem))
+    cursor.execute("UPDATE manual_purchase_links SET person_id = %s WHERE person_id = %s", (destino, origem))
+    _fechar_evento_duplicata(cursor, origem, "juntada", destino=destino, coletas=coletas)
+    cursor.execute("DELETE FROM people WHERE person_id = %s", (origem,))
+    return coletas
+
+
+@tracks_bp.route("/tracks/api/duplicatas/<int:principal>/tratar", methods=["POST"])
+def tratar_duplicatas(principal):
+    """Trata as duplicatas do grupo de principal, cada uma com sua ação. Body:
+    {acoes: [{id, acao, destino?}]} — acao: manter (vínculo continua, evento fechado como mantida),
+    juntar (coletas/compras vão pro destino, default o principal, e o cadastro é apagado) ou excluir
+    (cadastro e coletas apagados; bloqueado se houver compras). Tudo ou nada, numa transação."""
+    data = request.get_json(silent=True) or {}
+    try:
+        acoes = [{"id": int(a["id"]), "acao": a["acao"],
+                  "destino": int(a["destino"]) if a.get("destino") not in (None, "") else None}
+                 for a in data.get("acoes") or []]
+    except (TypeError, ValueError, KeyError):
+        return jsonify({"error": "acoes inválidas"}), 400
+    if not acoes:
+        return jsonify({"error": "Nenhuma ação informada"}), 400
+    if any(a["acao"] not in ("manter", "juntar", "excluir") for a in acoes):
+        return jsonify({"error": "acao deve ser manter, juntar ou excluir"}), 400
+    ids = [a["id"] for a in acoes]
+    if len(set(ids)) != len(ids):
+        return jsonify({"error": "ID repetido nas ações"}), 400
+
+    conn = get_faciais_conn()
+    try:
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor.execute("SELECT person_id FROM people WHERE duplicate_of_person_id = %s", (principal,))
+        do_grupo = {r["person_id"] for r in cursor.fetchall()}
+        fora = [i for i in ids if i not in do_grupo]
+        if fora:
+            cursor.close()
+            return jsonify({"error": f"Não são duplicatas do grupo {principal}: " + ", ".join(map(str, fora))}), 400
+
+        saindo = {a["id"] for a in acoes if a["acao"] != "manter"}
+        erros = []
+        for a in acoes:
+            if a["acao"] == "juntar":
+                a["destino"] = a["destino"] or principal
+                if a["destino"] == a["id"]:
+                    erros.append(f"ID {a['id']}: o destino não pode ser o próprio cadastro.")
+                elif a["destino"] in saindo:
+                    erros.append(f"ID {a['id']}: o destino {a['destino']} também está sendo juntado/excluído.")
+                else:
+                    cursor.execute("SELECT 1 FROM people WHERE person_id = %s", (a["destino"],))
+                    if cursor.fetchone() is None:
+                        erros.append(f"ID {a['id']}: destino {a['destino']} não encontrado.")
+            elif a["acao"] == "excluir":
+                v = _vinculos_da_pessoa(cursor, a["id"])
+                if v["compras"] or v["vinculos_manuais"]:
+                    erros.append(f"ID {a['id']}: tem {v['compras']} compra(s) e {v['vinculos_manuais']} "
+                                 f"vínculo(s) manual(is) de NF — use Juntar para não perder.")
+        if erros:
+            cursor.close()
+            return jsonify({"error": "\n".join(erros)}), 409
+
+        resultado = []
+        for a in acoes:
+            if a["acao"] == "manter":
+                _fechar_evento_duplicata(cursor, a["id"], "mantida")
+                resultado.append(f"{a['id']} mantida")
+            elif a["acao"] == "juntar":
+                n = _juntar_pessoa(cursor, a["id"], a["destino"])
+                resultado.append(f"{a['id']} juntada a {a['destino']} ({n} coleta(s))")
+            else:
+                n = _excluir_pessoa_e_coletas(cursor, a["id"])
+                resultado.append(f"{a['id']} excluída ({n} coleta(s))")
+        conn.commit()
+        cursor.close()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        release_faciais_conn(conn)
+    trace("SISTEMA", f"duplicatas do grupo {principal}: " + "; ".join(resultado))
+    return jsonify({"success": True, "resultado": resultado})
+
+
 @tracks_bp.route("/tracks/api/registro/<int:reg_id>", methods=["DELETE"])
 def excluir_registro(reg_id):
     conn = get_faciais_conn()
     try:
-        cursor = conn.cursor()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        _fechar_eventos_coleta(cursor, [reg_id], "coleta_excluida")
         cursor.execute("DELETE FROM detection_records WHERE detection_record_id = %s", (reg_id,))
         conn.commit()
         cursor.close()
@@ -1114,6 +1316,33 @@ def excluir_registro(reg_id):
     finally:
         release_faciais_conn(conn)
     return jsonify({"success": True})
+
+
+@tracks_bp.route("/tracks/api/registros/excluir", methods=["POST"])
+def excluir_registros():
+    """Exclui várias coletas de uma vez (ex.: todas as indesejadas exibidas). Body: {ids: [...]}."""
+    data = request.get_json(silent=True) or {}
+    try:
+        ids = sorted({int(i) for i in data.get("ids", [])})
+    except (TypeError, ValueError):
+        return jsonify({"error": "ids inválidos"}), 400
+    if not ids:
+        return jsonify({"error": "Informe ao menos um ID"}), 400
+    conn = get_faciais_conn()
+    try:
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        _fechar_eventos_coleta(cursor, ids, "coleta_excluida")
+        cursor.execute("DELETE FROM detection_records WHERE detection_record_id = ANY(%s)", (ids,))
+        excluidos = cursor.rowcount
+        conn.commit()
+        cursor.close()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        release_faciais_conn(conn)
+    trace("SISTEMA", f"anomalias: {excluidos} coleta(s) excluída(s) em massa")
+    return jsonify({"success": True, "excluidos": excluidos})
 
 
 _ANOMALIA_COLUNAS = {"intruso": "is_intruder", "indesejada": "is_unwanted"}
@@ -1137,6 +1366,33 @@ def marcar_anomalia(reg_id):
             list(campos.values()) + [reg_id],
         )
         row = cursor.fetchone()
+        if row is not None:
+            for tipo, col in _ANOMALIA_COLUNAS.items():
+                if col not in campos:
+                    continue
+                if campos[col]:
+                    cursor.execute(
+                        """
+                        INSERT INTO quality_events
+                            (event_type, detection_record_id, person_id, person_type_id, camera_id, store_id,
+                             occurred_on, occurred_at, image_path)
+                        SELECT %s, r.detection_record_id, r.person_id, p.person_type_id, r.camera_id,
+                               COALESCE(r.store_id, c.store_id), COALESCE(r.created_at::date, CURRENT_DATE),
+                               r.created_at, r.image_path
+                        FROM detection_records r
+                        LEFT JOIN people p ON p.person_id = r.person_id
+                        LEFT JOIN cameras c ON c.camera_id = r.camera_id
+                        WHERE r.detection_record_id = %s
+                        ON CONFLICT DO NOTHING
+                        """,
+                        (tipo, reg_id),
+                    )
+                else:
+                    # Desmarcar sem ter tratado = foi engano na marcação: o evento some da estatística
+                    cursor.execute(
+                        "DELETE FROM quality_events WHERE event_type = %s AND detection_record_id = %s AND treatment = 'pendente'",
+                        (tipo, reg_id),
+                    )
         conn.commit()
         cursor.close()
     except Exception:
@@ -1168,14 +1424,12 @@ def mover_registro(reg_id):
         row = cursor.fetchone()
         id_unico_original = row["id_unico"] if row else None
 
+        _fechar_eventos_coleta(cursor, [reg_id], "vinculada", tipos=("intruso",), destino=id_unico)
         cursor.execute("UPDATE detection_records SET person_id = %s, is_intruder = FALSE WHERE detection_record_id = %s", (id_unico, reg_id))
 
         pessoa_excluida = False
         if id_unico_original and id_unico_original != id_unico:
-            cursor.execute("SELECT COUNT(*) AS total FROM detection_records WHERE person_id = %s", (id_unico_original,))
-            if cursor.fetchone()["total"] == 0:
-                cursor.execute("DELETE FROM people WHERE person_id = %s", (id_unico_original,))
-                pessoa_excluida = True
+            pessoa_excluida = _excluir_pessoa_se_vazia(cursor, id_unico_original)
 
         conn.commit()
         cursor.close()
@@ -1220,6 +1474,7 @@ def nova_pessoa_de_registro(reg_id):
             "UPDATE people SET full_name = %s, nickname = %s WHERE person_id = %s",
             (full_name, nickname, new_id),
         )
+        _fechar_eventos_coleta(cursor, [reg_id], "nova_pessoa", tipos=("intruso",), destino=new_id)
         cursor.execute(
             "UPDATE detection_records SET person_id = %s, is_intruder = FALSE WHERE detection_record_id = %s",
             (new_id, reg_id),
@@ -1227,13 +1482,7 @@ def nova_pessoa_de_registro(reg_id):
 
         pessoa_excluida = False
         if person_id_original and person_id_original != new_id:
-            cursor.execute(
-                "SELECT COUNT(*) AS total FROM detection_records WHERE person_id = %s",
-                (person_id_original,),
-            )
-            if cursor.fetchone()["total"] == 0:
-                cursor.execute("DELETE FROM people WHERE person_id = %s", (person_id_original,))
-                pessoa_excluida = True
+            pessoa_excluida = _excluir_pessoa_se_vazia(cursor, person_id_original)
 
         conn.commit()
         cursor.close()
@@ -1617,7 +1866,9 @@ def _pct(parte, total):
 
 @tracks_bp.route("/tracks/relatorios")
 def tracks_relatorios():
-    """Relatório estatístico de coletas, duplicatas e anomalias num período (default: últimos 7 dias)."""
+    """Relatório estatístico de coletas, duplicatas e anomalias num período (default: últimos 7 dias).
+    Totais vêm de daily_collection_stats/daily_people_stats e os casos de quality_events — nenhum dos
+    dois encolhe quando coletas/pessoas são excluídas (tratamento, Limpeza)."""
     hoje = hoje_local()
     try:
         data_ini = date.fromisoformat(request.args.get("data_ini", "").strip())
@@ -1630,30 +1881,76 @@ def tracks_relatorios():
     if data_ini > data_fim:
         data_ini, data_fim = data_fim, data_ini
     periodo = (data_ini, data_fim + timedelta(days=1))
+    periodo_dias = (data_ini, data_fim)
 
     conn = get_faciais_conn()
     try:
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-        # Coletas por dia/câmera/loja/tipo de pessoa — agregado no Python pra montar todos os recortes
+        # Volume total (base de comparação), por dia/loja/câmera
         cursor.execute(
             """
-            SELECT r.created_at::date AS dia, r.camera_id, r.store_id, p.person_type_id AS flag,
-                   COUNT(*) AS coletas,
-                   COUNT(*) FILTER (WHERE r.is_intruder) AS intruso,
-                   COUNT(*) FILTER (WHERE r.is_unwanted) AS indesejada,
-                   COUNT(*) FILTER (WHERE r.is_intruder AND r.is_unwanted) AS ambas,
-                   COUNT(*) FILTER (WHERE r.person_id IS NULL) AS sem_pessoa
-            FROM detection_records r
-            LEFT JOIN people p ON p.person_id = r.person_id
-            WHERE r.created_at >= %s AND r.created_at < %s
+            SELECT stat_date AS dia, store_id, camera_id, records AS coletas
+            FROM daily_collection_stats WHERE stat_date BETWEEN %s AND %s
+            """,
+            periodo_dias,
+        )
+        linhas_total = cursor.fetchall()
+        cursor.execute(
+            "SELECT stat_date AS dia, people_created FROM daily_people_stats WHERE stat_date BETWEEN %s AND %s",
+            periodo_dias,
+        )
+        cadastros_dia = {r["dia"]: r["people_created"] for r in cursor.fetchall()}
+
+        # Anomalias (histórico permanente), pelo dia da coleta
+        cursor.execute(
+            """
+            SELECT occurred_on AS dia, COALESCE(store_id, 0) AS store_id, COALESCE(camera_id, 0) AS camera_id,
+                   person_type_id AS flag,
+                   COUNT(*) FILTER (WHERE event_type = 'intruso') AS intruso,
+                   COUNT(*) FILTER (WHERE event_type = 'indesejada') AS indesejada
+            FROM quality_events
+            WHERE event_type IN ('intruso', 'indesejada') AND occurred_on BETWEEN %s AND %s
             GROUP BY 1, 2, 3, 4
             """,
-            periodo,
+            periodo_dias,
         )
-        linhas = cursor.fetchall()
+        linhas_anom = cursor.fetchall()
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS ambas FROM (
+                SELECT detection_record_id FROM quality_events
+                WHERE event_type IN ('intruso', 'indesejada') AND occurred_on BETWEEN %s AND %s
+                GROUP BY 1 HAVING COUNT(DISTINCT event_type) = 2
+            ) x
+            """,
+            periodo_dias,
+        )
+        ambas = cursor.fetchone()["ambas"]
 
-        # Contagens distintas não somam entre recortes: consultadas à parte
+        # Duplicatas (histórico permanente), pelo dia de criação do cadastro duplicado
+        cursor.execute(
+            """
+            SELECT occurred_on AS dia, COUNT(*) AS duplicatas
+            FROM quality_events WHERE event_type = 'duplicata' AND occurred_on BETWEEN %s AND %s
+            GROUP BY 1
+            """,
+            periodo_dias,
+        )
+        dup_dia = {r["dia"]: r["duplicatas"] for r in cursor.fetchall()}
+
+        # Situação do tratamento dos casos do período
+        cursor.execute(
+            """
+            SELECT event_type AS tipo, treatment AS tratamento, COUNT(*) AS n
+            FROM quality_events WHERE occurred_on BETWEEN %s AND %s
+            GROUP BY 1, 2
+            """,
+            periodo_dias,
+        )
+        linhas_trat = cursor.fetchall()
+
+        # Pessoas distintas: só dá pra contar sobre as coletas que ainda existem
         cursor.execute(
             """
             SELECT COUNT(DISTINCT r.person_id) AS pessoas,
@@ -1677,7 +1974,7 @@ def tracks_relatorios():
         pessoas_dia = {r["dia"]: r["pessoas"] for r in cursor.fetchall()}
         cursor.execute(
             """
-            SELECT p.person_type_id AS flag, COUNT(DISTINCT r.person_id) AS pessoas
+            SELECT p.person_type_id AS flag, COUNT(*) AS coletas, COUNT(DISTINCT r.person_id) AS pessoas
             FROM detection_records r
             JOIN people p ON p.person_id = r.person_id
             WHERE r.created_at >= %s AND r.created_at < %s
@@ -1685,22 +1982,9 @@ def tracks_relatorios():
             """,
             periodo,
         )
-        pessoas_flag = {r["flag"]: r["pessoas"] for r in cursor.fetchall()}
+        flags_vivas = {r["flag"]: r for r in cursor.fetchall()}
 
-        # Cadastros criados no período e quantos deles já foram marcados como duplicata
-        cursor.execute(
-            """
-            SELECT COUNT(*) AS novas,
-                   COUNT(*) FILTER (WHERE duplicate_of_person_id IS NOT NULL) AS novas_duplicadas
-            FROM people
-            WHERE created_at >= %s AND created_at < %s
-            """,
-            periodo,
-        )
-        novas = cursor.fetchone()
-
-        # Duplicatas: o vínculo não tem data, então o total é o estado atual; o período entra nas
-        # coletas de cada grupo
+        # Duplicatas: estado atual dos grupos e coletas de cada grupo no período
         cursor.execute(
             """
             SELECT COUNT(DISTINCT duplicate_of_person_id) AS grupos, COUNT(*) AS duplicadas
@@ -1731,30 +2015,38 @@ def tracks_relatorios():
     finally:
         release_faciais_conn(conn)
 
-    campos = ("coletas", "intruso", "indesejada", "ambas", "sem_pessoa")
+    campos = ("coletas", "intruso", "indesejada")
 
     def _vazio():
         return dict.fromkeys(campos, 0)
 
-    def _somar(alvo, linha):
-        for k in campos:
-            alvo[k] += linha[k]
-
     totais = _vazio()
     por_dia, por_camera, por_loja, por_flag = {}, {}, {}, {}
-    for l in linhas:
-        _somar(totais, l)
-        _somar(por_dia.setdefault(l["dia"], _vazio()), l)
-        _somar(por_camera.setdefault(l["camera_id"], _vazio()), l)
-        _somar(por_loja.setdefault(l["store_id"] or CAMERA_STORE_MAP.get(l["camera_id"]), _vazio()), l)
-        _somar(por_flag.setdefault(l["flag"], _vazio()), l)
+
+    def _somar(chaves, valores):
+        dia, loja, camera = chaves
+        for alvo in (totais, por_dia.setdefault(dia, _vazio()), por_camera.setdefault(camera, _vazio()),
+                     por_loja.setdefault(loja, _vazio())):
+            for k, v in valores.items():
+                alvo[k] += v
+
+    for l in linhas_total:
+        loja = l["store_id"] or CAMERA_STORE_MAP.get(l["camera_id"]) or 0
+        _somar((l["dia"], loja, l["camera_id"]), {"coletas": l["coletas"]})
+    for l in linhas_anom:
+        loja = l["store_id"] or CAMERA_STORE_MAP.get(l["camera_id"]) or 0
+        _somar((l["dia"], loja, l["camera_id"]), {"intruso": l["intruso"], "indesejada": l["indesejada"]})
+        f = por_flag.setdefault(l["flag"], {"intruso": 0, "indesejada": 0})
+        f["intruso"] += l["intruso"]
+        f["indesejada"] += l["indesejada"]
 
     dias_semana = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
     dias = []
     d = data_ini
     while d <= data_fim:
         dias.append({"data": d.strftime("%d/%m"), "dia_semana": dias_semana[d.weekday()],
-                     "pessoas": pessoas_dia.get(d, 0), **por_dia.get(d, _vazio())})
+                     "pessoas": pessoas_dia.get(d, 0), "cadastros": cadastros_dia.get(d, 0),
+                     "duplicatas": dup_dia.get(d, 0), **por_dia.get(d, _vazio())})
         d += timedelta(days=1)
 
     cameras_map = {c["id_camera"]: c.get("camera") or str(c["id_camera"]) for c in CAMERAS_COMPLETO if c.get("id_camera") is not None}
@@ -1774,21 +2066,48 @@ def tracks_relatorios():
 
     lojas = _recorte(por_loja, lambda k: STORE_NAME_MAP.get(k, f"Loja {k}") if k else "Sem loja")
     cameras = _recorte(por_camera, _rotulo_camera)
-    flags = _recorte(por_flag, lambda k: flag_map.get(k, k) if k else "Sem pessoa")
-    for f in flags:
-        f["pessoas"] = pessoas_flag.get(f["chave"], 0)
+    flags = []
+    for k in set(flags_vivas) | set(por_flag):
+        viva, anom = flags_vivas.get(k, {}), por_flag.get(k, {})
+        flags.append({"rotulo": flag_map.get(k, k) if k else "Sem pessoa",
+                      "coletas": viva.get("coletas", 0), "pessoas": viva.get("pessoas", 0),
+                      "intruso": anom.get("intruso", 0), "indesejada": anom.get("indesejada", 0)})
+    flags.sort(key=lambda x: -x["coletas"])
+
+    # Tratamento: uma linha por tipo, colunas só pros tratamentos que aparecem
+    ordem_trat = ["pendente", "coleta_excluida", "vinculada", "nova_pessoa", "juntada",
+                  "pessoa_excluida", "mantida", "coleta_removida", "pessoa_removida"]
+    rotulos_trat = {
+        "pendente": "Pendente", "coleta_excluida": "Coleta excluída", "vinculada": "Vinculada a outra pessoa",
+        "nova_pessoa": "Nova pessoa", "juntada": "Juntada", "pessoa_excluida": "Cadastro excluído",
+        "mantida": "Mantida", "coleta_removida": "Coleta removida (Limpeza/outro)",
+        "pessoa_removida": "Cadastro removido (outro)",
+    }
+    trat = {}
+    for l in linhas_trat:
+        trat.setdefault(l["tipo"], {})[l["tratamento"]] = l["n"]
+    colunas_trat = [t for t in ordem_trat if t == "pendente" or any(t in v for v in trat.values())]
+    tratamento = []
+    for tipo, rotulo in (("intruso", "Intruso"), ("indesejada", "Indesejada"), ("duplicata", "Duplicata")):
+        v = trat.get(tipo, {})
+        total = sum(v.values())
+        tratamento.append({"rotulo": rotulo, "total": total, "valores": [v.get(t, 0) for t in colunas_trat],
+                           "pct_tratado": _pct(total - v.get("pendente", 0), total)})
 
     n_dias = (data_fim - data_ini).days + 1
+    total_duplicatas = sum(dup_dia.values())
+    total_cadastros = sum(cadastros_dia.values())
     resumo = {
         **totais,
+        "ambas": ambas,
         "pessoas": distintos["pessoas"],
         "pessoas_unicas": distintos["pessoas_unicas"],
         "media_dia": round(totais["coletas"] / n_dias, 1),
         "pct_intruso": _pct(totais["intruso"], totais["coletas"]),
         "pct_indesejada": _pct(totais["indesejada"], totais["coletas"]),
-        "novas": novas["novas"],
-        "novas_duplicadas": novas["novas_duplicadas"],
-        "pct_novas_duplicadas": _pct(novas["novas_duplicadas"], novas["novas"]),
+        "novas": total_cadastros,
+        "duplicatas_periodo": total_duplicatas,
+        "pct_duplicatas": _pct(total_duplicatas, total_cadastros),
         "grupos": dup_total["grupos"],
         "duplicadas": dup_total["duplicadas"],
         "coletas_em_duplicatas": sum(g["coletas_em_duplicatas"] for g in grupos_periodo),
@@ -1799,6 +2118,7 @@ def tracks_relatorios():
         periodo_br=f"{data_ini.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}", n_dias=n_dias,
         resumo=resumo, dias=dias, max_dia=max([x["coletas"] for x in dias] + [1]),
         lojas=lojas, cameras=cameras, flags=flags, grupos=grupos_periodo,
+        tratamento=tratamento, colunas_trat=[rotulos_trat[t] for t in colunas_trat],
     )
 
 
@@ -1836,6 +2156,16 @@ def tracks_anomalias():
             (dia, dia + timedelta(days=1)),
         )
         rows = cursor.fetchall()
+        # Histórico do dia (quality_events): inclui o que já foi tratado e não aparece mais na lista
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS marcadas, COUNT(*) FILTER (WHERE treatment <> 'pendente') AS tratadas
+            FROM quality_events
+            WHERE occurred_on = %s AND event_type IN ('intruso', 'indesejada')
+            """,
+            (dia,),
+        )
+        historico = cursor.fetchone()
         cursor.close()
         conn.rollback()
     finally:
@@ -1865,7 +2195,7 @@ def tracks_anomalias():
         "intruso":    sum(1 for c in casos if c["intruso"]),
         "indesejada": sum(1 for c in casos if c["indesejada"]),
     }
-    return render_template("tracks_anomalias.html", casos=casos, totais=totais,
+    return render_template("tracks_anomalias.html", casos=casos, totais=totais, historico=historico,
                            data=dia.isoformat(), data_br=dia.strftime("%d/%m/%Y"), tipo=tipo)
 
 
@@ -1887,6 +2217,11 @@ def tracks_duplicatas():
             SELECT g.principal, p.person_id AS id_unico, p.full_name AS nome, p.nickname AS apelido,
                    p.person_type_id AS flag, p.created_at,
                    c.coletas, c.ultima_coleta,
+                   (SELECT COUNT(*) FROM person_purchases pp WHERE pp.person_id = p.person_id)
+                 + (SELECT COUNT(*) FROM manual_purchase_links m WHERE m.person_id = p.person_id) AS compras,
+                   (SELECT q.treatment FROM quality_events q
+                    WHERE q.event_type = 'duplicata' AND q.person_id = p.person_id
+                      AND q.treatment IN ('pendente', 'mantida')) AS situacao,
                    (SELECT r.image_path FROM detection_records r
                     WHERE r.track_id = p.reference_track_id AND r.image_path IS NOT NULL
                     ORDER BY r.detection_score DESC LIMIT 1) AS image_path
@@ -1918,6 +2253,8 @@ def tracks_duplicatas():
             "coletas":       r["coletas"] or 0,
             "ultima_coleta": fmt_timestamp(r["ultima_coleta"]) if r["ultima_coleta"] else "—",
             "_ultima":       r["ultima_coleta"],
+            "compras":       r["compras"],
+            "situacao":      r["situacao"],
         }
         if r["id_unico"] == r["principal"]:
             g["principal"] = pessoa

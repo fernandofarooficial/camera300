@@ -197,6 +197,7 @@
     .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 0.35rem; vertical-align: middle; }
     .dot-intr { background: var(--intr); }
     .dot-indes { background: var(--indes); }
+    .dot-dup { background: var(--dup); }
     td a { color: var(--accent); text-decoration: none; font-weight: 700; }
     td a:hover { text-decoration: underline; }
     .vazio { font-size: 0.8rem; color: var(--muted); padding: 0.5rem 0; }
@@ -249,12 +250,12 @@
     <div class="kpi">
       <div class="rot">Coletas</div>
       <div class="val">{{ resumo.coletas }}</div>
-      <div class="det">média de {{ resumo.media_dia }}/dia{% if resumo.sem_pessoa %} · {{ resumo.sem_pessoa }} sem pessoa{% endif %}</div>
+      <div class="det">média de {{ resumo.media_dia }}/dia · total inserido, inclui as já excluídas</div>
     </div>
     <div class="kpi">
       <div class="rot">Pessoas coletadas</div>
       <div class="val">{{ resumo.pessoas }}</div>
-      <div class="det">{{ resumo.pessoas_unicas }} pessoa(s) real(is) juntando duplicatas</div>
+      <div class="det">{{ resumo.pessoas_unicas }} real(is) juntando duplicatas · só coletas ainda existentes</div>
     </div>
     <div class="kpi" style="--k: var(--intr)">
       <div class="rot">Intruso</div>
@@ -269,12 +270,12 @@
     <div class="kpi">
       <div class="rot">Novos cadastros</div>
       <div class="val">{{ resumo.novas }}</div>
-      <div class="det">{{ resumo.novas_duplicadas }} já marcado(s) como duplicata ({{ resumo.pct_novas_duplicadas }}%)</div>
+      <div class="det">total criado, inclui os já excluídos</div>
     </div>
     <div class="kpi" style="--k: var(--dup)">
       <div class="rot">Duplicatas</div>
-      <div class="val">{{ resumo.duplicadas }}</div>
-      <div class="det">cadastro(s) em {{ resumo.grupos }} grupo(s) — total atual</div>
+      <div class="val">{{ resumo.duplicatas_periodo }}</div>
+      <div class="det">{{ resumo.pct_duplicatas }}% dos novos cadastros · hoje {{ resumo.duplicadas }} em {{ resumo.grupos }} grupo(s)</div>
     </div>
   </div>
 
@@ -291,7 +292,8 @@
           {% for d in dias %}
             <div class="col"
                  data-dia="{{ d.dia_semana }} {{ d.data }}" data-coletas="{{ d.coletas }}" data-pessoas="{{ d.pessoas }}"
-                 data-intruso="{{ d.intruso }}" data-indesejada="{{ d.indesejada }}">
+                 data-intruso="{{ d.intruso }}" data-indesejada="{{ d.indesejada }}"
+                 data-cadastros="{{ d.cadastros }}" data-duplicatas="{{ d.duplicatas }}">
               <div class="bar" style="height: {{ (100 * d.coletas / max_dia) | round(1) }}%{% if not d.coletas %}; opacity: 0{% endif %}"></div>
             </div>
           {% endfor %}
@@ -316,6 +318,8 @@
             <th class="n">Pessoas</th>
             <th class="n"><span class="dot dot-intr"></span>Intruso</th>
             <th class="n"><span class="dot dot-indes"></span>Indesejada</th>
+            <th class="n">Novos cadastros</th>
+            <th class="n"><span class="dot dot-dup"></span>Duplicatas</th>
           </tr>
         </thead>
         <tbody>
@@ -326,6 +330,39 @@
               <td class="n">{{ d.pessoas }}</td>
               <td class="n">{{ d.intruso }}</td>
               <td class="n">{{ d.indesejada }}</td>
+              <td class="n">{{ d.cadastros }}</td>
+              <td class="n">{{ d.duplicatas }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===================== Tratamento ===================== -->
+  <section>
+    <h2>Tratamento</h2>
+    <div class="sub">
+      Situação dos casos do período (anomalia pelo dia da coleta, duplicata pelo dia de criação do
+      cadastro duplicado). A estatística é mantida depois do tratamento, qualquer que seja ele.
+    </div>
+    <div class="tabela-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Tipo</th>
+            <th class="n">Casos</th>
+            {% for c in colunas_trat %}<th class="n">{{ c }}</th>{% endfor %}
+            <th class="n">% tratado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in tratamento %}
+            <tr>
+              <td class="rot">{{ t.rotulo }}</td>
+              <td class="n">{{ t.total }}</td>
+              {% for v in t.valores %}<td class="n">{{ v }}</td>{% endfor %}
+              <td class="n">{{ t.pct_tratado }}%</td>
             </tr>
           {% endfor %}
         </tbody>
@@ -367,7 +404,7 @@
     </section>
     <section>
       <h2>Por tipo de pessoa</h2>
-      <div class="sub">Tipo atual do cadastro vinculado à coleta.</div>
+      <div class="sub">Coletas e pessoas: tipo atual do cadastro, só coletas ainda existentes. Anomalias: tipo da pessoa quando foi marcada.</div>
       {% if flags %}
         <div class="tabela-wrap">
           <table>
@@ -386,8 +423,8 @@
                   <td class="rot">{{ l.rotulo }}</td>
                   <td class="n"><span class="inline-bar" style="width: {{ (60 * l.coletas / (flags[0].coletas or 1)) | round(0) | int + 2 }}px"></span>{{ l.coletas }}</td>
                   <td class="n">{{ l.pessoas }}</td>
-                  <td class="n">{{ l.intruso }}<span class="pct">{{ l.pct_intruso }}%</span></td>
-                  <td class="n">{{ l.indesejada }}<span class="pct">{{ l.pct_indesejada }}%</span></td>
+                  <td class="n">{{ l.intruso }}</td>
+                  <td class="n">{{ l.indesejada }}</td>
                 </tr>
               {% endfor %}
             </tbody>
@@ -409,7 +446,7 @@
     <div class="sub">
       Grupos de cadastros marcados como a mesma pessoa que tiveram coletas no período
       ({{ resumo.coletas_em_duplicatas }} coleta(s) caíram em cadastros duplicados em vez do principal).
-      O vínculo de duplicata não guarda data, então não dá pra filtrar por quando foi marcado.
+      Estado atual dos grupos — duplicatas já juntadas/excluídas entram só na contagem e na tabela de tratamento.
     </div>
     {% if grupos %}
       <div class="tabela-wrap">
@@ -465,7 +502,8 @@
           `<b>${d.dia}</b><br>${d.coletas} coleta(s)<br>` +
           `<span class="t-muted">${d.pessoas} pessoa(s)</span><br>` +
           `<span class="dot dot-intr"></span>${d.intruso} intruso · ` +
-          `<span class="dot dot-indes"></span>${d.indesejada} indesejada`;
+          `<span class="dot dot-indes"></span>${d.indesejada} indesejada<br>` +
+          `<span class="t-muted">${d.cadastros} cadastro(s) novo(s) · ${d.duplicatas} duplicata(s)</span>`;
         tip.style.display = 'block';
         const cr = chart.getBoundingClientRect(), r = col.getBoundingClientRect();
         let left = r.left - cr.left + r.width / 2 - tip.offsetWidth / 2;

@@ -171,6 +171,76 @@
     .caso.oc-intruso .btn-intr    { background: #f97316; color: #0f1117; border-color: #f97316; }
     .caso.oc-indesejada .btn-indes { background: #a855f7; color: #0f1117; border-color: #a855f7; }
 
+    .res-hist  { background: #22c55e22; color: #22c55e; border: 1px solid #22c55e44; }
+    .btn-massa {
+      background: transparent;
+      border: 1px solid #ef444455;
+      color: #ef4444;
+      border-radius: 6px;
+      padding: 0.45rem 0.9rem;
+      font-size: 0.82rem;
+      cursor: pointer;
+    }
+    .btn-massa:hover { background: #ef444422; }
+    .btn-massa:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ---- Tratamento ---- */
+    .tratar { display: flex; gap: 0.35rem; flex-wrap: wrap; border-top: 1px solid #2d3148; padding-top: 0.5rem; }
+    .btn-trat {
+      flex: 1;
+      background: transparent;
+      border-radius: 6px;
+      padding: 0.3rem 0.2rem;
+      font-size: 0.68rem;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .btn-trat:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-excluir { color: #ef4444; border: 1px solid #ef444444; }
+    .btn-excluir:hover { background: #ef444422; }
+    .btn-vincular { color: #60a5fa; border: 1px solid #60a5fa44; }
+    .btn-vincular:hover { background: #60a5fa22; }
+    .btn-nova { color: #f59e0b; border: 1px solid #f59e0b44; }
+    .btn-nova:hover { background: #f59e0b22; }
+    .so-intruso { display: none; }
+    .caso.oc-intruso .so-intruso { display: block; }
+    .tratado-msg { display: none; font-size: 0.75rem; font-weight: 700; color: #22c55e; text-align: center; padding: 0.3rem 0; }
+    .caso.tratado { opacity: 0.55; }
+    .caso.tratado .acoes, .caso.tratado .tratar { display: none; }
+    .caso.tratado .tratado-msg { display: block; }
+
+    /* ---- Modal vincular ---- */
+    .vinc-overlay {
+      display: none; position: fixed; inset: 0; background: #00000099; z-index: 300;
+      align-items: center; justify-content: center; padding: 1rem;
+    }
+    .vinc-overlay.open { display: flex; }
+    .vinc-box {
+      background: #1a1d27; border: 1px solid #2d3148; border-radius: 14px; padding: 1.5rem;
+      width: 100%; max-width: 420px; box-shadow: 0 24px 64px #00000088;
+    }
+    .vinc-box h2 { font-size: 1rem; color: #7c86ff; margin-bottom: 0.4rem; }
+    .vinc-ajuda { font-size: 0.75rem; color: #64748b; margin-bottom: 0.9rem; line-height: 1.4; }
+    .vinc-row { display: flex; gap: 0.5rem; }
+    .vinc-row input {
+      flex: 1; background: #0f1117; border: 1px solid #2d3148; border-radius: 6px; color: #e2e8f0;
+      font-size: 0.88rem; padding: 0.5rem 0.65rem; outline: none;
+    }
+    .vinc-row input:focus { border-color: #7c86ff88; }
+    .vinc-btn {
+      background: #7c86ff22; border: 1px solid #7c86ff44; color: #7c86ff; border-radius: 6px;
+      padding: 0.45rem 0.9rem; font-size: 0.82rem; cursor: pointer;
+    }
+    .vinc-btn:hover { background: #7c86ff33; }
+    .vinc-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .vinc-btn-cancel { background: transparent; color: #94a3b8; border-color: #2d3148; }
+    .vinc-preview { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.75rem; font-size: 0.85rem; }
+    .vinc-preview img { width: 56px; height: 56px; object-fit: cover; border-radius: 6px; border: 1px solid #334155; }
+    .vinc-preview b { color: #7c86ff; }
+    .vinc-erro { color: #ef4444; font-size: 0.78rem; margin-top: 0.6rem; white-space: pre-line; }
+    .vinc-acoes { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.1rem; }
+
     @media (max-width: 600px) {
       header { padding: 0.85rem 1rem; }
       main { padding: 1rem; }
@@ -207,7 +277,15 @@
       <span class="res-total">{{ totais.total }} caso(s) em {{ data_br }}</span>
       <span class="res-intr">{{ totais.intruso }} intruso(s)</span>
       <span class="res-indes">{{ totais.indesejada }} indesejada(s)</span>
+      <span class="res-hist" title="Inclui as que já foram tratadas e não aparecem mais na lista">
+        histórico do dia: {{ historico.marcadas }} marcada(s) · {{ historico.tratadas }} tratada(s)
+      </span>
     </div>
+    {% if totais.indesejada %}
+      <button type="button" class="btn-massa" id="btn-massa" onclick="excluirIndesejadas()">
+        &#128465; Excluir as {{ totais.indesejada }} indesejada(s) exibida(s)
+      </button>
+    {% endif %}
   </form>
 
   {% if not casos %}
@@ -272,13 +350,167 @@
                     title="Indesejada: foto ruim pra reconhecimento"
                     onclick="alternarAnomalia(this, 'indesejada')">INDESEJADA</button>
           </div>
+
+          <div class="tratar">
+            <button type="button" class="btn-trat btn-excluir" title="Excluir esta coleta"
+                    onclick="excluirColeta(this)">&#128465; Excluir coleta</button>
+            <button type="button" class="btn-trat btn-vincular so-intruso" title="Vincular esta coleta a outra pessoa"
+                    onclick="abrirVincular(this)">&#8599; Vincular</button>
+            <button type="button" class="btn-trat btn-nova so-intruso" title="Criar uma nova pessoa a partir desta coleta"
+                    onclick="novaPessoa(this)">+ Nova pessoa</button>
+          </div>
+          <div class="tratado-msg"></div>
         </div>
       {% endfor %}
     </div>
   {% endif %}
 </main>
 
+<div class="vinc-overlay" id="vinc-overlay">
+  <div class="vinc-box">
+    <h2>Vincular coleta a outra pessoa</h2>
+    <div class="vinc-ajuda">Informe o ID da pessoa dona deste rosto. A coleta sai da pessoa atual e deixa de ser intruso.</div>
+    <div class="vinc-row">
+      <input type="text" id="vinc-id" placeholder="ID da pessoa"
+             onkeydown="if(event.key==='Enter'){event.preventDefault();verificarVincular();}" />
+      <button type="button" class="vinc-btn" onclick="verificarVincular()">Verificar</button>
+    </div>
+    <div class="vinc-preview" id="vinc-preview"></div>
+    <div class="vinc-erro" id="vinc-erro"></div>
+    <div class="vinc-acoes">
+      <button type="button" class="vinc-btn vinc-btn-cancel" onclick="fecharVincular()">Cancelar</button>
+      <button type="button" class="vinc-btn" id="vinc-confirmar" disabled onclick="confirmarVincular()">Vincular</button>
+    </div>
+  </div>
+</div>
+
 <script>
+  function marcarTratado(caso, msg) {
+    caso.classList.add('tratado');
+    caso.querySelector('.tratado-msg').textContent = msg;
+  }
+
+  async function _enviar(url, body, method) {
+    const resp = await fetch(url, {
+      method: method || 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || !data.success) throw new Error(data.error || 'Erro ' + resp.status);
+    return data;
+  }
+
+  async function excluirColeta(btn) {
+    const caso = btn.closest('.caso');
+    if (!confirm('Excluir esta coleta? A exclusão é definitiva (a estatística da anomalia é mantida).')) return;
+    btn.disabled = true;
+    try {
+      await _enviar(`/camera300/tracks/api/registro/${caso.dataset.regId}`, null, 'DELETE');
+      marcarTratado(caso, '✓ Coleta excluída');
+    } catch (err) {
+      alert('Erro ao excluir: ' + err.message);
+      btn.disabled = false;
+    }
+  }
+
+  async function excluirIndesejadas() {
+    const casos = [...document.querySelectorAll('.caso.oc-indesejada:not(.tratado)')];
+    if (!casos.length) return;
+    if (!confirm(`Excluir ${casos.length} coleta(s) indesejada(s) exibida(s)? A exclusão é definitiva (a estatística é mantida).`)) return;
+    const btn = document.getElementById('btn-massa');
+    btn.disabled = true;
+    try {
+      const data = await _enviar('/camera300/tracks/api/registros/excluir', { ids: casos.map(c => Number(c.dataset.regId)) });
+      casos.forEach(c => marcarTratado(c, '✓ Coleta excluída'));
+      btn.textContent = `✓ ${data.excluidos} coleta(s) excluída(s)`;
+    } catch (err) {
+      alert('Erro ao excluir: ' + err.message);
+      btn.disabled = false;
+    }
+  }
+
+  async function novaPessoa(btn) {
+    const caso = btn.closest('.caso');
+    if (!confirm('Criar uma nova pessoa a partir desta coleta?')) return;
+    btn.disabled = true;
+    try {
+      const data = await _enviar(`/camera300/tracks/api/registro/${caso.dataset.regId}/nova-pessoa`);
+      marcarTratado(caso, `✓ Nova pessoa: ID ${data.person_id}`);
+    } catch (err) {
+      alert('Erro ao criar pessoa: ' + err.message);
+      btn.disabled = false;
+    }
+  }
+
+  let _vincCaso = null, _vincId = null;
+
+  function abrirVincular(btn) {
+    _vincCaso = btn.closest('.caso');
+    _vincId = null;
+    document.getElementById('vinc-id').value = '';
+    document.getElementById('vinc-preview').innerHTML = '';
+    document.getElementById('vinc-erro').textContent = '';
+    document.getElementById('vinc-confirmar').disabled = true;
+    document.getElementById('vinc-overlay').classList.add('open');
+    document.getElementById('vinc-id').focus();
+  }
+
+  function fecharVincular() {
+    document.getElementById('vinc-overlay').classList.remove('open');
+  }
+
+  document.getElementById('vinc-overlay').addEventListener('click', function (e) {
+    if (e.target === this) fecharVincular();
+  });
+
+  async function verificarVincular() {
+    const prev = document.getElementById('vinc-preview');
+    const erro = document.getElementById('vinc-erro');
+    const conf = document.getElementById('vinc-confirmar');
+    prev.innerHTML = '';
+    erro.textContent = '';
+    conf.disabled = true;
+    _vincId = null;
+    const id = parseInt(document.getElementById('vinc-id').value.trim(), 10);
+    if (!id) { erro.textContent = 'Informe um ID numérico.'; return; }
+    try {
+      const resp = await fetch(`/camera300/tracks/api/pessoa/${id}`);
+      const data = await resp.json();
+      if (!resp.ok || data.error) { erro.textContent = data.error || 'Pessoa não encontrada.'; return; }
+      if (data.foto) {
+        const img = document.createElement('img');
+        img.src = data.foto;
+        prev.appendChild(img);
+      }
+      const txt = document.createElement('span');
+      const b = document.createElement('b');
+      b.textContent = 'ID ' + data.id_unico + ' ';
+      txt.appendChild(b);
+      txt.appendChild(document.createTextNode((data.nome || '—') + (data.apelido ? ' (' + data.apelido + ')' : '')));
+      prev.appendChild(txt);
+      _vincId = data.id_unico;
+      conf.disabled = false;
+    } catch (err) {
+      erro.textContent = 'Falha na requisição.';
+    }
+  }
+
+  async function confirmarVincular() {
+    if (!_vincId || !_vincCaso) return;
+    const conf = document.getElementById('vinc-confirmar');
+    conf.disabled = true;
+    try {
+      const data = await _enviar(`/camera300/tracks/api/registro/${_vincCaso.dataset.regId}/mover`, { id_unico: _vincId });
+      marcarTratado(_vincCaso, `✓ Vinculada ao ID ${_vincId}` + (data.pessoa_excluida ? ' (pessoa de origem ficou sem coletas e foi removida)' : ''));
+      _vincCaso.classList.remove('oc-intruso');
+      fecharVincular();
+    } catch (err) {
+      document.getElementById('vinc-erro').textContent = 'Erro ao vincular: ' + err.message;
+      conf.disabled = false;
+    }
+  }
+
   async function alternarAnomalia(btn, tipo) {
     const caso = btn.closest('.caso');
     const classe = tipo === 'intruso' ? 'oc-intruso' : 'oc-indesejada';

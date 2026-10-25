@@ -520,7 +520,11 @@ Criada em `tracks.py` (`nova_pessoa_de_registro`). Lógica:
 2. Insere nova `people` com `reference_track_id = track_id` e `person_type_id = FLAG_NOVO_ANONIMO`.
 3. Define `full_name = "AnônimoXXX"` e `nickname = "AXXX"` (mesmo padrão de `criar_pessoa` em `db.py`).
 4. Move **apenas este registro** (`detection_record_id`) para a nova pessoa — diferente de `criar_pessoa` que move todos os registros do `track_id`.
-5. Se a pessoa original ficou sem registros, remove-a automaticamente (mesmo comportamento de `mover_registro`).
+5. Se a pessoa original ficou sem registros, remove-a automaticamente (mesmo comportamento de
+   `mover_registro`) — **exceto** se ela tiver compras (`person_purchases`), vínculos manuais de NF
+   (`manual_purchase_links`) ou duplicatas apontando pra ela, que se perderiam junto
+   (`_excluir_pessoa_se_vazia`, desde 2026-10-25). Se a coleta era Intruso, o evento é fechado como
+   `nova_pessoa` (ver "Estatística permanente").
 
 Retorna: `{success, person_id, nome, pessoa_excluida}`.
 
@@ -529,8 +533,9 @@ Retorna: `{success, person_id, nome, pessoa_excluida}`.
 ## Duplicatas de pessoa (desde 2026-10-24)
 
 Permite ao usuário informar que dois ou mais cadastros de `faciais.people` são a mesma pessoa.
-**Só vínculo, sem mesclar** (decisão do usuário): nenhum `detection_record`, `person_purchases` ou
-`manual_purchase_links` é movido ou apagado — totalmente reversível.
+O **vínculo** em si não move nada (nenhum `detection_record`, `person_purchases` ou
+`manual_purchase_links` muda) e é reversível; mover/apagar só acontece no **tratamento**, feito
+explicitamente na Tela Duplicatas (ver "Tratamento das duplicatas" abaixo).
 
 - Coluna `faciais.people.duplicate_of_person_id` (FK `fk_people_duplicate_of` → `people`,
   `ON DELETE SET NULL`; `chk_people_duplicate_of_self` impede auto-referência). Migration rodada
@@ -539,7 +544,9 @@ Permite ao usuário informar que dois ou mais cadastros de `faciais.people` são
   Grupo = principal + todos que apontam pra ele (suporta 3+ duplicatas). `vincular_duplicatas`
   (`tracks.py`) mantém essa invariante: se o ID alvo já é duplicata, vincula ao principal dele; se
   um ID informado pertence a outro grupo (como principal **ou como duplicata**), o grupo inteiro
-  dele é absorvido (repontado). Excluir o principal desvincula as duplicatas sozinho (FK `SET NULL`).
+  dele é absorvido (repontado). Excluir o principal **promove a duplicata de menor ID** a principal
+  (desde 2026-10-25 — `_excluir_pessoa_e_coletas` no app, e o gatilho `trg_people_quality` pra
+  exclusões feitas por outros sistemas), em vez de desfazer o grupo pelo FK `SET NULL`.
   **Bug corrigido (2026-10-25):** antes só era absorvido o grupo de quem era *principal*; um ID que
   já era *duplicata* de outro grupo era movido sozinho, deixando o principal antigo isolado (caso
   real: 3184 principal + 3182 duplicata; ao adicionar 3182 a partir do 3170, o 3184 ficou fora do
@@ -576,6 +583,26 @@ Cada duplicata tem o botão "★ Tornar principal" (`confirm()` + reload), que c
 fica com `NULL` e o principal antigo e as demais duplicatas passam a apontar pra ele (mantém o grupo
 plano). Se `<id>` já é o principal, não faz nada.
 
+### Tratamento das duplicatas (desde 2026-10-25)
+
+Na Tela Duplicatas, cada duplicata tem um seletor de ação; "✓ Aplicar tratamento" executa o grupo
+inteiro (resumo em `confirm()` antes) via `POST /tracks/api/duplicatas/<principal>/tratar`
+(`tratar_duplicatas`), body `{acoes: [{id, acao, destino?}]}`. Cada duplicata pode ter uma ação
+diferente; duplicata sem ação escolhida fica como está. **Tudo ou nada**: valida o lote inteiro antes
+(ids precisam ser duplicatas do grupo; destino precisa existir e não pode estar saindo no mesmo
+lote) e roda numa transação.
+
+| Ação (UI) | `acao` | Efeito | Evento |
+|---|---|---|---|
+| Manter como duplicata | `manter` | Nada muda; tag "MANTIDA" no card | `mantida` |
+| Juntar ao principal / a outro ID | `juntar` (+ `destino`, default o principal) | `_juntar_pessoa`: coletas, `person_purchases` e `manual_purchase_links` vão pro destino; campos vazios do destino recebem os da duplicata (nunca sobrescreve; nomes provisórios `AnônimoXXX`/`AXXX` contam como vazios); a duplicata é apagada | `juntada` (+ destino e nº de coletas) |
+| Excluir (com as coletas) | `excluir` | `_excluir_pessoa_e_coletas`: cadastro e coletas apagados de vez. **Bloqueado (409)** se a duplicata tiver compra ou vínculo manual de NF — usar Juntar | `pessoa_excluida` (+ nº de coletas) |
+
+"Juntar a outro ID" fora do grupo só move pro ID informado — os grupos não se juntam (decisão do
+usuário). O chip âmbar "N compra(s)" no card mostra o que iria junto/bloquearia a exclusão.
+`DELETE /tracks/api/pessoa/<id>` (Lista) também passou a usar `_excluir_pessoa_e_coletas` (fecha os
+eventos e promove o principal), mas **não** bloqueia por compra — comportamento da Lista mantido.
+
 ---
 
 ## Anomalias de facial: Intruso / Indesejada (desde 2026-10-24)
@@ -588,9 +615,10 @@ O usuário aponta, em cada ocorrência (`detection_record`) da Tela Lista, duas 
 | Intruso | `detection_records.is_intruder` | Rosto vinculado a uma pessoa (`person_id`) que não é a dele |
 | Indesejada | `detection_records.is_unwanted` | Foto ruim pra reconhecimento: de costas, obstáculo na frente, muito escura/clara, sem resolução, chapéu grande etc. |
 
-- Ambas `boolean NOT NULL DEFAULT false`. Só marcação — nada no pipeline de reconhecimento, na
-  escolha de foto base ("Mudar Base") nem na Limpeza (`limpar_registros_nao_clientes`) lê essas
-  colunas ainda.
+- Ambas `boolean NOT NULL DEFAULT false`. Nada no pipeline de reconhecimento, na escolha de foto
+  base ("Mudar Base") nem na Limpeza (`limpar_registros_nao_clientes`) lê essas colunas. Marcar cria
+  um evento em `quality_events`; desmarcar antes de tratar apaga o evento (foi engano) — ver
+  "Estatística permanente".
 - `POST /tracks/api/registro/<reg_id>/anomalia` → body `{intruso?: bool, indesejada?: bool}`, só os
   campos enviados mudam; retorna o estado final `{success, intruso, indesejada}`.
 - **Intruso é limpo ao mover o registro** (`mover_registro` e `nova_pessoa_de_registro` gravam
@@ -606,7 +634,20 @@ O usuário aponta, em cada ocorrência (`detection_record`) da Tela Lista, duas 
   qualquer uma das duas). Cada caso mostra a foto coletada lado a lado com a foto base da pessoa
   vinculada (pra conferir Intruso), hora, câmera/loja, scores, link "ID X" pra Lista já filtrada
   por pessoa+data, e os mesmos botões de alternar as anomalias (mesma rota `/anomalia`) — desmarcar
-  não remove o card da tela até recarregar. Sem paginação.
+  não remove o card da tela até recarregar. Sem paginação. Chip verde "histórico do dia: N
+  marcada(s) · M tratada(s)" vem de `quality_events` (inclui o que já foi tratado e sumiu da lista).
+- **Tratamento (desde 2026-10-25)**, na Tela Anomalias — cada card ganha uma linha de botões; card
+  tratado fica esmaecido com a mensagem do que foi feito (some ao recarregar):
+  - **Indesejada → "🗑 Excluir coleta"** (`DELETE /tracks/api/registro/<id>`), ou o botão em massa
+    "Excluir as N indesejada(s) exibida(s)" (`POST /tracks/api/registros/excluir`, body `{ids}` —
+    respeita o filtro de data/tipo da tela). Evento → `coleta_excluida`.
+  - **Intruso → "↗ Vincular"** (modal com busca por ID + foto, chama a rota `/mover` já existente;
+    evento → `vinculada` com destino), **"+ Nova pessoa"** (rota `/nova-pessoa` existente; evento →
+    `nova_pessoa`) ou **"🗑 Excluir coleta"**. Os dois primeiros só aparecem quando a coleta está
+    marcada como Intruso.
+  - Coleta com as duas anomalias: excluir fecha os dois eventos.
+  - `mover_registro`/`nova_pessoa_de_registro` não apagam mais a pessoa de origem vazia se ela tiver
+    compras, vínculos manuais ou duplicatas (`_excluir_pessoa_se_vazia`).
 
 ---
 
@@ -616,24 +657,67 @@ Relatório estatístico de coletas, duplicatas e anomalias num período escolhid
 (`?data_ini=&data_fim=`, default últimos 7 dias até `hoje_local()`; datas invertidas são trocadas,
 inválidas caem no default; atalhos Hoje / 7 dias / 30 dias / Este mês e botão Imprimir).
 Botão "Relatórios" no header da Tela Dados. Função `tracks_relatorios` (`tracks.py`), template
-`tracks_relatorios.html`. Período = coletas com `created_at` no intervalo (mesmo critério de data
-da Lista/Anomalias).
+`tracks_relatorios.html`.
 
-- **KPIs:** coletas (média/dia, sem pessoa), pessoas coletadas (distintas, e "reais" juntando
-  duplicatas via `COALESCE(duplicate_of_person_id, person_id)`), Intruso e Indesejada (n e % das
-  coletas), novos cadastros (`people.created_at` no período) e quantos deles já são duplicata,
-  total de duplicatas.
-- **Coletas por dia:** gráfico de colunas (uma série, tooltip no hover) + tabela com os mesmos
-  números e anomalias por dia.
-- **Por loja / por tipo de pessoa / por câmera:** coletas e taxa de Intruso/Indesejada. Loja vem
-  de `detection_records.store_id`, com fallback por `CAMERA_STORE_MAP` quando nulo. Tipo de pessoa é
-  o `person_type_id` **atual** do cadastro, não o da época da coleta.
-- **Duplicatas:** o vínculo (`people.duplicate_of_person_id`) **não tem data** — o total de
-  duplicatas é o estado atual, não do período; o período entra só nas coletas de cada grupo
-  (tabela de grupos com coleta no período e quantas caíram num cadastro duplicado em vez do
-  principal). As anomalias também não guardam quando foram marcadas — contam pela data da coleta.
-- Uma query agregada por `(dia, camera_id, store_id, flag)` monta todos os recortes em Python;
-  contagens distintas (pessoas) vão em queries à parte porque não somam entre recortes.
+**Fontes (desde 2026-10-25):** os números que precisam sobreviver a exclusões vêm das tabelas de
+estatística permanente (ver seção seguinte), não mais de `detection_records`/`people`:
+- Total de coletas por dia/loja/câmera ← `daily_collection_stats`; novos cadastros por dia ←
+  `daily_people_stats`. Incluem o que já foi excluído (tratamento, Limpeza).
+- Intruso/Indesejada ← `quality_events` pelo **dia da coleta** (`occurred_on`); "também intruso" =
+  coletas com evento dos dois tipos.
+- Duplicatas ← `quality_events` pelo **dia de criação do cadastro duplicado**, comparadas com os
+  novos cadastros do mesmo período (`% dos novos cadastros`).
+- **Continuam sobre os dados vivos** (só coletas que ainda existem, avisado na tela): pessoas
+  coletadas (distintas, e "reais" via `COALESCE(duplicate_of_person_id, person_id)`), a coluna
+  Pessoas por dia, coletas/pessoas por tipo de pessoa (tipo **atual** do cadastro) e a tabela de
+  grupos de duplicatas atuais com coletas no período. No recorte por tipo de pessoa as anomalias usam
+  o tipo **da época da marcação** (`quality_events.person_type_id`), por isso essa tabela não mostra %.
+
+Seções: KPIs, coletas por dia (gráfico + tabela com novos cadastros e duplicatas por dia),
+**Tratamento** (por tipo: casos, pendentes, cada tratamento que apareceu no período e % tratado),
+por loja / tipo de pessoa / câmera (taxa = anomalias ÷ total de coletas do recorte) e duplicatas
+atuais. Loja: `store_id` da coleta, senão a loja da câmera (`CAMERA_STORE_MAP`); 0 = sem loja.
+
+---
+
+## Estatística permanente de anomalias e duplicatas (desde 2026-10-25)
+
+Requisito do usuário: depois de qualquer tratamento (excluir, vincular, juntar…) o app precisa
+continuar sabendo que a anomalia/duplicata aconteceu, em que dia e com qual coleta/pessoa, e sempre
+comparar com o volume total. Como o tratamento apaga as linhas de `detection_records`/`people` (e a
+Limpeza já apagava coletas, encolhendo o total por dia), o histórico e o volume total ficam em
+tabelas separadas que nunca são apagadas. Schema completo em `doc_faciais.sql` (`db-docs/lojas`).
+Migration rodada ad-hoc em 2026-10-25 (sem arquivo versionado, mesmo padrão das anteriores).
+
+**`faciais.quality_events`** — uma linha por ocorrência: `event_type` (`intruso`/`indesejada` por
+coleta, `duplicata` por cadastro duplicado), `detection_record_id`, `person_id`, `person_type_id`
+(da época), `principal_person_id`, câmera/loja, `occurred_on`/`occurred_at` (dia da coleta, ou dia de
+criação do cadastro duplicado), `marked_at`, `treatment`, `treated_at`, `target_person_id`,
+`affected_records`, `image_path`. **Sem FK de propósito** — guarda IDs soltos pra sobreviver às
+exclusões.
+- Criado ao **marcar** (`marcar_anomalia`; `vincular_duplicatas` → `_abrir_eventos_grupo` →
+  função `fn_quality_dup_open`), fechado no **tratamento** com o rótulo certo **antes** da exclusão
+  (`_fechar_eventos_coleta`, `_fechar_evento_duplicata`).
+- `treatment`: `pendente`, `coleta_excluida`, `vinculada`, `nova_pessoa`, `juntada`,
+  `pessoa_excluida`, `mantida`, e `coleta_removida`/`pessoa_removida` = excluída **fora** do
+  tratamento (Limpeza, outro sistema), marcados pelos gatilhos `trg_detection_records_quality` /
+  `trg_people_quality` (BEFORE DELETE) no que ainda estiver aberto.
+- Desmarcar (anomalia) ou desvincular (duplicata) **enquanto pendente** apaga o evento (foi engano
+  na marcação). Depois de tratado, o evento fica.
+- No máximo um evento aberto por coleta/tipo (índice parcial `uq_quality_events_coleta_aberta`) e
+  por cadastro duplicado (`uq_quality_events_dup_aberta`, pendente/mantida).
+- "Tornar principal" (`_trocar_principal` → `fn_quality_dup_swap`): o evento do novo principal passa
+  a descrever o principal antigo (mesmo `marked_at`/tratamento) — o grupo continua com N-1 eventos.
+- Os 22 Indesejada, 1 Intruso e 2 duplicatas que existiam foram carregados como `pendente` na
+  migration (`marked_at` = hora da migration, a marcação original não tinha data).
+
+**`faciais.daily_collection_stats`** (`stat_date, store_id, camera_id, records`) e
+**`faciais.daily_people_stats`** (`stat_date, people_created`) — volume total, incrementado pelos
+gatilhos `trg_detection_records_count` / `trg_people_count` (AFTER INSERT) e nunca decrementado.
+Gatilho no banco (não no app) pra contar qualquer INSERT, inclusive de outros sistemas. Granularidade
+dia × loja × câmera (`0` = desconhecido). Dias anteriores a 2026-10-25 foram preenchidos com o que
+ainda existia (11.982 coletas, 2.951 cadastros) — **contados a menos** onde a Limpeza já tinha
+apagado coletas (aceito pelo usuário); daqui pra frente são exatos.
 
 ---
 
@@ -678,6 +762,8 @@ thread background em `app.py`, mesmo padrão de `adequar_bases` (flag `_limpeza_
 - Mantém por pessoa os **2 `detection_records` mais antigos e os 8 mais recentes** (`created_at`, desempate por `detection_record_id`); o resto é **excluído permanentemente** (sem backup).
 - Se nenhum desses 10 for do `reference_track_id` da pessoa, mantém também 1 registro desse track (o da foto: com `image_path`, maior `detection_score`).
 - Retorna `(registros_excluidos, pessoas_afetadas)`.
+- Anomalias pendentes das coletas apagadas viram `coleta_removida` em `quality_events` (gatilho
+  `trg_detection_records_quality`); o total de coletas do dia não diminui (`daily_collection_stats`).
 
 ---
 
@@ -726,6 +812,8 @@ thread background em `app.py`, mesmo padrão de `adequar_bases` (flag `_limpeza_
 - `POST /tracks/api/registro/<reg_id>/mover` → move registro para outro id_unico
 - `POST /tracks/api/registro/<reg_id>/nova-pessoa` → cria nova pessoa a partir do registro
 - `POST /tracks/api/registro/<reg_id>/anomalia` → marca/desmarca Intruso/Indesejada (ver seção "Anomalias de facial")
+- `POST /tracks/api/registros/excluir` → exclui várias coletas (body `{ids}`; Tela Anomalias, indesejadas em massa)
+- `POST /tracks/api/duplicatas/<principal>/tratar` → tratamento das duplicatas do grupo (ver "Tratamento das duplicatas")
 - `GET|POST|DELETE /tracks/api/pessoa/<id_unico>/duplicatas` → grupo de duplicatas / vincular / desvincular (ver seção "Duplicatas de pessoa")
 - `POST /tracks/api/pessoa/<id_unico>/principal` → torna a pessoa o principal do seu grupo de duplicatas
 
