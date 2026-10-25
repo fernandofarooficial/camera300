@@ -552,11 +552,19 @@ Rotas (`tracks.py`):
 - `DELETE /tracks/api/pessoa/<id>/duplicatas` → desvincula `<id>` (volta a ser independente).
 
 UI: modal único em `templates/_duplicatas_modal.html` (CSS+HTML+JS próprios, prefixo `dup-`),
-incluído via `{% include %}` em `tracks_lista.html` e `tracks_tabuleiro.html` — diferente do modal de
+incluído via `{% include %}` em `tracks_lista.html`, `tracks_tabuleiro.html` e `tracks_duplicatas.html` — diferente do modal de
 edição, **não** está duplicado. Botão "⧉ Duplicatas" em cada pessoa; chip rosa "Duplicata de ID X"
 (link pro principal na Lista) ou "N duplicata(s)" (abre o modal). As queries de `tracks_lista` e
 `tracks_tabuleiro` trazem `duplicata_de` e `n_duplicatas`. Templates mobile (`m_lista.html`,
 `m_tabuleiro.html`) não têm o recurso.
+
+**Tela Duplicatas** (`GET /tracks/duplicatas`, `tracks_duplicatas.html`, botão "Duplicatas" no
+header da Tela Dados, ao lado de "Anomalias"): lista todos os grupos (principal + duplicatas), cada
+membro com foto, ID (link pra Lista), nome, flag, data de cadastro, nº de coletas e última coleta.
+Grupos ordenados pela coleta mais recente de qualquer membro. Filtro `?q=` (só dígitos = ID de
+qualquer membro; senão, trecho de nome/apelido de qualquer membro), aplicado em Python. Por grupo:
+"Ver na Lista" (`?ids=` com todos os membros) e "Gerenciar" (abre o mesmo
+`_duplicatas_modal.html`, que recarrega a página ao fechar se algo mudou). Sem paginação.
 
 ---
 
@@ -689,6 +697,7 @@ thread background em `app.py`, mesmo padrão de `adequar_bases` (flag `_limpeza_
 - `GET /tracks/dados` → página de dados/câmeras
 - `GET /tracks/relatorios` → relatório estatístico de coletas/duplicatas/anomalias (params: `data_ini`, `data_fim`; ver seção "Relatórios")
 - `GET /tracks/anomalias` → ocorrências Intruso/Indesejada de um dia (params: `data`, `tipo`; ver seção "Anomalias de facial")
+- `GET /tracks/duplicatas` → grupos de duplicatas (param: `q`; ver seção "Duplicatas de pessoa")
 - `GET /tracks/heatmap` → página do mapa de calor (params: `camera_id`, `data_ini`, `data_fim`)
 - `GET /tracks/heatmap/img` → proxy autenticado de imagens do heatmap (param `url`)
 - `GET /tracks/snapshot/<camera_id>` → frame RTSP via OpenCV

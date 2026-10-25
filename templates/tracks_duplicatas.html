@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tracks — Duplicatas</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #1a1d27;
+      border-bottom: 1px solid #2d3148;
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    header h1 { font-size: 1.2rem; font-weight: 600; color: #7c86ff; }
+
+    .nav { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+    .nav a {
+      color: #7c86ff;
+      text-decoration: none;
+      font-size: 0.82rem;
+      border: 1px solid #7c86ff44;
+      padding: 0.3rem 0.8rem;
+      border-radius: 6px;
+      transition: background 0.2s;
+    }
+    .nav a:hover { background: #7c86ff22; }
+
+    main { max-width: 1400px; margin: 0 auto; padding: 1.5rem; }
+
+    /* ---- Filtros ---- */
+    .filter-bar {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 10px;
+      padding: 0.85rem 1.1rem;
+      margin-bottom: 1.25rem;
+      display: flex;
+      gap: 0.75rem;
+      align-items: flex-end;
+      flex-wrap: wrap;
+    }
+    .filter-bar label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #64748b;
+      display: block;
+      margin-bottom: 0.3rem;
+    }
+    .filter-bar input[type="text"] {
+      background: #0f1117;
+      border: 1px solid #2d3148;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.88rem;
+      padding: 0.4rem 0.6rem;
+      outline: none;
+      width: 240px;
+      max-width: 100%;
+    }
+    .filter-bar input[type="text"]:focus { border-color: #7c86ff88; }
+    .btn-filter {
+      background: #7c86ff22;
+      border: 1px solid #7c86ff44;
+      color: #7c86ff;
+      border-radius: 6px;
+      padding: 0.45rem 1rem;
+      font-size: 0.85rem;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .btn-filter:hover { background: #7c86ff33; }
+
+    .resumo { display: flex; gap: 0.5rem; margin-left: auto; flex-wrap: wrap; }
+    .resumo span {
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 0.25rem 0.65rem;
+      border-radius: 999px;
+    }
+    .res-total { background: #7c86ff22; color: #7c86ff; border: 1px solid #7c86ff44; }
+    .res-dup   { background: #ec489922; color: #ec4899; border: 1px solid #ec489944; }
+
+    .empty-state { text-align: center; padding: 4rem 2rem; color: #475569; }
+
+    /* ---- Grupos ---- */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 1rem;
+    }
+    .grupo {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 10px;
+      padding: 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .grupo-topo {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      font-size: 0.7rem;
+      color: #64748b;
+    }
+    .membro {
+      display: flex;
+      gap: 0.65rem;
+      align-items: center;
+      background: #0f1117;
+      border: 1px solid #2d3148;
+      border-radius: 8px;
+      padding: 0.45rem;
+    }
+    .membro.principal { border-color: #22c55e55; }
+    .membro img, .foto-vazia {
+      width: 64px;
+      height: 64px;
+      object-fit: cover;
+      border-radius: 6px;
+      border: 1px solid #334155;
+      background: #1a1d27;
+      flex-shrink: 0;
+      display: block;
+    }
+    .foto-vazia { display: flex; align-items: center; justify-content: center; color: #334155; font-size: 0.6rem; }
+    .membro-txt { flex: 1; min-width: 0; }
+    .membro-nome { font-size: 0.82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .membro-nome a { color: #7c86ff; font-weight: 700; text-decoration: none; margin-right: 0.3rem; }
+    .membro-nome a:hover { text-decoration: underline; }
+    .meta { font-size: 0.68rem; color: #64748b; line-height: 1.45; }
+    .tag {
+      font-size: 0.6rem;
+      font-weight: 700;
+      padding: 0.1rem 0.45rem;
+      border-radius: 999px;
+      flex-shrink: 0;
+      align-self: flex-start;
+    }
+    .tag-principal { background: #22c55e22; color: #22c55e; border: 1px solid #22c55e44; }
+    .tag-dup       { background: #ec489922; color: #ec4899; border: 1px solid #ec489944; }
+
+    .acoes { display: flex; gap: 0.35rem; }
+    .acoes a, .acoes button {
+      flex: 1;
+      text-align: center;
+      background: transparent;
+      border-radius: 6px;
+      padding: 0.3rem 0;
+      font-size: 0.72rem;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: none;
+      color: #7c86ff;
+      border: 1px solid #7c86ff44;
+      font-family: inherit;
+    }
+    .acoes a:hover, .acoes button:hover { background: #7c86ff22; }
+
+    @media (max-width: 600px) {
+      header { padding: 0.85rem 1rem; }
+      main { padding: 1rem; }
+      .resumo { margin-left: 0; }
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Tracks &mdash; Duplicatas</h1>
+  <nav class="nav">
+    <a href="/camera300/tracks/lista">Lista</a>
+    <a href="/camera300/tracks/dados">&#8592; Dados</a>
+  </nav>
+</header>
+
+<main>
+  <form class="filter-bar" method="get" action="">
+    <div>
+      <label for="q-input">ID ou nome</label>
+      <input type="text" id="q-input" name="q" value="{{ q }}" placeholder="ex: 123 ou Maria" />
+    </div>
+    <button type="submit" class="btn-filter">&#128269; Filtrar</button>
+    {% if q %}<a class="btn-filter" href="/camera300/tracks/duplicatas">Limpar</a>{% endif %}
+    <div class="resumo">
+      <span class="res-total">{{ totais.grupos }} grupo(s)</span>
+      <span class="res-dup">{{ totais.duplicatas }} duplicata(s)</span>
+    </div>
+  </form>
+
+  {% macro membro(p, principal) %}
+    {% set flag_map = {'C': 'Cliente', 'A': 'Anônimo', 'F': 'Franqueado', 'E': 'Empregado', 'K': 'Criança', 'P': 'Prestador'} %}
+    <div class="membro{% if principal %} principal{% endif %}">
+      {% if p.foto %}
+        <img src="{{ p.foto }}" alt="" onerror="this.outerHTML='<div class=foto-vazia>sem foto</div>'" />
+      {% else %}
+        <div class="foto-vazia">sem foto</div>
+      {% endif %}
+      <div class="membro-txt">
+        <div class="membro-nome">
+          <a href="/camera300/tracks/lista?ids={{ p.id_unico }}" title="Abrir na Lista">ID {{ p.id_unico }}</a>
+          {{ p.nome or '—' }}{% if p.apelido %} ({{ p.apelido }}){% endif %}
+        </div>
+        <div class="meta">
+          {{ flag_map.get(p.flag, p.flag or 'Sem flag') }} · cadastro {{ p.cadastro }}<br>
+          {{ p.coletas }} coleta(s) · última {{ p.ultima_coleta }}
+        </div>
+      </div>
+      {% if principal %}<span class="tag tag-principal">PRINCIPAL</span>{% else %}<span class="tag tag-dup">DUPLICATA</span>{% endif %}
+    </div>
+  {% endmacro %}
+
+  {% if not grupos %}
+    <div class="empty-state">{% if q %}Nenhum grupo de duplicatas encontrado para "{{ q }}".{% else %}Nenhuma duplicata vinculada.{% endif %}</div>
+  {% else %}
+    <div class="grid">
+      {% for g in grupos %}
+        <div class="grupo">
+          <div class="grupo-topo">
+            <span>{{ g.duplicatas|length + 1 }} cadastros · {{ g.coletas }} coleta(s) no total</span>
+          </div>
+          {{ membro(g.principal, true) }}
+          {% for d in g.duplicatas %}
+            {{ membro(d, false) }}
+          {% endfor %}
+          <div class="acoes">
+            <a href="/camera300/tracks/lista?ids={{ g.ids }}" title="Abrir todos os cadastros do grupo na Lista">Ver na Lista</a>
+            <button type="button" data-id="{{ g.id_unico }}" data-nome="{{ g.principal.nome or '' }}"
+                    onclick="abrirModalDuplicatas(this.dataset.id, this.dataset.nome)">&#10697; Gerenciar</button>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+</main>
+
+{% include "_duplicatas_modal.html" %}
+
+</body>
+</html>

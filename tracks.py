@@ -1831,6 +1831,89 @@ def tracks_anomalias():
                            data=dia.isoformat(), data_br=dia.strftime("%d/%m/%Y"), tipo=tipo)
 
 
+@tracks_bp.route("/tracks/duplicatas")
+def tracks_duplicatas():
+    """Grupos de duplicatas (principal + cadastros vinculados a ele). Filtro opcional ?q= por ID
+    ou nome/apelido de qualquer membro do grupo."""
+    q = request.args.get("q", "").strip()
+
+    conn = get_faciais_conn()
+    try:
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor.execute(
+            """
+            WITH grupos AS (
+                SELECT DISTINCT duplicate_of_person_id AS principal
+                FROM people WHERE duplicate_of_person_id IS NOT NULL
+            )
+            SELECT g.principal, p.person_id AS id_unico, p.full_name AS nome, p.nickname AS apelido,
+                   p.person_type_id AS flag, p.created_at,
+                   c.coletas, c.ultima_coleta,
+                   (SELECT r.image_path FROM detection_records r
+                    WHERE r.track_id = p.reference_track_id AND r.image_path IS NOT NULL
+                    ORDER BY r.detection_score DESC LIMIT 1) AS image_path
+            FROM grupos g
+            JOIN people p ON p.person_id = g.principal OR p.duplicate_of_person_id = g.principal
+            LEFT JOIN LATERAL (
+                SELECT COUNT(*) AS coletas, MAX(r.created_at) AS ultima_coleta
+                FROM detection_records r WHERE r.person_id = p.person_id
+            ) c ON TRUE
+            ORDER BY g.principal, p.person_id
+            """
+        )
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.rollback()
+    finally:
+        release_faciais_conn(conn)
+
+    grupos_dict = {}
+    for r in rows:
+        g = grupos_dict.setdefault(r["principal"], {"principal": None, "duplicatas": []})
+        pessoa = {
+            "id_unico":      r["id_unico"],
+            "nome":          r["nome"],
+            "apelido":       r["apelido"],
+            "flag":          r["flag"],
+            "foto":          HEIMDALL_IMAGE_BASE + r["image_path"] if r["image_path"] else None,
+            "cadastro":      r["created_at"].strftime("%d/%m/%Y") if r["created_at"] else "—",
+            "coletas":       r["coletas"] or 0,
+            "ultima_coleta": fmt_timestamp(r["ultima_coleta"]) if r["ultima_coleta"] else "—",
+            "_ultima":       r["ultima_coleta"],
+        }
+        if r["id_unico"] == r["principal"]:
+            g["principal"] = pessoa
+        else:
+            g["duplicatas"].append(pessoa)
+
+    grupos = []
+    for principal_id, g in grupos_dict.items():
+        if g["principal"] is None:
+            continue
+        membros = [g["principal"]] + g["duplicatas"]
+        if q:
+            if q.isdigit():
+                if int(q) not in {m["id_unico"] for m in membros}:
+                    continue
+            elif not any(q.lower() in (m["nome"] or "").lower() or q.lower() in (m["apelido"] or "").lower()
+                         for m in membros):
+                continue
+        ultimas = [m["_ultima"] for m in membros if m["_ultima"]]
+        g["id_unico"] = principal_id
+        g["ids"] = ",".join(str(m["id_unico"]) for m in membros)
+        g["coletas"] = sum(m["coletas"] for m in membros)
+        g["_ultima"] = max(ultimas) if ultimas else None
+        grupos.append(g)
+    # Grupos com coleta mais recente primeiro
+    grupos.sort(key=lambda g: g["_ultima"] or datetime.min, reverse=True)
+
+    totais = {
+        "grupos":     len(grupos),
+        "duplicatas": sum(len(g["duplicatas"]) for g in grupos),
+    }
+    return render_template("tracks_duplicatas.html", grupos=grupos, totais=totais, q=q)
+
+
 def _prefixar_urls_heatmap(resultado):
     def _proxy(path, download=False):
         if not path or not path.startswith("/"):
