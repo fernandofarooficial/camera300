@@ -675,7 +675,8 @@ Duplicatas é sempre o total geral.
 (`daily_collection_stats.camera_id`, `quality_events.camera_id`, `collection_person_log.camera_id`,
 `detection_records.camera_id`); novos cadastros = pessoas cuja 1a coleta foi na câmera. A soma das
 câmeras bate com o total, exceto pessoas coletadas (a mesma pessoa passa por várias câmeras).
-Botão "Relatórios" no header da Tela Dados. Função `tracks_relatorios` (`tracks.py`), template
+Botão "Relatórios" no header da Tela Dados. As telas Relatórios, Anomalias e Duplicatas têm, no
+header, botões de navegação entre si (desde 2026-10-25). Função `tracks_relatorios` (`tracks.py`), template
 `tracks_relatorios.html`.
 
 **Fontes (desde 2026-10-25):** os números que precisam sobreviver a exclusões vêm das tabelas de
