@@ -932,6 +932,7 @@ def buscar_pessoa(id_unico):
             """
             SELECT p.person_id AS id_unico, p.full_name AS nome, p.nickname AS apelido,
                    p.person_type_id AS flag, p.phone AS telefone, p.email AS email,
+                   p.duplicate_of_person_id AS duplicata_de,
                    (SELECT r.image_path FROM detection_records r
                     WHERE r.track_id = p.reference_track_id AND r.image_path IS NOT NULL
                     ORDER BY r.detection_score DESC LIMIT 1) AS image_path
@@ -1002,8 +1003,8 @@ def buscar_duplicatas(id_unico):
 @tracks_bp.route("/tracks/api/pessoa/<int:id_unico>/duplicatas", methods=["POST"])
 def vincular_duplicatas(id_unico):
     """Marca os cadastros em body.ids como duplicatas do grupo de id_unico. Se id_unico já é
-    duplicata, vincula ao principal dele; se algum id é principal de outro grupo, o grupo inteiro
-    é absorvido (mantém o vínculo sempre direto ao principal, sem cadeia)."""
+    duplicata, vincula ao principal dele; se algum id pertence a outro grupo (como principal ou
+    duplicata), o grupo inteiro é absorvido (mantém o vínculo sempre direto ao principal, sem cadeia)."""
     data = request.get_json(silent=True) or {}
     try:
         ids = sorted({int(i) for i in data.get("ids", [])})
@@ -1020,21 +1021,26 @@ def vincular_duplicatas(id_unico):
             cursor.close()
             return jsonify({"error": f"Pessoa {id_unico} não encontrada"}), 404
 
-        ids = [i for i in ids if i != principal]
-        if not ids:
-            cursor.close()
-            return jsonify({"error": f"ID {principal} já é o cadastro principal do grupo"}), 400
-        cursor.execute("SELECT person_id FROM people WHERE person_id = ANY(%s)", (ids,))
-        encontrados = {r["person_id"] for r in cursor.fetchall()}
-        faltando = [i for i in ids if i not in encontrados]
+        cursor.execute(
+            "SELECT person_id, COALESCE(duplicate_of_person_id, person_id) AS principal FROM people WHERE person_id = ANY(%s)",
+            (ids,),
+        )
+        principais_de = {r["person_id"]: r["principal"] for r in cursor.fetchall()}
+        faltando = [i for i in ids if i not in principais_de]
         if faltando:
             cursor.close()
             return jsonify({"error": "Pessoa(s) não encontrada(s): " + ", ".join(map(str, faltando))}), 404
 
-        cursor.execute("UPDATE people SET duplicate_of_person_id = %s WHERE duplicate_of_person_id = ANY(%s)",
-                       (principal, ids))
-        cursor.execute("UPDATE people SET duplicate_of_person_id = %s WHERE person_id = ANY(%s)",
-                       (principal, ids))
+        # Cada id traz o grupo inteiro dele (principal + duplicatas): vincular só o id, quando ele é
+        # duplicata de outro grupo, deixaria o principal antigo para trás, separado do resto.
+        absorvidos = sorted({p for p in principais_de.values() if p != principal})
+        if not absorvidos:
+            cursor.close()
+            return jsonify({"error": "ID(s) informado(s) já estão neste grupo"}), 400
+        cursor.execute(
+            "UPDATE people SET duplicate_of_person_id = %s WHERE person_id = ANY(%s) OR duplicate_of_person_id = ANY(%s)",
+            (principal, absorvidos, absorvidos),
+        )
         conn.commit()
         cursor.close()
     except Exception:

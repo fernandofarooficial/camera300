@@ -538,8 +538,13 @@ Permite ao usuário informar que dois ou mais cadastros de `faciais.people` são
 - **Sempre plano, sem cadeia:** cada duplicata aponta direto pro principal; o principal tem `NULL`.
   Grupo = principal + todos que apontam pra ele (suporta 3+ duplicatas). `vincular_duplicatas`
   (`tracks.py`) mantém essa invariante: se o ID alvo já é duplicata, vincula ao principal dele; se
-  um ID informado é principal de outro grupo, o grupo inteiro é absorvido (repontado). Excluir o
-  principal desvincula as duplicatas sozinho (FK `SET NULL`).
+  um ID informado pertence a outro grupo (como principal **ou como duplicata**), o grupo inteiro
+  dele é absorvido (repontado). Excluir o principal desvincula as duplicatas sozinho (FK `SET NULL`).
+  **Bug corrigido (2026-10-25):** antes só era absorvido o grupo de quem era *principal*; um ID que
+  já era *duplicata* de outro grupo era movido sozinho, deixando o principal antigo isolado (caso
+  real: 3184 principal + 3182 duplicata; ao adicionar 3182 a partir do 3170, o 3184 ficou fora do
+  grupo). O modal agora mostra a etiqueta "+ grupo do ID X" na verificação quando o ID informado já
+  é duplicata de outro grupo (`buscar_pessoa` passou a devolver `duplicata_de`).
 - Independente de `people.review_status` (`'duplicate'` lá é do `retail_analytics`, só
   informativo, sem apontar qual) — esse fluxo não lê nem altera `review_status`.
 - **Ainda não consolidado em lugar nenhum:** Clientes, Caixa, ranking, Quadro, pipeline de

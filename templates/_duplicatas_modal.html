@@ -44,6 +44,7 @@
     font-size: 0.62rem; font-weight: 700; padding: 0.12rem 0.45rem; border-radius: 999px;
     background: #22c55e22; color: #22c55e; border: 1px solid #22c55e44; flex-shrink: 0;
   }
+  .dup-tag-grupo { background: #ec489922; color: #ec4899; border-color: #ec489944; }
   .dup-btn-desv {
     background: transparent; border: 1px solid #ef444444; color: #ef4444; border-radius: 6px;
     font-size: 0.7rem; padding: 0.2rem 0.5rem; cursor: pointer; flex-shrink: 0;
@@ -73,7 +74,8 @@
     <h2 id="dup-titulo">Duplicatas</h2>
     <div class="dup-ajuda">
       Informe os IDs dos cadastros que são a mesma pessoa. Eles ficam vinculados ao cadastro
-      principal do grupo — nenhum registro ou compra é movido ou apagado.
+      principal do grupo — nenhum registro ou compra é movido ou apagado. Se um ID já tiver grupo
+      próprio, o grupo inteiro dele é juntado a este.
     </div>
 
     <div class="dup-secao">Grupo atual</div>
@@ -216,8 +218,16 @@
         const resp = await fetch(`/camera300/tracks/api/pessoa/${id}`);
         const data = await resp.json();
         if (!resp.ok || data.error) { erros.push(data.error || `Pessoa ${id} não encontrada.`); continue; }
+        if (data.duplicata_de && _dupGrupoIds.includes(data.duplicata_de)) { erros.push(`ID ${id} já está neste grupo.`); continue; }
         _dupVerificados.push(id);
-        previewEl.appendChild(_dupItem(data));
+        let aviso = null;
+        if (data.duplicata_de) {
+          // Já é duplicata de outro grupo: o backend junta o grupo inteiro dele a este
+          aviso = document.createElement('span');
+          aviso.className = 'dup-tag dup-tag-grupo';
+          aviso.textContent = `+ grupo do ID ${data.duplicata_de}`;
+        }
+        previewEl.appendChild(_dupItem(data, aviso));
       } catch (err) {
         erros.push(`ID ${id}: falha na requisição.`);
       }
