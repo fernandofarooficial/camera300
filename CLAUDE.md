@@ -657,7 +657,8 @@ Relatório estatístico de coletas, duplicatas e anomalias num período escolhid
 (`?data_ini=&data_fim=`, default últimos 7 dias até `hoje_local()`; datas invertidas são trocadas,
 inválidas caem no default; atalhos Hoje / 7 dias / 30 dias / Este mês e botão Imprimir) e,
 opcionalmente, numa loja (`?store=<store_id>`) e/ou câmera (`?camera=<camera_id>`), ambos desde
-2026-10-25; `0`/ausente/inválido = todas. O seletor de câmera lista só as câmeras da loja escolhida;
+2026-10-25; `0`/ausente/inválido = todas. O seletor de câmera lista só as câmeras da loja escolhida
+que tiveram coleta no período (`daily_collection_stats`; a câmera escolhida aparece mesmo sem coleta);
 trocar a loja zera a câmera, e uma câmera de outra loja na URL é ignorada.
 
 **Filtro de loja:** loja = a da coleta (`store_id`, senão a da câmera) — mesmo critério em todas as

@@ -2083,6 +2083,7 @@ def tracks_relatorios():
             for k, v in valores.items():
                 alvo[k] += v
 
+    cams_com_coleta = {l["camera_id"] for l in linhas_total if l["coletas"]}
     for l in linhas_total:
         loja = l["store_id"] or CAMERA_STORE_MAP.get(l["camera_id"]) or 0
         if (loja_sel and loja != loja_sel) or (cam_sel and l["camera_id"] != cam_sel):
@@ -2172,8 +2173,10 @@ def tracks_relatorios():
         loja_sel=loja_sel, loja_nome=STORE_NAME_MAP.get(loja_sel, ""),
         stores_list=[{"store_id": sid, "nome": nome} for sid, nome in sorted(STORE_NAME_MAP.items())],
         cam_sel=cam_sel, cam_nome=_rotulo_camera(cam_sel) if cam_sel else "",
+        # Só câmeras com coleta no período (e a escolhida, mesmo sem coleta), da loja escolhida
         cameras_list=sorted(({"id": k, "nome": _rotulo_camera(k)} for k in cameras_map
-                             if not loja_sel or CAMERA_STORE_MAP.get(k) == loja_sel), key=lambda c: c["nome"]),
+                             if (k == cam_sel or k in cams_com_coleta)
+                             and (not loja_sel or CAMERA_STORE_MAP.get(k) == loja_sel)), key=lambda c: c["nome"]),
         periodo_br=f"{data_ini.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}", n_dias=n_dias,
         resumo=resumo, dias=dias, max_dia=max([x["coletas"] for x in dias] + [1]),
         lojas=lojas, cameras=cameras, flags=flags, grupos=grupos_periodo,
