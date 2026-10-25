@@ -550,6 +550,7 @@ Rotas (`tracks.py`):
 - `GET /tracks/api/pessoa/<id>/duplicatas` → `{principal, duplicatas: [...]}` do grupo de `<id>` (cada item com `id_unico, nome, apelido, flag, duplicata_de, foto`).
 - `POST /tracks/api/pessoa/<id>/duplicatas` → body `{ids: [...]}`, vincula ao grupo de `<id>`.
 - `DELETE /tracks/api/pessoa/<id>/duplicatas` → desvincula `<id>` (volta a ser independente).
+- `POST /tracks/api/pessoa/<id>/principal` → torna `<id>` o principal do grupo (ver Tela Duplicatas abaixo).
 
 UI: modal único em `templates/_duplicatas_modal.html` (CSS+HTML+JS próprios, prefixo `dup-`),
 incluído via `{% include %}` em `tracks_lista.html`, `tracks_tabuleiro.html` e `tracks_duplicatas.html` — diferente do modal de
@@ -565,6 +566,10 @@ Grupos ordenados pela coleta mais recente de qualquer membro. Filtro `?q=` (só 
 qualquer membro; senão, trecho de nome/apelido de qualquer membro), aplicado em Python. Por grupo:
 "Ver na Lista" (`?ids=` com todos os membros) e "Gerenciar" (abre o mesmo
 `_duplicatas_modal.html`, que recarrega a página ao fechar se algo mudou). Sem paginação.
+Cada duplicata tem o botão "★ Tornar principal" (`confirm()` + reload), que chama
+`POST /tracks/api/pessoa/<id>/principal` (`tornar_principal`): num único `UPDATE`, o novo principal
+fica com `NULL` e o principal antigo e as demais duplicatas passam a apontar pra ele (mantém o grupo
+plano). Se `<id>` já é o principal, não faz nada.
 
 ---
 
@@ -717,6 +722,7 @@ thread background em `app.py`, mesmo padrão de `adequar_bases` (flag `_limpeza_
 - `POST /tracks/api/registro/<reg_id>/nova-pessoa` → cria nova pessoa a partir do registro
 - `POST /tracks/api/registro/<reg_id>/anomalia` → marca/desmarca Intruso/Indesejada (ver seção "Anomalias de facial")
 - `GET|POST|DELETE /tracks/api/pessoa/<id_unico>/duplicatas` → grupo de duplicatas / vincular / desvincular (ver seção "Duplicatas de pessoa")
+- `POST /tracks/api/pessoa/<id_unico>/principal` → torna a pessoa o principal do seu grupo de duplicatas
 
 ### Ingestão Microvix
 - `GET /tracks/carga` → log das 20 últimas cargas

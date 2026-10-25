@@ -1062,6 +1062,38 @@ def desvincular_duplicata(id_unico):
     return jsonify({"success": True})
 
 
+@tracks_bp.route("/tracks/api/pessoa/<int:id_unico>/principal", methods=["POST"])
+def tornar_principal(id_unico):
+    """Torna id_unico o principal do seu grupo de duplicatas: o principal antigo e as demais
+    duplicatas passam a apontar pra ele (mantém o vínculo plano, sem cadeia)."""
+    conn = get_faciais_conn()
+    try:
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        antigo = _principal_de(cursor, id_unico)
+        if antigo is None:
+            cursor.close()
+            return jsonify({"error": f"Pessoa {id_unico} não encontrada"}), 404
+        if antigo == id_unico:
+            cursor.close()
+            return jsonify({"success": True, "principal": id_unico})
+        cursor.execute(
+            """
+            UPDATE people
+            SET duplicate_of_person_id = CASE WHEN person_id = %(novo)s THEN NULL ELSE %(novo)s END
+            WHERE person_id = %(antigo)s OR duplicate_of_person_id = %(antigo)s
+            """,
+            {"novo": id_unico, "antigo": antigo},
+        )
+        conn.commit()
+        cursor.close()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        release_faciais_conn(conn)
+    return jsonify({"success": True, "principal": id_unico, "principal_anterior": antigo})
+
+
 @tracks_bp.route("/tracks/api/registro/<int:reg_id>", methods=["DELETE"])
 def excluir_registro(reg_id):
     conn = get_faciais_conn()

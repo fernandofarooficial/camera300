@@ -159,6 +159,21 @@
     }
     .tag-principal { background: #22c55e22; color: #22c55e; border: 1px solid #22c55e44; }
     .tag-dup       { background: #ec489922; color: #ec4899; border: 1px solid #ec489944; }
+    .membro-lado { display: flex; flex-direction: column; align-items: flex-end; gap: 0.35rem; align-self: stretch; flex-shrink: 0; }
+    .btn-principal {
+      background: transparent;
+      border: 1px solid #22c55e44;
+      color: #22c55e;
+      border-radius: 6px;
+      font-size: 0.66rem;
+      font-weight: 700;
+      padding: 0.2rem 0.45rem;
+      cursor: pointer;
+      font-family: inherit;
+      white-space: nowrap;
+    }
+    .btn-principal:hover { background: #22c55e22; }
+    .btn-principal:disabled { opacity: 0.4; cursor: not-allowed; }
 
     .acoes { display: flex; gap: 0.35rem; }
     .acoes a, .acoes button {
@@ -227,7 +242,13 @@
           {{ p.coletas }} coleta(s) · última {{ p.ultima_coleta }}
         </div>
       </div>
-      {% if principal %}<span class="tag tag-principal">PRINCIPAL</span>{% else %}<span class="tag tag-dup">DUPLICATA</span>{% endif %}
+      <div class="membro-lado">
+        {% if principal %}<span class="tag tag-principal">PRINCIPAL</span>{% else %}<span class="tag tag-dup">DUPLICATA</span>
+          <button type="button" class="btn-principal" data-id="{{ p.id_unico }}"
+                  title="Tornar este cadastro o principal do grupo"
+                  onclick="tornarPrincipal(this)">&#9733; Tornar principal</button>
+        {% endif %}
+      </div>
     </div>
   {% endmacro %}
 
@@ -256,6 +277,27 @@
 </main>
 
 {% include "_duplicatas_modal.html" %}
+
+<script>
+  async function tornarPrincipal(btn) {
+    const id = btn.dataset.id;
+    if (!confirm(`Tornar o ID ${id} o cadastro principal do grupo? O principal atual passa a ser duplicata dele.`)) return;
+    btn.disabled = true;
+    try {
+      const resp = await fetch(`/camera300/tracks/api/pessoa/${id}/principal`, { method: 'POST' });
+      const data = await resp.json();
+      if (data.success) {
+        location.reload();
+      } else {
+        alert('Erro ao alterar principal: ' + (data.error || 'desconhecido'));
+        btn.disabled = false;
+      }
+    } catch (err) {
+      alert('Falha na requisição.');
+      btn.disabled = false;
+    }
+  }
+</script>
 
 </body>
 </html>
