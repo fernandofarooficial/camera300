@@ -437,6 +437,7 @@
     try {
       const data = await _enviar(`/camera300/tracks/api/registro/${caso.dataset.regId}/nova-pessoa`);
       marcarTratado(caso, `✓ Nova pessoa: ID ${data.person_id}`);
+      caso.classList.remove('oc-intruso');
     } catch (err) {
       alert('Erro ao criar pessoa: ' + err.message);
       btn.disabled = false;
