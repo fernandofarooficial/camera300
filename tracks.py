@@ -1880,8 +1880,17 @@ def tracks_relatorios():
         data_fim = hoje
     if data_ini > data_fim:
         data_ini, data_fim = data_fim, data_ini
+    try:
+        loja_sel = int(request.args.get("store") or 0)
+    except ValueError:
+        loja_sel = 0
+    if loja_sel not in STORE_NAME_MAP:
+        loja_sel = 0
     periodo = (data_ini, data_fim + timedelta(days=1))
     periodo_dias = (data_ini, data_fim)
+    # Loja de um evento de quality_events (alias q): a gravada no evento, senão a da câmera; 0 = desconhecida
+    loja_q = "COALESCE(q.store_id, (SELECT c.store_id FROM cameras c WHERE c.camera_id = q.camera_id), 0)"
+    filtro_q = f"AND (%s = 0 OR {loja_q} = %s)"
 
     conn = get_faciais_conn()
     try:
@@ -1896,57 +1905,75 @@ def tracks_relatorios():
             periodo_dias,
         )
         linhas_total = cursor.fetchall()
-        cursor.execute(
-            "SELECT stat_date AS dia, people_created FROM daily_people_stats WHERE stat_date BETWEEN %s AND %s",
-            periodo_dias,
-        )
+        if loja_sel:
+            # daily_people_stats não tem loja: loja = a da 1a coleta da pessoa (collection_person_log);
+            # dia = criação do cadastro (ou a 1a coleta, se o cadastro já foi excluído)
+            cursor.execute(
+                """
+                SELECT dia, COUNT(*) AS people_created FROM (
+                    SELECT DISTINCT ON (l.person_id) l.person_id, l.store_id,
+                           COALESCE(p.created_at::date, l.collected_on) AS dia
+                    FROM collection_person_log l
+                    LEFT JOIN people p ON p.person_id = l.person_id
+                    ORDER BY l.person_id, l.collected_on, l.log_id
+                ) x
+                WHERE store_id = %s AND dia BETWEEN %s AND %s
+                GROUP BY dia
+                """,
+                (loja_sel, *periodo_dias),
+            )
+        else:
+            cursor.execute(
+                "SELECT stat_date AS dia, people_created FROM daily_people_stats WHERE stat_date BETWEEN %s AND %s",
+                periodo_dias,
+            )
         cadastros_dia = {r["dia"]: r["people_created"] for r in cursor.fetchall()}
 
         # Anomalias (histórico permanente), pelo dia da coleta
         cursor.execute(
-            """
-            SELECT occurred_on AS dia, COALESCE(store_id, 0) AS store_id, COALESCE(camera_id, 0) AS camera_id,
-                   person_type_id AS flag,
-                   COUNT(*) FILTER (WHERE event_type = 'intruso') AS intruso,
-                   COUNT(*) FILTER (WHERE event_type = 'indesejada') AS indesejada
-            FROM quality_events
-            WHERE event_type IN ('intruso', 'indesejada') AND occurred_on BETWEEN %s AND %s
+            f"""
+            SELECT q.occurred_on AS dia, {loja_q} AS store_id, COALESCE(q.camera_id, 0) AS camera_id,
+                   q.person_type_id AS flag,
+                   COUNT(*) FILTER (WHERE q.event_type = 'intruso') AS intruso,
+                   COUNT(*) FILTER (WHERE q.event_type = 'indesejada') AS indesejada
+            FROM quality_events q
+            WHERE q.event_type IN ('intruso', 'indesejada') AND q.occurred_on BETWEEN %s AND %s {filtro_q}
             GROUP BY 1, 2, 3, 4
             """,
-            periodo_dias,
+            (*periodo_dias, loja_sel, loja_sel),
         )
         linhas_anom = cursor.fetchall()
         cursor.execute(
-            """
+            f"""
             SELECT COUNT(*) AS ambas FROM (
-                SELECT detection_record_id FROM quality_events
-                WHERE event_type IN ('intruso', 'indesejada') AND occurred_on BETWEEN %s AND %s
-                GROUP BY 1 HAVING COUNT(DISTINCT event_type) = 2
+                SELECT q.detection_record_id FROM quality_events q
+                WHERE q.event_type IN ('intruso', 'indesejada') AND q.occurred_on BETWEEN %s AND %s {filtro_q}
+                GROUP BY 1 HAVING COUNT(DISTINCT q.event_type) = 2
             ) x
             """,
-            periodo_dias,
+            (*periodo_dias, loja_sel, loja_sel),
         )
         ambas = cursor.fetchone()["ambas"]
 
         # Duplicatas (histórico permanente), pelo dia de criação do cadastro duplicado
         cursor.execute(
-            """
-            SELECT occurred_on AS dia, COUNT(*) AS duplicatas
-            FROM quality_events WHERE event_type = 'duplicata' AND occurred_on BETWEEN %s AND %s
+            f"""
+            SELECT q.occurred_on AS dia, COUNT(*) AS duplicatas
+            FROM quality_events q WHERE q.event_type = 'duplicata' AND q.occurred_on BETWEEN %s AND %s {filtro_q}
             GROUP BY 1
             """,
-            periodo_dias,
+            (*periodo_dias, loja_sel, loja_sel),
         )
         dup_dia = {r["dia"]: r["duplicatas"] for r in cursor.fetchall()}
 
         # Situação do tratamento dos casos do período
         cursor.execute(
-            """
-            SELECT event_type AS tipo, treatment AS tratamento, COUNT(*) AS n
-            FROM quality_events WHERE occurred_on BETWEEN %s AND %s
+            f"""
+            SELECT q.event_type AS tipo, q.treatment AS tratamento, COUNT(*) AS n
+            FROM quality_events q WHERE q.occurred_on BETWEEN %s AND %s {filtro_q}
             GROUP BY 1, 2
             """,
-            periodo_dias,
+            (*periodo_dias, loja_sel, loja_sel),
         )
         linhas_trat = cursor.fetchall()
 
@@ -1958,7 +1985,7 @@ def tracks_relatorios():
             WITH l AS (
                 SELECT l.collected_on AS dia, l.person_id
                 FROM collection_person_log l
-                WHERE l.collected_on BETWEEN %s AND %s
+                WHERE l.collected_on BETWEEN %s AND %s AND (%s = 0 OR l.store_id = %s)
                   AND NOT EXISTS (SELECT 1 FROM quality_events q
                                   WHERE q.event_type = 'intruso' AND q.detection_record_id = l.detection_record_id
                                     AND q.treatment IN ('coleta_excluida', 'coleta_removida'))
@@ -1983,7 +2010,7 @@ def tracks_relatorios():
             LEFT JOIN people pr ON pr.person_id = c.real_id
             GROUP BY 1, 2, 3, 4
             """,
-            periodo_dias,
+            (*periodo_dias, loja_sel, loja_sel),
         )
         linhas_pessoas = cursor.fetchall()
         pessoas_dia, flags_vivas = {}, {}
@@ -2017,10 +2044,12 @@ def tracks_relatorios():
             JOIN detection_records r ON r.person_id = g.person_id
                                     AND r.created_at >= %s AND r.created_at < %s
             WHERE EXISTS (SELECT 1 FROM people d WHERE d.duplicate_of_person_id = g.principal)
+              AND (%s = 0 OR COALESCE(r.store_id, (SELECT c.store_id FROM cameras c
+                                                   WHERE c.camera_id = r.camera_id), 0) = %s)
             GROUP BY g.principal, pp.full_name
             ORDER BY coletas DESC
             """,
-            periodo,
+            (*periodo, loja_sel, loja_sel),
         )
         grupos_periodo = cursor.fetchall()
 
@@ -2046,6 +2075,8 @@ def tracks_relatorios():
 
     for l in linhas_total:
         loja = l["store_id"] or CAMERA_STORE_MAP.get(l["camera_id"]) or 0
+        if loja_sel and loja != loja_sel:
+            continue
         _somar((l["dia"], loja, l["camera_id"]), {"coletas": l["coletas"]})
     for l in linhas_anom:
         loja = l["store_id"] or CAMERA_STORE_MAP.get(l["camera_id"]) or 0
@@ -2129,6 +2160,8 @@ def tracks_relatorios():
     return render_template(
         "tracks_relatorios.html",
         data_ini=data_ini.isoformat(), data_fim=data_fim.isoformat(),
+        loja_sel=loja_sel, loja_nome=STORE_NAME_MAP.get(loja_sel, ""),
+        stores_list=[{"store_id": sid, "nome": nome} for sid, nome in sorted(STORE_NAME_MAP.items())],
         periodo_br=f"{data_ini.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}", n_dias=n_dias,
         resumo=resumo, dias=dias, max_dia=max([x["coletas"] for x in dias] + [1]),
         lojas=lojas, cameras=cameras, flags=flags, grupos=grupos_periodo,

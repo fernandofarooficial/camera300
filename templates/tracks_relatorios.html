@@ -81,7 +81,7 @@
       display: block;
       margin-bottom: 0.3rem;
     }
-    .filter-bar input[type="date"] {
+    .filter-bar input[type="date"], .filter-bar select {
       background: var(--bg);
       border: 1px solid var(--border);
       border-radius: 6px;
@@ -91,7 +91,7 @@
       outline: none;
       color-scheme: dark;
     }
-    .filter-bar input[type="date"]:focus { border-color: #7c86ff88; }
+    .filter-bar input[type="date"]:focus, .filter-bar select:focus { border-color: #7c86ff88; }
     .btn {
       background: #7c86ff22;
       border: 1px solid #7c86ff44;
@@ -237,12 +237,21 @@
       <label for="data-fim">Até</label>
       <input type="date" id="data-fim" name="data_fim" value="{{ data_fim }}" />
     </div>
+    <div>
+      <label for="store-select">Loja</label>
+      <select id="store-select" name="store" onchange="this.form.submit()">
+        <option value="0">Todas as lojas</option>
+        {% for s in stores_list %}
+          <option value="{{ s.store_id }}" {% if loja_sel == s.store_id %}selected{% endif %}>{{ s.nome }}</option>
+        {% endfor %}
+      </select>
+    </div>
     <button type="submit" class="btn">Gerar relatório</button>
     <button type="button" class="btn-ghost" onclick="periodoRapido(0)">Hoje</button>
     <button type="button" class="btn-ghost" onclick="periodoRapido(6)">7 dias</button>
     <button type="button" class="btn-ghost" onclick="periodoRapido(29)">30 dias</button>
     <button type="button" class="btn-ghost" onclick="periodoRapido('mes')">Este mês</button>
-    <span class="periodo">{{ periodo_br }} · {{ n_dias }} dia(s)</span>
+    <span class="periodo">{{ periodo_br }} · {{ n_dias }} dia(s){% if loja_nome %} · {{ loja_nome }}{% endif %}</span>
   </form>
 
   <!-- ===================== KPIs ===================== -->
