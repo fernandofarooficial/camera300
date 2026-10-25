@@ -1886,11 +1886,19 @@ def tracks_relatorios():
         loja_sel = 0
     if loja_sel not in STORE_NAME_MAP:
         loja_sel = 0
+    cameras_map = {c["id_camera"]: c.get("camera") or str(c["id_camera"]) for c in CAMERAS_COMPLETO if c.get("id_camera") is not None}
+    try:
+        cam_sel = int(request.args.get("camera") or 0)
+    except ValueError:
+        cam_sel = 0
+    if cam_sel not in cameras_map or (loja_sel and CAMERA_STORE_MAP.get(cam_sel) != loja_sel):
+        cam_sel = 0
     periodo = (data_ini, data_fim + timedelta(days=1))
     periodo_dias = (data_ini, data_fim)
     # Loja de um evento de quality_events (alias q): a gravada no evento, senão a da câmera; 0 = desconhecida
     loja_q = "COALESCE(q.store_id, (SELECT c.store_id FROM cameras c WHERE c.camera_id = q.camera_id), 0)"
-    filtro_q = f"AND (%s = 0 OR {loja_q} = %s)"
+    filtro_q = f"AND (%s = 0 OR {loja_q} = %s) AND (%s = 0 OR COALESCE(q.camera_id, 0) = %s)"
+    fparams = (loja_sel, loja_sel, cam_sel, cam_sel)
 
     conn = get_faciais_conn()
     try:
@@ -1905,22 +1913,22 @@ def tracks_relatorios():
             periodo_dias,
         )
         linhas_total = cursor.fetchall()
-        if loja_sel:
-            # daily_people_stats não tem loja: loja = a da 1a coleta da pessoa (collection_person_log);
+        if loja_sel or cam_sel:
+            # daily_people_stats não tem loja/câmera: as da 1a coleta da pessoa (collection_person_log);
             # dia = criação do cadastro (ou a 1a coleta, se o cadastro já foi excluído)
             cursor.execute(
                 """
                 SELECT dia, COUNT(*) AS people_created FROM (
-                    SELECT DISTINCT ON (l.person_id) l.person_id, l.store_id,
+                    SELECT DISTINCT ON (l.person_id) l.person_id, l.store_id, l.camera_id,
                            COALESCE(p.created_at::date, l.collected_on) AS dia
                     FROM collection_person_log l
                     LEFT JOIN people p ON p.person_id = l.person_id
                     ORDER BY l.person_id, l.collected_on, l.log_id
                 ) x
-                WHERE store_id = %s AND dia BETWEEN %s AND %s
+                WHERE (%s = 0 OR store_id = %s) AND (%s = 0 OR camera_id = %s) AND dia BETWEEN %s AND %s
                 GROUP BY dia
                 """,
-                (loja_sel, *periodo_dias),
+                (*fparams, *periodo_dias),
             )
         else:
             cursor.execute(
@@ -1940,7 +1948,7 @@ def tracks_relatorios():
             WHERE q.event_type IN ('intruso', 'indesejada') AND q.occurred_on BETWEEN %s AND %s {filtro_q}
             GROUP BY 1, 2, 3, 4
             """,
-            (*periodo_dias, loja_sel, loja_sel),
+            (*periodo_dias, *fparams),
         )
         linhas_anom = cursor.fetchall()
         cursor.execute(
@@ -1951,7 +1959,7 @@ def tracks_relatorios():
                 GROUP BY 1 HAVING COUNT(DISTINCT q.event_type) = 2
             ) x
             """,
-            (*periodo_dias, loja_sel, loja_sel),
+            (*periodo_dias, *fparams),
         )
         ambas = cursor.fetchone()["ambas"]
 
@@ -1962,7 +1970,7 @@ def tracks_relatorios():
             FROM quality_events q WHERE q.event_type = 'duplicata' AND q.occurred_on BETWEEN %s AND %s {filtro_q}
             GROUP BY 1
             """,
-            (*periodo_dias, loja_sel, loja_sel),
+            (*periodo_dias, *fparams),
         )
         dup_dia = {r["dia"]: r["duplicatas"] for r in cursor.fetchall()}
 
@@ -1973,7 +1981,7 @@ def tracks_relatorios():
             FROM quality_events q WHERE q.occurred_on BETWEEN %s AND %s {filtro_q}
             GROUP BY 1, 2
             """,
-            (*periodo_dias, loja_sel, loja_sel),
+            (*periodo_dias, *fparams),
         )
         linhas_trat = cursor.fetchall()
 
@@ -1986,6 +1994,7 @@ def tracks_relatorios():
                 SELECT l.collected_on AS dia, l.person_id
                 FROM collection_person_log l
                 WHERE l.collected_on BETWEEN %s AND %s AND (%s = 0 OR l.store_id = %s)
+                  AND (%s = 0 OR l.camera_id = %s)
                   AND NOT EXISTS (SELECT 1 FROM quality_events q
                                   WHERE q.event_type = 'intruso' AND q.detection_record_id = l.detection_record_id
                                     AND q.treatment IN ('coleta_excluida', 'coleta_removida'))
@@ -2010,7 +2019,7 @@ def tracks_relatorios():
             LEFT JOIN people pr ON pr.person_id = c.real_id
             GROUP BY 1, 2, 3, 4
             """,
-            (*periodo_dias, loja_sel, loja_sel),
+            (*periodo_dias, *fparams),
         )
         linhas_pessoas = cursor.fetchall()
         pessoas_dia, flags_vivas = {}, {}
@@ -2046,10 +2055,11 @@ def tracks_relatorios():
             WHERE EXISTS (SELECT 1 FROM people d WHERE d.duplicate_of_person_id = g.principal)
               AND (%s = 0 OR COALESCE(r.store_id, (SELECT c.store_id FROM cameras c
                                                    WHERE c.camera_id = r.camera_id), 0) = %s)
+              AND (%s = 0 OR COALESCE(r.camera_id, 0) = %s)
             GROUP BY g.principal, pp.full_name
             ORDER BY coletas DESC
             """,
-            (*periodo, loja_sel, loja_sel),
+            (*periodo, *fparams),
         )
         grupos_periodo = cursor.fetchall()
 
@@ -2075,7 +2085,7 @@ def tracks_relatorios():
 
     for l in linhas_total:
         loja = l["store_id"] or CAMERA_STORE_MAP.get(l["camera_id"]) or 0
-        if loja_sel and loja != loja_sel:
+        if (loja_sel and loja != loja_sel) or (cam_sel and l["camera_id"] != cam_sel):
             continue
         _somar((l["dia"], loja, l["camera_id"]), {"coletas": l["coletas"]})
     for l in linhas_anom:
@@ -2094,7 +2104,6 @@ def tracks_relatorios():
                      "duplicatas": dup_dia.get(d, 0), **por_dia.get(d, _vazio())})
         d += timedelta(days=1)
 
-    cameras_map = {c["id_camera"]: c.get("camera") or str(c["id_camera"]) for c in CAMERAS_COMPLETO if c.get("id_camera") is not None}
     flag_map = {"C": "Cliente", "A": "Anônimo", "F": "Franqueado", "E": "Empregado", "K": "Criança", "P": "Prestador"}
 
     def _recorte(dic, rotulo):
@@ -2162,6 +2171,9 @@ def tracks_relatorios():
         data_ini=data_ini.isoformat(), data_fim=data_fim.isoformat(),
         loja_sel=loja_sel, loja_nome=STORE_NAME_MAP.get(loja_sel, ""),
         stores_list=[{"store_id": sid, "nome": nome} for sid, nome in sorted(STORE_NAME_MAP.items())],
+        cam_sel=cam_sel, cam_nome=_rotulo_camera(cam_sel) if cam_sel else "",
+        cameras_list=sorted(({"id": k, "nome": _rotulo_camera(k)} for k in cameras_map
+                             if not loja_sel or CAMERA_STORE_MAP.get(k) == loja_sel), key=lambda c: c["nome"]),
         periodo_br=f"{data_ini.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}", n_dias=n_dias,
         resumo=resumo, dias=dias, max_dia=max([x["coletas"] for x in dias] + [1]),
         lojas=lojas, cameras=cameras, flags=flags, grupos=grupos_periodo,

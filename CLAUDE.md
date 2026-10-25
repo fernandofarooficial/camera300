@@ -656,7 +656,9 @@ O usuário aponta, em cada ocorrência (`detection_record`) da Tela Lista, duas 
 Relatório estatístico de coletas, duplicatas e anomalias num período escolhido pelo usuário
 (`?data_ini=&data_fim=`, default últimos 7 dias até `hoje_local()`; datas invertidas são trocadas,
 inválidas caem no default; atalhos Hoje / 7 dias / 30 dias / Este mês e botão Imprimir) e,
-opcionalmente, numa loja (`?store=<store_id>`, desde 2026-10-25; `0`/ausente/inválida = todas).
+opcionalmente, numa loja (`?store=<store_id>`) e/ou câmera (`?camera=<camera_id>`), ambos desde
+2026-10-25; `0`/ausente/inválido = todas. O seletor de câmera lista só as câmeras da loja escolhida;
+trocar a loja zera a câmera, e uma câmera de outra loja na URL é ignorada.
 
 **Filtro de loja:** loja = a da coleta (`store_id`, senão a da câmera) — mesmo critério em todas as
 fontes, então a soma das lojas bate com o total "Todas as lojas" (conferido na implantação). Coletas ←
@@ -667,6 +669,11 @@ duplicatas atuais ← só coletas da loja. **Novos cadastros** com loja não vê
 (sem loja): contam as pessoas do `collection_person_log` cuja **1a coleta** foi na loja, no dia de
 criação do cadastro (ou da 1a coleta, se o cadastro já foi excluído). O "hoje N em M grupo(s)" do KPI
 Duplicatas é sempre o total geral.
+
+**Filtro de câmera:** mesmas fontes e mesmo critério do filtro de loja, pela câmera da coleta
+(`daily_collection_stats.camera_id`, `quality_events.camera_id`, `collection_person_log.camera_id`,
+`detection_records.camera_id`); novos cadastros = pessoas cuja 1a coleta foi na câmera. A soma das
+câmeras bate com o total, exceto pessoas coletadas (a mesma pessoa passa por várias câmeras).
 Botão "Relatórios" no header da Tela Dados. Função `tracks_relatorios` (`tracks.py`), template
 `tracks_relatorios.html`.
 
@@ -736,7 +743,8 @@ ainda existia (11.982 coletas, 2.951 cadastros) — **contados a menos** onde a 
 apagado coletas (aceito pelo usuário); daqui pra frente são exatos.
 
 **`faciais.collection_person_log`** (`detection_record_id` único, `collected_on`, `person_id`,
-`store_id` — loja da coleta, senão da câmera, 0 = desconhecida; coluna desde o filtro de loja) — uma
+`store_id` — loja da coleta, senão da câmera, 0 = desconhecida; `camera_id` — 0 = sem câmera; as duas
+colunas vieram com os filtros de loja/câmera) — uma
 linha por coleta com a pessoa vinculada, gravada/atualizada pelo gatilho
 `trg_detection_records_person` (AFTER INSERT OR UPDATE OF person_id, quando `person_id` não é nulo:
 cobre o pipeline, que insere sem pessoa e depois faz `UPDATE ... WHERE track_id`, e também
@@ -817,7 +825,7 @@ thread background em `app.py`, mesmo padrão de `adequar_bases` (flag `_limpeza_
 - `GET /tracks/permanencia` → permanência estimada (5/pág)
 - `GET /tracks/quadro` ou `/m/tracks/quadro` → analytics (gráficos)
 - `GET /tracks/dados` → página de dados/câmeras
-- `GET /tracks/relatorios` → relatório estatístico de coletas/duplicatas/anomalias (params: `data_ini`, `data_fim`, `store`; ver seção "Relatórios")
+- `GET /tracks/relatorios` → relatório estatístico de coletas/duplicatas/anomalias (params: `data_ini`, `data_fim`, `store`, `camera`; ver seção "Relatórios")
 - `GET /tracks/anomalias` → ocorrências Intruso/Indesejada de um dia (params: `data`, `tipo`; ver seção "Anomalias de facial")
 - `GET /tracks/duplicatas` → grupos de duplicatas (param: `q`; ver seção "Duplicatas de pessoa")
 - `GET /tracks/heatmap` → página do mapa de calor (params: `camera_id`, `data_ini`, `data_fim`)

@@ -239,10 +239,20 @@
     </div>
     <div>
       <label for="store-select">Loja</label>
-      <select id="store-select" name="store" onchange="this.form.submit()">
+      <select id="store-select" name="store"
+              onchange="document.getElementById('camera-select').value = '0'; this.form.submit()">
         <option value="0">Todas as lojas</option>
         {% for s in stores_list %}
           <option value="{{ s.store_id }}" {% if loja_sel == s.store_id %}selected{% endif %}>{{ s.nome }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="camera-select">Câmera</label>
+      <select id="camera-select" name="camera" onchange="this.form.submit()">
+        <option value="0">Todas as câmeras</option>
+        {% for c in cameras_list %}
+          <option value="{{ c.id }}" {% if cam_sel == c.id %}selected{% endif %}>{{ c.nome }}</option>
         {% endfor %}
       </select>
     </div>
@@ -251,7 +261,7 @@
     <button type="button" class="btn-ghost" onclick="periodoRapido(6)">7 dias</button>
     <button type="button" class="btn-ghost" onclick="periodoRapido(29)">30 dias</button>
     <button type="button" class="btn-ghost" onclick="periodoRapido('mes')">Este mês</button>
-    <span class="periodo">{{ periodo_br }} · {{ n_dias }} dia(s){% if loja_nome %} · {{ loja_nome }}{% endif %}</span>
+    <span class="periodo">{{ periodo_br }} · {{ n_dias }} dia(s){% if cam_nome %} · {{ cam_nome }}{% elif loja_nome %} · {{ loja_nome }}{% endif %}</span>
   </form>
 
   <!-- ===================== KPIs ===================== -->
