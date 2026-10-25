@@ -1950,39 +1950,53 @@ def tracks_relatorios():
         )
         linhas_trat = cursor.fetchall()
 
-        # Pessoas distintas: só dá pra contar sobre as coletas que ainda existem
+        # Pessoas coletadas (collection_person_log: não encolhe com exclusões). Cada cadastro é resolvido
+        # pra pessoa real: principal atual, ou destino/principal do evento de duplicata se já foi juntado
+        # ou excluído. Coleta de Intruso excluída não conta (não se sabe de quem era).
         cursor.execute(
             """
-            SELECT COUNT(DISTINCT r.person_id) AS pessoas,
-                   COUNT(DISTINCT COALESCE(p.duplicate_of_person_id, p.person_id)) AS pessoas_unicas
-            FROM detection_records r
-            JOIN people p ON p.person_id = r.person_id
-            WHERE r.created_at >= %s AND r.created_at < %s
+            WITH l AS (
+                SELECT l.collected_on AS dia, l.person_id
+                FROM collection_person_log l
+                WHERE l.collected_on BETWEEN %s AND %s
+                  AND NOT EXISTS (SELECT 1 FROM quality_events q
+                                  WHERE q.event_type = 'intruso' AND q.detection_record_id = l.detection_record_id
+                                    AND q.treatment IN ('coleta_excluida', 'coleta_removida'))
+            ), canon AS (
+                SELECT x.person_id, COALESCE(p2.duplicate_of_person_id, x.c0, x.person_id) AS real_id
+                FROM (
+                    SELECT DISTINCT l.person_id,
+                           COALESCE(p.duplicate_of_person_id, p.person_id,
+                                    (SELECT COALESCE(q.target_person_id, q.principal_person_id)
+                                     FROM quality_events q
+                                     WHERE q.event_type = 'duplicata' AND q.person_id = l.person_id
+                                     ORDER BY q.treated_at DESC NULLS LAST LIMIT 1)) AS c0
+                    FROM l LEFT JOIN people p ON p.person_id = l.person_id
+                ) x
+                LEFT JOIN people p2 ON p2.person_id = x.c0
+            )
+            SELECT l.dia, l.person_id, c.real_id,
+                   COALESCE(po.person_type_id, pr.person_type_id) AS flag, COUNT(*) AS coletas
+            FROM l
+            JOIN canon c ON c.person_id = l.person_id
+            LEFT JOIN people po ON po.person_id = l.person_id
+            LEFT JOIN people pr ON pr.person_id = c.real_id
+            GROUP BY 1, 2, 3, 4
             """,
-            periodo,
+            periodo_dias,
         )
-        distintos = cursor.fetchone()
-        cursor.execute(
-            """
-            SELECT r.created_at::date AS dia, COUNT(DISTINCT r.person_id) AS pessoas
-            FROM detection_records r
-            WHERE r.created_at >= %s AND r.created_at < %s AND r.person_id IS NOT NULL
-            GROUP BY 1
-            """,
-            periodo,
-        )
-        pessoas_dia = {r["dia"]: r["pessoas"] for r in cursor.fetchall()}
-        cursor.execute(
-            """
-            SELECT p.person_type_id AS flag, COUNT(*) AS coletas, COUNT(DISTINCT r.person_id) AS pessoas
-            FROM detection_records r
-            JOIN people p ON p.person_id = r.person_id
-            WHERE r.created_at >= %s AND r.created_at < %s
-            GROUP BY 1
-            """,
-            periodo,
-        )
-        flags_vivas = {r["flag"]: r for r in cursor.fetchall()}
+        linhas_pessoas = cursor.fetchall()
+        pessoas_dia, flags_vivas = {}, {}
+        for r in linhas_pessoas:
+            pessoas_dia.setdefault(r["dia"], set()).add(r["person_id"])
+            f = flags_vivas.setdefault(r["flag"], {"coletas": 0, "pessoas": set()})
+            f["coletas"] += r["coletas"]
+            f["pessoas"].add(r["person_id"])
+        pessoas_dia = {k: len(v) for k, v in pessoas_dia.items()}
+        for f in flags_vivas.values():
+            f["pessoas"] = len(f["pessoas"])
+        distintos = {"pessoas": len({r["person_id"] for r in linhas_pessoas}),
+                     "pessoas_unicas": len({r["real_id"] for r in linhas_pessoas})}
 
         # Duplicatas: estado atual dos grupos e coletas de cada grupo no período
         cursor.execute(

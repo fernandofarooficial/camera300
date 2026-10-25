@@ -255,7 +255,7 @@
     <div class="kpi">
       <div class="rot">Pessoas coletadas</div>
       <div class="val">{{ resumo.pessoas }}</div>
-      <div class="det">{{ resumo.pessoas_unicas }} real(is) juntando duplicatas · só coletas ainda existentes</div>
+      <div class="det">{{ resumo.pessoas_unicas }} real(is) juntando duplicatas · inclui as já excluídas</div>
     </div>
     <div class="kpi" style="--k: var(--intr)">
       <div class="rot">Intruso</div>
@@ -404,7 +404,7 @@
     </section>
     <section>
       <h2>Por tipo de pessoa</h2>
-      <div class="sub">Coletas e pessoas: tipo atual do cadastro, só coletas ainda existentes. Anomalias: tipo da pessoa quando foi marcada.</div>
+      <div class="sub">Coletas e pessoas: tipo atual do cadastro (ou da pessoa real, se o cadastro já foi excluído), inclui coletas já excluídas — sem as de pessoa não identificada. Anomalias: tipo da pessoa quando foi marcada.</div>
       {% if flags %}
         <div class="tabela-wrap">
           <table>

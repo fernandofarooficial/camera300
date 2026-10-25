@@ -667,11 +667,15 @@ estatística permanente (ver seção seguinte), não mais de `detection_records`
   coletas com evento dos dois tipos.
 - Duplicatas ← `quality_events` pelo **dia de criação do cadastro duplicado**, comparadas com os
   novos cadastros do mesmo período (`% dos novos cadastros`).
-- **Continuam sobre os dados vivos** (só coletas que ainda existem, avisado na tela): pessoas
-  coletadas (distintas, e "reais" via `COALESCE(duplicate_of_person_id, person_id)`), a coluna
-  Pessoas por dia, coletas/pessoas por tipo de pessoa (tipo **atual** do cadastro) e a tabela de
-  grupos de duplicatas atuais com coletas no período. No recorte por tipo de pessoa as anomalias usam
-  o tipo **da época da marcação** (`quality_events.person_type_id`), por isso essa tabela não mostra %.
+- Pessoas coletadas (KPI, coluna Pessoas por dia, coletas/pessoas por tipo de pessoa) ←
+  `collection_person_log` (desde 2026-10-25, depois que excluir uma duplicata baixou o KPI): inclui
+  coletas já excluídas. "Reais" resolve cada cadastro pro principal atual, ou, se o cadastro já foi
+  juntado/excluído, pro `target_person_id`/`principal_person_id` do seu evento de duplicata. Coleta de
+  Intruso excluída (`coleta_excluida`/`coleta_removida`) não conta — não se sabe de quem era. Tipo de
+  pessoa = tipo **atual** do cadastro (ou da pessoa real, se o cadastro não existe mais).
+- **Continua sobre os dados vivos:** só a tabela de grupos de duplicatas atuais com coletas no
+  período. No recorte por tipo de pessoa as anomalias usam o tipo **da época da marcação**
+  (`quality_events.person_type_id`), por isso essa tabela não mostra %.
 
 Seções: KPIs, coletas por dia (gráfico + tabela com novos cadastros e duplicatas por dia),
 **Tratamento** (por tipo: casos, pendentes, cada tratamento que apareceu no período e % tratado),
@@ -718,6 +722,14 @@ Gatilho no banco (não no app) pra contar qualquer INSERT, inclusive de outros s
 dia × loja × câmera (`0` = desconhecido). Dias anteriores a 2026-10-25 foram preenchidos com o que
 ainda existia (11.982 coletas, 2.951 cadastros) — **contados a menos** onde a Limpeza já tinha
 apagado coletas (aceito pelo usuário); daqui pra frente são exatos.
+
+**`faciais.collection_person_log`** (`detection_record_id` único, `collected_on`, `person_id`) — uma
+linha por coleta com a pessoa vinculada, gravada/atualizada pelo gatilho
+`trg_detection_records_person` (AFTER INSERT OR UPDATE OF person_id, quando `person_id` não é nulo:
+cobre o pipeline, que insere sem pessoa e depois faz `UPDATE ... WHERE track_id`, e também
+mover/juntar) e nunca apagada — base da contagem de pessoas coletadas do Relatório. Sem FK. Backfill
+(2026-10-25) com as 11.982 coletas existentes + 1 linha sintética (`detection_record_id` NULL, no
+`occurred_on`) por duplicata já excluída com coletas (só a 3170, excluída antes do log existir).
 
 ---
 
