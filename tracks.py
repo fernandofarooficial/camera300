@@ -1867,8 +1867,8 @@ def _pct(parte, total):
 @tracks_bp.route("/tracks/relatorios")
 def tracks_relatorios():
     """Relatório estatístico de coletas, duplicatas e anomalias num período (default: últimos 7 dias).
-    Totais vêm de daily_collection_stats/daily_people_stats e os casos de quality_events — nenhum dos
-    dois encolhe quando coletas/pessoas são excluídas (tratamento, Limpeza)."""
+    Totais vêm de daily_collection_stats/daily_people_stats, pessoas coletadas de collection_person_log e
+    os casos de quality_events — nada disso encolhe quando coletas/pessoas são excluídas (tratamento, Limpeza)."""
     hoje = hoje_local()
     try:
         data_ini = date.fromisoformat(request.args.get("data_ini", "").strip())

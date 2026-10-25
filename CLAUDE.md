@@ -22,7 +22,7 @@ uma pasta que nunca chegou a ser criada aqui.)
 ## Deploy
 
 ```
-ssh root@72.60.58.241
+ssh camwatch-vps          # alias SSH do VPS 72.60.58.241 (usar o alias, não root@IP)
 # no VPS: /home/workuser/camera300
 git pull origin main
 # depois, restart com espera (ver abaixo)
@@ -689,8 +689,9 @@ atuais. Loja: `store_id` da coleta, senão a loja da câmera (`CAMERA_STORE_MAP`
 Requisito do usuário: depois de qualquer tratamento (excluir, vincular, juntar…) o app precisa
 continuar sabendo que a anomalia/duplicata aconteceu, em que dia e com qual coleta/pessoa, e sempre
 comparar com o volume total. Como o tratamento apaga as linhas de `detection_records`/`people` (e a
-Limpeza já apagava coletas, encolhendo o total por dia), o histórico e o volume total ficam em
-tabelas separadas que nunca são apagadas. Schema completo em `doc_faciais.sql` (`db-docs/lojas`).
+Limpeza já apagava coletas, encolhendo o total por dia), o histórico, o volume total e o registro de
+qual pessoa foi coletada em cada dia ficam em tabelas separadas que nunca são apagadas
+(`quality_events`, `daily_collection_stats`/`daily_people_stats`, `collection_person_log`). Schema completo em `doc_faciais.sql` (`db-docs/lojas`).
 Migration rodada ad-hoc em 2026-10-25 (sem arquivo versionado, mesmo padrão das anteriores).
 
 **`faciais.quality_events`** — uma linha por ocorrência: `event_type` (`intruso`/`indesejada` por
@@ -775,7 +776,8 @@ thread background em `app.py`, mesmo padrão de `adequar_bases` (flag `_limpeza_
 - Se nenhum desses 10 for do `reference_track_id` da pessoa, mantém também 1 registro desse track (o da foto: com `image_path`, maior `detection_score`).
 - Retorna `(registros_excluidos, pessoas_afetadas)`.
 - Anomalias pendentes das coletas apagadas viram `coleta_removida` em `quality_events` (gatilho
-  `trg_detection_records_quality`); o total de coletas do dia não diminui (`daily_collection_stats`).
+  `trg_detection_records_quality`); o total de coletas do dia não diminui (`daily_collection_stats`),
+  nem as pessoas coletadas do Relatório (`collection_person_log`).
 
 ---
 
