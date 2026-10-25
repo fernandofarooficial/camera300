@@ -732,16 +732,21 @@ exclusões.
   por cadastro duplicado (`uq_quality_events_dup_aberta`, pendente/mantida).
 - "Tornar principal" (`_trocar_principal` → `fn_quality_dup_swap`): o evento do novo principal passa
   a descrever o principal antigo (mesmo `marked_at`/tratamento) — o grupo continua com N-1 eventos.
-- Os 22 Indesejada, 1 Intruso e 2 duplicatas que existiam foram carregados como `pendente` na
-  migration (`marked_at` = hora da migration, a marcação original não tinha data).
+- **Reset (2026-10-25, a pedido do usuário — a estatística vale a partir daí):** `quality_events`
+  esvaziada (37 eventos de teste/implantação) com a sequence reiniciada, as 6 coletas marcadas
+  desmarcadas (`is_intruder`/`is_unwanted`) e os 2 vínculos de duplicata desfeitos
+  (`duplicate_of_person_id`). Nenhuma coleta, cadastro ou compra foi apagado. Script ad-hoc, sem
+  arquivo versionado.
 
 **`faciais.daily_collection_stats`** (`stat_date, store_id, camera_id, records`) e
 **`faciais.daily_people_stats`** (`stat_date, people_created`) — volume total, incrementado pelos
 gatilhos `trg_detection_records_count` / `trg_people_count` (AFTER INSERT) e nunca decrementado.
 Gatilho no banco (não no app) pra contar qualquer INSERT, inclusive de outros sistemas. Granularidade
 dia × loja × câmera (`0` = desconhecido). Dias anteriores a 2026-10-25 foram preenchidos com o que
-ainda existia (11.982 coletas, 2.951 cadastros) — **contados a menos** onde a Limpeza já tinha
-apagado coletas (aceito pelo usuário); daqui pra frente são exatos.
+ainda existia — **contados a menos** onde a Limpeza já tinha apagado coletas (aceito pelo usuário);
+daqui pra frente são exatos. No reset de 2026-10-25, `daily_collection_stats` foi **recalculada a
+partir das coletas existentes** (11.954; antes tinha 29 a mais, das coletas excluídas nos testes de
+tratamento); `daily_people_stats` não foi mexida (2.951 cadastros).
 
 **`faciais.collection_person_log`** (`detection_record_id` único, `collected_on`, `person_id`,
 `store_id` — loja da coleta, senão da câmera, 0 = desconhecida; `camera_id` — 0 = sem câmera; as duas
@@ -750,8 +755,9 @@ linha por coleta com a pessoa vinculada, gravada/atualizada pelo gatilho
 `trg_detection_records_person` (AFTER INSERT OR UPDATE OF person_id, quando `person_id` não é nulo:
 cobre o pipeline, que insere sem pessoa e depois faz `UPDATE ... WHERE track_id`, e também
 mover/juntar) e nunca apagada — base da contagem de pessoas coletadas do Relatório. Sem FK. Backfill
-(2026-10-25) com as 11.982 coletas existentes + 1 linha sintética (`detection_record_id` NULL, no
-`occurred_on`) por duplicata já excluída com coletas (só a 3170, excluída antes do log existir).
+(2026-10-25) com as coletas existentes; no reset do mesmo dia, as linhas de coletas que não existiam
+mais (28) e a linha sintética da duplicata 3170 foram removidas — o log ficou igual às coletas com
+pessoa na base (11.954). `detection_record_id` NULL = linha sintética (não há nenhuma hoje).
 
 ---
 
