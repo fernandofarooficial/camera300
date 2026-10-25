@@ -746,7 +746,10 @@ dia × loja × câmera (`0` = desconhecido). Dias anteriores a 2026-10-25 foram 
 ainda existia — **contados a menos** onde a Limpeza já tinha apagado coletas (aceito pelo usuário);
 daqui pra frente são exatos. No reset de 2026-10-25, `daily_collection_stats` foi **recalculada a
 partir das coletas existentes** (11.954; antes tinha 29 a mais, das coletas excluídas nos testes de
-tratamento); `daily_people_stats` não foi mexida (2.951 cadastros).
+tratamento). Logo depois, também a pedido do usuário, os 5 cadastros sem nenhuma coleta (150, 218,
+1139, 3176, 3184 — coletas excluídas no tratamento de indesejadas; sem compra nem vínculo) foram
+excluídos e `daily_people_stats` foi **recalculada a partir dos cadastros existentes** — novos
+cadastros e pessoas coletadas passaram a bater no histórico inteiro (2.943).
 
 **`faciais.collection_person_log`** (`detection_record_id` único, `collected_on`, `person_id`,
 `store_id` — loja da coleta, senão da câmera, 0 = desconhecida; `camera_id` — 0 = sem câmera; as duas
