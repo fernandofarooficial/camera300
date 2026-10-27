@@ -280,7 +280,7 @@
     <div class="kpi" style="--k: var(--intr)">
       <div class="rot">Intruso</div>
       <div class="val">{{ resumo.intruso }}</div>
-      <div class="det">{{ resumo.pct_intruso }}% das coletas</div>
+      <div class="det">{{ resumo.pct_intruso }}% das coletas{% if resumo.ambas %} · {{ resumo.ambas }} também indesejada ({{ resumo.pct_ambas }}% das coletas){% endif %}</div>
     </div>
     <div class="kpi" style="--k: var(--indes)">
       <div class="rot">Indesejada</div>

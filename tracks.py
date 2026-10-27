@@ -2155,6 +2155,7 @@ def tracks_relatorios():
     resumo = {
         **totais,
         "ambas": ambas,
+        "pct_ambas": _pct(ambas, totais["coletas"]),
         "pessoas": distintos["pessoas"],
         "pessoas_unicas": distintos["pessoas_unicas"],
         "media_dia": round(totais["coletas"] / n_dias, 1),
