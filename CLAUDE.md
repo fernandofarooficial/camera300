@@ -683,9 +683,10 @@ header, botões de navegação entre si (desde 2026-10-25). Função `tracks_rel
 estatística permanente (ver seção seguinte), não mais de `detection_records`/`people`:
 - Total de coletas por dia/loja/câmera ← `daily_collection_stats`; novos cadastros por dia ←
   `daily_people_stats`. Incluem o que já foi excluído (tratamento, Limpeza).
-- Intruso/Indesejada ← `quality_events` pelo **dia da coleta** (`occurred_on`); "também intruso" (card
-  Indesejada) / "também indesejada" (card Intruso, com % sobre o total de coletas) = coletas com evento dos
-  dois tipos.
+- Intruso/Indesejada ← `quality_events` pelo **dia da coleta** (`occurred_on`). Coletas com evento
+  dos dois tipos (`ambas`) aparecem nos dois cards de KPI: "N também intruso" no card Indesejada e,
+  desde 2026-10-27, "N também indesejada (X% das coletas)" no card Intruso (`resumo.pct_ambas` =
+  `ambas ÷ total de coletas` do período). Os dois só aparecem quando `ambas > 0`.
 - Duplicatas ← `quality_events` pelo **dia de criação do cadastro duplicado**, comparadas com os
   novos cadastros do mesmo período (`% dos novos cadastros`).
 - Pessoas coletadas (KPI, coluna Pessoas por dia, coletas/pessoas por tipo de pessoa) ←
