@@ -2185,21 +2185,49 @@ def tracks_relatorios():
     )
 
 
+ANOMALIAS_POR_PAGINA = 50
+
+
 @tracks_bp.route("/tracks/anomalias")
 def tracks_anomalias():
-    """Ocorrências marcadas como Intruso e/ou Indesejada coletadas num dia (default: hoje)."""
+    """Ocorrências marcadas como Intruso e/ou Indesejada coletadas num dia (default: hoje), ou,
+    com ?todas=1, de todas as datas (paginado de ANOMALIAS_POR_PAGINA em ANOMALIAS_POR_PAGINA)."""
+    todas = request.args.get("todas") == "1"
     try:
         dia = date.fromisoformat(request.args.get("data", "").strip())
     except ValueError:
         dia = hoje_local()
+    try:
+        pagina = max(1, int(request.args.get("pagina", 1)))
+    except ValueError:
+        pagina = 1
     tipo = request.args.get("tipo", "").strip()
     cond_tipo = {"intruso": "r.is_intruder", "indesejada": "r.is_unwanted"}.get(tipo, "(r.is_intruder OR r.is_unwanted)")
     if tipo not in ("intruso", "indesejada"):
         tipo = ""
 
+    if todas:
+        cond_data, params_data = "TRUE", ()
+    else:
+        cond_data, params_data = "r.created_at >= %s AND r.created_at < %s", (dia, dia + timedelta(days=1))
+
     conn = get_faciais_conn()
     try:
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor.execute(
+            f"""
+            SELECT COUNT(*) AS total,
+                   COUNT(*) FILTER (WHERE r.is_intruder) AS intruso,
+                   COUNT(*) FILTER (WHERE r.is_unwanted) AS indesejada
+            FROM detection_records r
+            WHERE {cond_data} AND {cond_tipo}
+            """,
+            params_data,
+        )
+        totais = dict(cursor.fetchone())
+        total_paginas = max(1, -(-totais["total"] // ANOMALIAS_POR_PAGINA)) if todas else 1
+        pagina = min(pagina, total_paginas) if todas else 1
+        limite = f"LIMIT {ANOMALIAS_POR_PAGINA} OFFSET {(pagina - 1) * ANOMALIAS_POR_PAGINA}" if todas else ""
         cursor.execute(
             f"""
             SELECT r.detection_record_id AS id, r.image_path, r.created_at, r.camera_id,
@@ -2213,20 +2241,21 @@ def tracks_anomalias():
                     ORDER BY b.created_at DESC LIMIT 1) AS base_image_path
             FROM detection_records r
             LEFT JOIN people p ON p.person_id = r.person_id
-            WHERE r.created_at >= %s AND r.created_at < %s AND {cond_tipo}
-            ORDER BY r.created_at DESC
+            WHERE {cond_data} AND {cond_tipo}
+            ORDER BY r.created_at DESC, r.detection_record_id DESC
+            {limite}
             """,
-            (dia, dia + timedelta(days=1)),
+            params_data,
         )
         rows = cursor.fetchall()
-        # Histórico do dia (quality_events): inclui o que já foi tratado e não aparece mais na lista
+        # Histórico (quality_events): inclui o que já foi tratado e não aparece mais na lista
         cursor.execute(
-            """
+            f"""
             SELECT COUNT(*) AS marcadas, COUNT(*) FILTER (WHERE treatment <> 'pendente') AS tratadas
             FROM quality_events
-            WHERE occurred_on = %s AND event_type IN ('intruso', 'indesejada')
+            WHERE {"TRUE" if todas else "occurred_on = %s"} AND event_type IN ('intruso', 'indesejada')
             """,
-            (dia,),
+            () if todas else (dia,),
         )
         historico = cursor.fetchone()
         cursor.close()
@@ -2241,7 +2270,8 @@ def tracks_anomalias():
             "id":         r["id"],
             "image_url":  HEIMDALL_IMAGE_BASE + r["image_path"] if r["image_path"] else None,
             "base_url":   HEIMDALL_IMAGE_BASE + r["base_image_path"] if r["base_image_path"] else None,
-            "hora":       r["created_at"].strftime("%H:%M:%S") if r["created_at"] else "—",
+            "hora":       r["created_at"].strftime("%d/%m/%Y %H:%M:%S" if todas else "%H:%M:%S") if r["created_at"] else "—",
+            "data":       r["created_at"].date().isoformat() if r["created_at"] else "",
             "camera":     cameras_map.get(r["camera_id"]) or (f"Câm. {r['camera_id']}" if r["camera_id"] else "—"),
             "loja":       CAMERA_STORE_NAME_MAP.get(r["camera_id"], ""),
             "face_det_score":    fmt_score_nd(r["detection_score"])   if r["detection_score"]   is not None else None,
@@ -2253,13 +2283,11 @@ def tracks_anomalias():
             "apelido":    r["apelido"],
             "flag":       r["flag"],
         })
-    totais = {
-        "total":      len(casos),
-        "intruso":    sum(1 for c in casos if c["intruso"]),
-        "indesejada": sum(1 for c in casos if c["indesejada"]),
-    }
+    indesejadas_exibidas = sum(1 for c in casos if c["indesejada"])
     return render_template("tracks_anomalias.html", casos=casos, totais=totais, historico=historico,
-                           data=dia.isoformat(), data_br=dia.strftime("%d/%m/%Y"), tipo=tipo)
+                           data=dia.isoformat(), data_br=dia.strftime("%d/%m/%Y"), tipo=tipo,
+                           todas=todas, pagina=pagina, total_paginas=total_paginas,
+                           indesejadas_exibidas=indesejadas_exibidas)
 
 
 @tracks_bp.route("/tracks/duplicatas")

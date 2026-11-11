@@ -85,6 +85,18 @@
       cursor: pointer;
     }
     .btn-filter:hover { background: #7c86ff33; }
+    a.btn-filter { text-decoration: none; display: inline-block; }
+    a.btn-filter.ativo { background: #7c86ff; color: #0f1117; }
+
+    /* ---- Paginação ---- */
+    .paginacao { display: flex; justify-content: center; align-items: center; gap: 0.4rem; flex-wrap: wrap; margin: 1.5rem 0 0.5rem; }
+    .paginacao a, .paginacao span {
+      font-size: 0.82rem; padding: 0.35rem 0.7rem; border-radius: 6px;
+      border: 1px solid #2d3148; color: #94a3b8; text-decoration: none;
+    }
+    .paginacao a:hover { border-color: #7c86ff88; color: #7c86ff; }
+    .paginacao .atual { background: #7c86ff22; border-color: #7c86ff44; color: #7c86ff; font-weight: 700; }
+    .paginacao .reticencias { border: none; padding: 0.35rem 0.2rem; }
 
     .resumo { display: flex; gap: 0.5rem; margin-left: auto; flex-wrap: wrap; }
     .resumo span {
@@ -275,23 +287,25 @@
       </select>
     </div>
     <button type="submit" class="btn-filter">&#128269; Filtrar</button>
+    <a class="btn-filter{% if todas %} ativo{% endif %}" href="?todas=1{% if tipo %}&tipo={{ tipo }}{% endif %}"
+       title="Listar as anomalias de todas as datas, 50 por página">&#128197; Todas as datas</a>
     <div class="resumo">
-      <span class="res-total">{{ totais.total }} caso(s) em {{ data_br }}</span>
+      <span class="res-total">{% if todas %}{{ totais.total }} caso(s) em todas as datas{% if total_paginas > 1 %} · pág. {{ pagina }}/{{ total_paginas }}{% endif %}{% else %}{{ totais.total }} caso(s) em {{ data_br }}{% endif %}</span>
       <span class="res-intr">{{ totais.intruso }} intruso(s)</span>
       <span class="res-indes">{{ totais.indesejada }} indesejada(s)</span>
       <span class="res-hist" title="Inclui as que já foram tratadas e não aparecem mais na lista">
-        histórico do dia: {{ historico.marcadas }} marcada(s) · {{ historico.tratadas }} tratada(s)
+        histórico {% if todas %}geral{% else %}do dia{% endif %}: {{ historico.marcadas }} marcada(s) · {{ historico.tratadas }} tratada(s)
       </span>
     </div>
-    {% if totais.indesejada %}
+    {% if indesejadas_exibidas %}
       <button type="button" class="btn-massa" id="btn-massa" onclick="excluirIndesejadas()">
-        &#128465; Excluir as {{ totais.indesejada }} indesejada(s) exibida(s)
+        &#128465; Excluir as {{ indesejadas_exibidas }} indesejada(s) exibida(s){% if todas and total_paginas > 1 %} nesta página{% endif %}
       </button>
     {% endif %}
   </form>
 
   {% if not casos %}
-    <div class="empty-state">Nenhuma anomalia marcada em {{ data_br }}.</div>
+    <div class="empty-state">Nenhuma anomalia marcada {% if todas %}em nenhuma data{% else %}em {{ data_br }}{% endif %}.</div>
   {% else %}
     {% set flag_map = {'C': 'Cliente', 'A': 'Anônimo', 'F': 'Franqueado', 'E': 'Empregado', 'K': 'Criança', 'P': 'Prestador'} %}
     <div class="grid">
@@ -326,7 +340,7 @@
 
           <div class="pessoa">
             {% if c.id_unico %}
-              <a href="/camera300/tracks/lista?ids={{ c.id_unico }}&data={{ data }}" title="Abrir na Lista">ID {{ c.id_unico }}</a>
+              <a href="/camera300/tracks/lista?ids={{ c.id_unico }}&data={{ c.data }}" title="Abrir na Lista">ID {{ c.id_unico }}</a>
               {{ c.nome or '—' }}{% if c.flag %} · {{ flag_map.get(c.flag, c.flag) }}{% endif %}
             {% else %}
               <span style="color:#64748b">Sem pessoa vinculada</span>
@@ -365,6 +379,23 @@
         </div>
       {% endfor %}
     </div>
+
+    {% if todas and total_paginas > 1 %}
+      {% set base = '?todas=1' ~ ('&tipo=' ~ tipo if tipo else '') ~ '&pagina=' %}
+      <nav class="paginacao">
+        {% if pagina > 1 %}<a href="{{ base }}{{ pagina - 1 }}">&#8592; Anterior</a>{% endif %}
+        {% for n in range(1, total_paginas + 1) %}
+          {% if n == pagina %}
+            <span class="atual">{{ n }}</span>
+          {% elif n == 1 or n == total_paginas or (n - pagina)|abs <= 2 %}
+            <a href="{{ base }}{{ n }}">{{ n }}</a>
+          {% elif n == 2 or n == total_paginas - 1 %}
+            <span class="reticencias">&hellip;</span>
+          {% endif %}
+        {% endfor %}
+        {% if pagina < total_paginas %}<a href="{{ base }}{{ pagina + 1 }}">Próxima &#8594;</a>{% endif %}
+      </nav>
+    {% endif %}
   {% endif %}
 </main>
 

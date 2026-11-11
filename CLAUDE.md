@@ -631,7 +631,11 @@ O usuário aponta, em cada ocorrência (`detection_record`) da Tela Lista, duas 
 - **Tela Anomalias** (`GET /tracks/anomalias`, `tracks_anomalias.html`, botão "Anomalias" no header
   da Tela Dados): lista as ocorrências marcadas coletadas num dia (`?data=YYYY-MM-DD`, default
   `hoje_local()`, data inválida cai no default) com filtro `?tipo=intruso|indesejada` (vazio =
-  qualquer uma das duas). Cada caso mostra a foto coletada lado a lado com a foto base da pessoa
+  qualquer uma das duas). Botão "📅 Todas as datas" (`?todas=1`, desde 2026-11-11) ignora a data e
+  lista as anomalias de todas as datas, paginadas de 50 em 50 (`?pagina=N`, `ANOMALIAS_POR_PAGINA`;
+  preserva `tipo`; página fora do intervalo cai na última) — hora exibida com data, totais e
+  histórico passam a ser gerais, e o botão de exclusão em massa age só nas indesejadas da página.
+  Cada caso mostra a foto coletada lado a lado com a foto base da pessoa
   vinculada (pra conferir Intruso), hora, câmera/loja, scores, link "ID X" pra Lista já filtrada
   por pessoa+data, e os mesmos botões de alternar as anomalias (mesma rota `/anomalia`) — desmarcar
   não remove o card da tela até recarregar. Sem paginação. Chip verde "histórico do dia: N
@@ -839,7 +843,7 @@ thread background em `app.py`, mesmo padrão de `adequar_bases` (flag `_limpeza_
 - `GET /tracks/quadro` ou `/m/tracks/quadro` → analytics (gráficos)
 - `GET /tracks/dados` → página de dados/câmeras
 - `GET /tracks/relatorios` → relatório estatístico de coletas/duplicatas/anomalias (params: `data_ini`, `data_fim`, `store`, `camera`; ver seção "Relatórios")
-- `GET /tracks/anomalias` → ocorrências Intruso/Indesejada de um dia (params: `data`, `tipo`; ver seção "Anomalias de facial")
+- `GET /tracks/anomalias` → ocorrências Intruso/Indesejada de um dia ou de todas as datas (params: `data`, `tipo`, `todas`, `pagina`; ver seção "Anomalias de facial")
 - `GET /tracks/duplicatas` → grupos de duplicatas (param: `q`; ver seção "Duplicatas de pessoa")
 - `GET /tracks/heatmap` → página do mapa de calor (params: `camera_id`, `data_ini`, `data_fim`)
 - `GET /tracks/heatmap/img` → proxy autenticado de imagens do heatmap (param `url`)
