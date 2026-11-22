@@ -954,6 +954,71 @@ def buscar_pessoa(id_unico):
     return jsonify(pessoa)
 
 
+HISTORICO_POR_PAGINA = 20
+
+
+@tracks_bp.route("/tracks/api/pessoa/<int:id_unico>/historico", methods=["GET"])
+def historico_pessoa(id_unico):
+    """Todos os reconhecimentos (detection_records) da pessoa, mais recentes primeiro,
+    paginados de HISTORICO_POR_PAGINA. Página fora do intervalo cai na última."""
+    pagina = request.args.get("pagina", 1, type=int)
+    conn = get_faciais_conn()
+    try:
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor.execute("SELECT full_name, nickname FROM people WHERE person_id = %s", (id_unico,))
+        pessoa = cursor.fetchone()
+        if pessoa is None:
+            cursor.close()
+            conn.rollback()
+            return jsonify({"error": f"Pessoa {id_unico} não encontrada"}), 404
+        cursor.execute("SELECT COUNT(*) AS total FROM detection_records WHERE person_id = %s", (id_unico,))
+        total = cursor.fetchone()["total"]
+        total_paginas = max(1, (total + HISTORICO_POR_PAGINA - 1) // HISTORICO_POR_PAGINA)
+        pagina = min(max(1, pagina), total_paginas)
+        cursor.execute(
+            """
+            SELECT detection_record_id AS id, track_id, image_path, created_at, camera_id,
+                   detection_score, recognition_score, is_intruder, is_unwanted
+            FROM detection_records
+            WHERE person_id = %s
+            ORDER BY created_at DESC, detection_record_id DESC
+            LIMIT %s OFFSET %s
+            """,
+            (id_unico, HISTORICO_POR_PAGINA, (pagina - 1) * HISTORICO_POR_PAGINA),
+        )
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.rollback()
+    finally:
+        release_faciais_conn(conn)
+
+    cameras_map = {c["id_camera"]: c.get("camera") or str(c["id_camera"])
+                   for c in CAMERAS_COMPLETO if c.get("id_camera") is not None}
+    registros = [{
+        "id":                r["id"],
+        "track_id":          r["track_id"],
+        "image_url":         HEIMDALL_IMAGE_BASE + r["image_path"] if r["image_path"] else None,
+        "created_at":        fmt_timestamp(r["created_at"]),
+        "camera_id":         r["camera_id"],
+        "camera":            cameras_map.get(r["camera_id"]) if r["camera_id"] is not None else None,
+        "loja":              CAMERA_STORE_NAME_MAP.get(r["camera_id"]) if r["camera_id"] is not None else None,
+        "face_det_score":    fmt_score_nd(r["detection_score"]) if r["detection_score"] is not None else None,
+        "recognition_score": fmt_score_nd(r["recognition_score"]) if r["recognition_score"] is not None else None,
+        "intruso":           r["is_intruder"],
+        "indesejada":        r["is_unwanted"],
+    } for r in rows]
+    return jsonify({
+        "id_unico": id_unico,
+        "nome": pessoa["full_name"],
+        "apelido": pessoa["nickname"],
+        "total": total,
+        "pagina": pagina,
+        "total_paginas": total_paginas,
+        "por_pagina": HISTORICO_POR_PAGINA,
+        "registros": registros,
+    })
+
+
 def _principal_de(cursor, person_id):
     """Retorna o person_id principal do grupo de duplicatas (o próprio, se não for duplicata),
     ou None se a pessoa não existe. duplicate_of_person_id sempre aponta direto pro principal."""

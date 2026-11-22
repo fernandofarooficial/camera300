@@ -131,6 +131,40 @@
     }
     .btn-dup:hover { background: #ec489933; }
 
+    .btn-hist {
+      background: #06b6d422;
+      border: 1px solid #06b6d444;
+      color: #06b6d4;
+      border-radius: 6px;
+      padding: 0.3rem 0.75rem;
+      font-size: 0.78rem;
+      cursor: pointer;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+    .btn-hist:hover { background: #06b6d433; }
+
+    /* ---- Modal Histórico ---- */
+    #modal-hist-overlay { z-index: 250; }
+    #modal-mover-overlay { z-index: 260; } /* mover pode ser aberto por cima do histórico */
+    .hist-box { max-width: 980px; }
+    .hist-head { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.9rem; }
+    .hist-head h2 { margin-bottom: 0; flex: 1; }
+    .hist-sub { font-size: 0.78rem; color: #64748b; }
+    .hist-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+      gap: 0.9rem 0.6rem;
+      justify-items: center;
+      min-height: 120px;
+    }
+    .hist-grid .occurrence { width: 88px; }
+    .hist-grid .occurrence img,
+    .hist-grid .occurrence-placeholder { width: 88px; height: 88px; }
+    .hist-grid .oc-actions { opacity: 1; }
+    .hist-msg { grid-column: 1 / -1; color: #64748b; font-size: 0.85rem; padding: 2rem 0; text-align: center; }
+    .hist-pag { display: flex; justify-content: center; align-items: center; gap: 0.6rem; margin-top: 1rem; font-size: 0.82rem; color: #94a3b8; }
+
     .person-notas {
       font-size: 0.78rem;
       color: #94a3b8;
@@ -935,6 +969,10 @@
             data-id="{{ g.id_unico }}"
             data-nome="{{ g.nome or '' }}"
             onclick="abrirModalDuplicatas(this.dataset.id, this.dataset.nome)">&#10697; Duplicatas</button>
+          <button class="btn-hist"
+            data-id="{{ g.id_unico }}"
+            data-nome="{{ g.nome or 'ID ' ~ g.id_unico }}"
+            onclick="abrirHistorico(this.dataset.id, this.dataset.nome)">&#128337; Histórico</button>
           <button class="btn-delete"
             data-id="{{ g.id_unico }}"
             data-nome="{{ g.nome or 'ID ' ~ g.id_unico }}"
@@ -1118,6 +1156,19 @@
       <button type="button" class="btn-cancel" onclick="fecharModalBase()">Cancelar</button>
       <button type="button" class="btn-save" id="btn-base-confirmar" disabled onclick="confirmarBase()">Confirmar</button>
     </div>
+  </div>
+</div>
+
+<!-- Modal Histórico de reconhecimentos -->
+<div id="modal-hist-overlay" class="modal-overlay">
+  <div class="modal-box hist-box">
+    <div class="hist-head">
+      <h2 id="hist-title">Histórico</h2>
+      <span class="hist-sub" id="hist-sub"></span>
+      <button type="button" class="btn-cancel" onclick="fecharHistorico()">Fechar</button>
+    </div>
+    <div class="hist-grid" id="hist-grid"></div>
+    <div class="hist-pag" id="hist-pag"></div>
   </div>
 </div>
 
@@ -1323,9 +1374,12 @@
   let _moverRegId = null;
   let _moverIdUnicoVerificado = null;
 
+  let _moverDoHistorico = false;
+
   function abrirModalMover(btn) {
     const oc = btn.closest('.occurrence');
     _moverRegId = oc.dataset.regId;
+    _moverDoHistorico = !!oc.closest('#hist-grid');
     _moverIdUnicoVerificado = null;
 
     document.getElementById('mover-info-date').textContent  = oc.dataset.regDate  || '—';
@@ -1412,7 +1466,12 @@
       const data = await resp.json();
       if (data.success) {
         fecharModalMover();
-        location.reload();
+        if (_moverDoHistorico) {
+          _histAlterado = true;
+          if (data.pessoa_excluida) { fecharHistorico(); } else { carregarHistorico(_histPagina); }
+        } else {
+          location.reload();
+        }
       } else {
         errEl.textContent = data.error || 'Erro ao mover.';
         errEl.style.display = 'block';
@@ -1656,13 +1715,160 @@
     }
   }
 
-  // Fecha todos os modais com Escape
+  /* =========================================================
+     Histórico de reconhecimentos da pessoa (20 por página)
+  ========================================================= */
+  let _histPessoaId = null;
+  let _histPagina = 1;
+  let _histAlterado = false;   // recarrega a Lista ao fechar se algo mudou
+
+  function _esc(v) {
+    return String(v == null ? '' : v).replace(/[&<>"']/g, c =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  function abrirHistorico(id, nome) {
+    _histPessoaId = id;
+    _histAlterado = false;
+    document.getElementById('hist-title').textContent = 'Histórico — ' + (nome || 'ID ' + id) + ' (ID ' + id + ')';
+    document.getElementById('hist-sub').textContent = '';
+    document.getElementById('modal-hist-overlay').classList.add('open');
+    carregarHistorico(1);
+  }
+
+  function fecharHistorico() {
+    const overlay = document.getElementById('modal-hist-overlay');
+    if (!overlay.classList.contains('open')) return;
+    overlay.classList.remove('open');
+    if (_histAlterado) location.reload();
+  }
+
+  document.getElementById('modal-hist-overlay').addEventListener('click', function(e) {
+    if (e.target === this) fecharHistorico();
+  });
+
+  async function carregarHistorico(pagina) {
+    const grid = document.getElementById('hist-grid');
+    const pag  = document.getElementById('hist-pag');
+    grid.innerHTML = '<div class="hist-msg">Carregando…</div>';
+    pag.innerHTML = '';
+    try {
+      const resp = await fetch(`/camera300/tracks/api/pessoa/${_histPessoaId}/historico?pagina=${pagina}`);
+      const data = await resp.json();
+      if (!resp.ok || data.error) {
+        grid.innerHTML = `<div class="hist-msg">${_esc(data.error || 'Erro ao carregar.')}</div>`;
+        return;
+      }
+      _histPagina = data.pagina;
+      document.getElementById('hist-sub').textContent = `${data.total} reconhecimento(s)`;
+      if (!data.registros.length) {
+        grid.innerHTML = '<div class="hist-msg">Nenhum reconhecimento.</div>';
+        return;
+      }
+      grid.innerHTML = data.registros.map(r => {
+        const cls = 'occurrence' + (r.intruso ? ' oc-intruso' : '') + (r.indesejada ? ' oc-indesejada' : '');
+        const img = r.image_url
+          ? `<img src="${_esc(r.image_url)}" alt="ocorrência" title="Track ${_esc(r.track_id)} — clique para ampliar"
+                  onclick="window.open(this.src, '_blank')"
+                  onerror="this.outerHTML='<div class=occurrence-placeholder>N/A</div>'" />`
+          : '<div class="occurrence-placeholder">N/A</div>';
+        let scores = '';
+        if (r.face_det_score || r.recognition_score) {
+          scores = '<span class="occurrence-date" style="color:#22c55e;font-weight:700">'
+            + (r.face_det_score ? 'D:' + _esc(r.face_det_score) : '')
+            + (r.face_det_score && r.recognition_score ? ' ' : '')
+            + (r.recognition_score ? `<span style="color:#60a5fa">R:${_esc(r.recognition_score)}</span>` : '')
+            + '</span>';
+        }
+        return `<div class="${cls}" data-reg-id="${r.id}" data-reg-date="${_esc(r.created_at)}"
+                     data-reg-cam="${_esc(r.camera_id)}" data-reg-score="${_esc(r.face_det_score)}"
+                     data-reg-recgn-score="${_esc(r.recognition_score)}" data-track-id="${_esc(r.track_id)}">
+          ${img}
+          <span class="oc-badge oc-badge-intr">INTRUSO</span>
+          <span class="oc-badge oc-badge-indes">INDESEJADA</span>
+          <span class="occurrence-date">${_esc(r.created_at || '—')}</span>
+          ${r.camera_id ? `<span class="occurrence-date" style="color:#7c86ff">${_esc(r.camera || ('Câm. ' + r.camera_id))}</span>` : ''}
+          ${r.loja ? `<span class="occurrence-date" style="color:#94a3b8;font-size:0.58rem">${_esc(r.loja)}</span>` : ''}
+          ${scores}
+          <div class="oc-actions">
+            <button class="oc-btn oc-btn-move" title="Mover para outra pessoa"
+                    onclick="abrirModalMover(this)">&#8599;</button>
+            <button class="oc-btn oc-btn-new" title="Criar nova pessoa a partir desta imagem"
+                    onclick="histNovaPessoa(this)">&#10133;</button>
+            <button class="oc-btn oc-btn-del" title="Excluir ocorrência"
+                    onclick="histExcluir(this)">&#128465;</button>
+          </div>
+        </div>`;
+      }).join('');
+      if (data.total_paginas > 1) {
+        pag.innerHTML =
+          `<button type="button" class="btn-verificar" ${data.pagina <= 1 ? 'disabled' : ''}
+                   onclick="carregarHistorico(${data.pagina - 1})">&laquo; Anterior</button>
+           <span>${data.pagina} / ${data.total_paginas}</span>
+           <button type="button" class="btn-verificar" ${data.pagina >= data.total_paginas ? 'disabled' : ''}
+                   onclick="carregarHistorico(${data.pagina + 1})">Próxima &raquo;</button>`;
+      }
+    } catch (err) {
+      grid.innerHTML = '<div class="hist-msg">Falha na requisição.</div>';
+    }
+  }
+
+  async function histExcluir(btn) {
+    const oc = btn.closest('.occurrence');
+    const date = oc.dataset.regDate || 'data desconhecida';
+    if (!confirm(`Excluir esta ocorrência (${date})?\nEsta ação não pode ser desfeita.`)) return;
+    btn.disabled = true;
+    try {
+      const resp = await fetch(`/camera300/tracks/api/registro/${oc.dataset.regId}`, { method: 'DELETE' });
+      const data = await resp.json();
+      if (data.success) {
+        _histAlterado = true;
+        carregarHistorico(_histPagina);
+      } else {
+        alert('Erro ao excluir: ' + (data.error || 'desconhecido'));
+        btn.disabled = false;
+      }
+    } catch (err) {
+      alert('Falha na requisição.');
+      btn.disabled = false;
+    }
+  }
+
+  async function histNovaPessoa(btn) {
+    const oc = btn.closest('.occurrence');
+    const date = oc.dataset.regDate || 'data desconhecida';
+    if (!confirm(
+      `Criar nova pessoa a partir desta ocorrência (${date})?\n\n` +
+      `A imagem será desvinculada da pessoa atual e uma nova entrada será criada com os mesmos padrões do sistema (Anônimo + flag padrão).`
+    )) return;
+    btn.disabled = true;
+    try {
+      const resp = await fetch(`/camera300/tracks/api/registro/${oc.dataset.regId}/nova-pessoa`, { method: 'POST' });
+      const data = await resp.json();
+      if (data.success) {
+        _histAlterado = true;
+        if (data.pessoa_excluida) { fecharHistorico(); } else { carregarHistorico(_histPagina); }
+      } else {
+        alert('Erro: ' + (data.error || 'desconhecido'));
+        btn.disabled = false;
+      }
+    } catch (err) {
+      alert('Falha na requisição.');
+      btn.disabled = false;
+    }
+  }
+
+  // Fecha os modais com Escape (só o de mover, se estiver aberto por cima do histórico)
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
+      if (document.getElementById('modal-mover-overlay').classList.contains('open')) {
+        fecharModalMover();
+        return;
+      }
       fecharLightbox();
       fecharModal();
-      fecharModalMover();
       fecharModalBase();
+      fecharHistorico();
     }
   });
 </script>

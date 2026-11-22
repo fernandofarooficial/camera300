@@ -512,6 +512,19 @@ Cada ocorrência na faixa horizontal exibe três botões ao passar o mouse:
 | `+ Novo` | âmbar | Cria nova pessoa a partir desta imagem |
 | `🗑` | vermelho | Exclui o registro individual |
 
+### Histórico de reconhecimentos (desde 2026-11-22)
+
+A faixa de ocorrências do card mostra no máximo 15. Para ver todas, o botão "🕑 Histórico" (ciano,
+entre "Duplicatas" e "Excluir") abre um modal com **todos** os `detection_records` da pessoa, do mais
+recente pro mais antigo, 20 por página (`HISTORICO_POR_PAGINA`), carregados via
+`GET /tracks/api/pessoa/<id>/historico?pagina=N` (`historico_pessoa`; página fora do intervalo cai na
+última; ignora os filtros da Lista, inclusive `data`). Cada reconhecimento tem os mesmos 3 botões
+(Mover / + Novo / Excluir), que chamam as rotas já existentes. Mover reaproveita o modal de mover
+(aberto por cima do histórico, `z-index` maior); depois de qualquer ação o modal recarrega a página
+atual, e a Lista é recarregada ao fechar o histórico se algo mudou (se a pessoa sumiu porque ficou
+vazia, o modal fecha na hora). Clicar na foto abre a imagem numa aba nova (o lightbox depende do
+card). Botões INTR/INDES não aparecem no histórico, só os badges. Só na Lista desktop.
+
 ### Rota `POST /tracks/api/registro/<reg_id>/nova-pessoa`
 
 Criada em `tracks.py` (`nova_pessoa_de_registro`). Lógica:
@@ -859,6 +872,7 @@ thread background em `app.py`, mesmo padrão de `adequar_bases` (flag `_limpeza_
 - `POST /tracks/api/pessoa/<id_unico>` → atualiza dados
 - `DELETE /tracks/api/pessoa/<id_unico>` → exclui pessoa e registros
 - `POST /tracks/api/pessoa/<id_unico>/base` → atualizar_base_pessoa
+- `GET /tracks/api/pessoa/<id_unico>/historico` → todos os reconhecimentos da pessoa, 20 por página (param `pagina`; ver "Histórico de reconhecimentos")
 - `DELETE /tracks/api/registro/<reg_id>` → exclui registro individual
 - `POST /tracks/api/registro/<reg_id>/mover` → move registro para outro id_unico
 - `POST /tracks/api/registro/<reg_id>/nova-pessoa` → cria nova pessoa a partir do registro
