@@ -147,7 +147,14 @@
     /* ---- Modal Histórico ---- */
     #modal-hist-overlay { z-index: 250; }
     #modal-mover-overlay { z-index: 260; } /* mover pode ser aberto por cima do histórico */
-    .hist-box { max-width: 980px; }
+    .hist-box { width: 96vw; max-width: 96vw; max-height: 94vh; }
+    .hist-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 0.9rem; font-size: 0.8rem; color: #94a3b8; }
+    .hist-toolbar .btn-delete:disabled { opacity: 0.4; cursor: not-allowed; }
+    .hist-sel { display: flex; align-items: center; gap: 0.25rem; font-size: 0.62rem; color: #94a3b8; cursor: pointer; user-select: none; }
+    .hist-sel input { cursor: pointer; accent-color: #ef4444; }
+    .hist-grid .occurrence.hist-marcado img,
+    .hist-grid .occurrence.hist-marcado .occurrence-placeholder { outline: 3px solid #ef4444; outline-offset: 1px; opacity: 0.75; }
+    .hist-grid .occurrence.hist-marcado .hist-sel { color: #ef4444; font-weight: 700; }
     .hist-head { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.9rem; }
     .hist-head h2 { margin-bottom: 0; flex: 1; }
     .hist-sub { font-size: 0.78rem; color: #64748b; }
@@ -1167,6 +1174,13 @@
       <span class="hist-sub" id="hist-sub"></span>
       <button type="button" class="btn-cancel" onclick="fecharHistorico()">Fechar</button>
     </div>
+    <div class="hist-toolbar">
+      <button type="button" class="btn-verificar" onclick="histSelecionarPagina(true)">&#9745; Marcar página</button>
+      <button type="button" class="btn-verificar" onclick="histLimparSelecao()">Limpar seleção</button>
+      <span id="hist-sel-info">Nenhum marcado</span>
+      <button type="button" class="btn-delete" id="hist-btn-excluir-sel" disabled
+              onclick="histExcluirSelecionados()">&#128465; Excluir marcados</button>
+    </div>
     <div class="hist-grid" id="hist-grid"></div>
     <div class="hist-pag" id="hist-pag"></div>
   </div>
@@ -1469,6 +1483,8 @@
         fecharModalMover();
         if (_moverDoHistorico) {
           _histAlterado = true;
+          _histSel.delete(String(_moverRegId));
+          histAtualizarSelecao();
           if (data.pessoa_excluida) { fecharHistorico(); } else { carregarHistorico(_histPagina); }
         } else {
           location.reload();
@@ -1722,6 +1738,7 @@
   let _histPessoaId = null;
   let _histPagina = 1;
   let _histAlterado = false;   // recarrega a Lista ao fechar se algo mudou
+  const _histSel = new Set();  // ids marcados para exclusão (mantidos ao trocar de página)
 
   function _esc(v) {
     return String(v == null ? '' : v).replace(/[&<>"']/g, c =>
@@ -1731,6 +1748,8 @@
   function abrirHistorico(id, nome) {
     _histPessoaId = id;
     _histAlterado = false;
+    _histSel.clear();
+    histAtualizarSelecao();
     document.getElementById('hist-title').textContent = 'Histórico — ' + (nome || 'ID ' + id) + ' (ID ' + id + ')';
     document.getElementById('hist-sub').textContent = '';
     document.getElementById('modal-hist-overlay').classList.add('open');
@@ -1767,7 +1786,9 @@
         return;
       }
       grid.innerHTML = data.registros.map(r => {
-        const cls = 'occurrence' + (r.intruso ? ' oc-intruso' : '') + (r.indesejada ? ' oc-indesejada' : '');
+        const marcado = _histSel.has(String(r.id));
+        const cls = 'occurrence' + (r.intruso ? ' oc-intruso' : '') + (r.indesejada ? ' oc-indesejada' : '')
+                  + (marcado ? ' hist-marcado' : '');
         const img = r.image_url
           ? `<img src="${_esc(r.image_url)}" alt="ocorrência" title="Track ${_esc(r.track_id)} — clique para ampliar"
                   onclick="window.open(this.src, '_blank')"
@@ -1785,6 +1806,8 @@
                      data-reg-cam="${_esc(r.camera_id)}" data-reg-score="${_esc(r.face_det_score)}"
                      data-reg-recgn-score="${_esc(r.recognition_score)}" data-track-id="${_esc(r.track_id)}">
           ${img}
+          <label class="hist-sel"><input type="checkbox" ${marcado ? 'checked' : ''}
+                 onchange="histMarcar(this)"> excluir</label>
           <span class="oc-badge oc-badge-intr">INTRUSO</span>
           <span class="oc-badge oc-badge-indes">INDESEJADA</span>
           <span class="occurrence-date">${_esc(r.created_at || '—')}</span>
@@ -1822,6 +1845,66 @@
     }
   }
 
+  function histAtualizarSelecao() {
+    const n = _histSel.size;
+    document.getElementById('hist-sel-info').textContent = n ? `${n} marcado(s)` : 'Nenhum marcado';
+    const btn = document.getElementById('hist-btn-excluir-sel');
+    btn.disabled = !n;
+    btn.innerHTML = n ? `&#128465; Excluir ${n} marcado(s)` : '&#128465; Excluir marcados';
+  }
+
+  function histMarcar(chk) {
+    const oc = chk.closest('.occurrence');
+    if (chk.checked) _histSel.add(oc.dataset.regId); else _histSel.delete(oc.dataset.regId);
+    oc.classList.toggle('hist-marcado', chk.checked);
+    histAtualizarSelecao();
+  }
+
+  function histSelecionarPagina(marcar) {
+    document.querySelectorAll('#hist-grid .occurrence').forEach(oc => {
+      const chk = oc.querySelector('.hist-sel input');
+      chk.checked = marcar;
+      histMarcar(chk);
+    });
+  }
+
+  function histLimparSelecao() {
+    _histSel.clear();
+    document.querySelectorAll('#hist-grid .occurrence').forEach(oc => {
+      oc.classList.remove('hist-marcado');
+      oc.querySelector('.hist-sel input').checked = false;
+    });
+    histAtualizarSelecao();
+  }
+
+  async function histExcluirSelecionados() {
+    const ids = [..._histSel].map(Number);
+    if (!ids.length) return;
+    if (!confirm(`Excluir ${ids.length} ocorrência(s) marcada(s)?\nEsta ação não pode ser desfeita.`)) return;
+    const btn = document.getElementById('hist-btn-excluir-sel');
+    btn.disabled = true;
+    try {
+      const resp = await fetch('/camera300/tracks/api/registros/excluir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, origem: 'historico' }),
+      });
+      const data = await resp.json();
+      if (data.success) {
+        _histAlterado = true;
+        _histSel.clear();
+        histAtualizarSelecao();
+        carregarHistorico(_histPagina);
+      } else {
+        alert('Erro ao excluir: ' + (data.error || 'desconhecido'));
+        histAtualizarSelecao();
+      }
+    } catch (err) {
+      alert('Falha na requisição.');
+      histAtualizarSelecao();
+    }
+  }
+
   async function histExcluir(btn) {
     const oc = btn.closest('.occurrence');
     const date = oc.dataset.regDate || 'data desconhecida';
@@ -1832,6 +1915,8 @@
       const data = await resp.json();
       if (data.success) {
         _histAlterado = true;
+        _histSel.delete(oc.dataset.regId);
+        histAtualizarSelecao();
         carregarHistorico(_histPagina);
       } else {
         alert('Erro ao excluir: ' + (data.error || 'desconhecido'));
@@ -1856,6 +1941,8 @@
       const data = await resp.json();
       if (data.success) {
         _histAlterado = true;
+        _histSel.delete(oc.dataset.regId);
+        histAtualizarSelecao();
         if (data.pessoa_excluida) { fecharHistorico(); } else { carregarHistorico(_histPagina); }
       } else {
         alert('Erro: ' + (data.error || 'desconhecido'));

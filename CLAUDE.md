@@ -526,6 +526,13 @@ vazia, o modal fecha na hora). Clicar na foto abre a imagem numa aba nova (o lig
 card). Os botões INTR/INDES também aparecem (mesma função `alternarAnomalia`, mesma rota
 `/anomalia`; marcar no histórico também faz a Lista recarregar ao fechar). Só na Lista desktop.
 
+Modal ocupa quase a tela toda (`96vw`). **Exclusão em massa:** checkbox "excluir" em cada
+reconhecimento (foto ganha contorno vermelho), "Marcar página", "Limpar seleção" e
+"🗑 Excluir N marcado(s)" (com `confirm()`), que chama `POST /tracks/api/registros/excluir` (a mesma
+rota da exclusão em massa da Tela Anomalias, body `{ids, origem: 'historico'}` — `origem` só muda o
+texto do `trace`). A seleção é mantida ao trocar de página (Set `_histSel` no JS) e zera ao abrir o
+histórico de outra pessoa.
+
 ### Rota `POST /tracks/api/registro/<reg_id>/nova-pessoa`
 
 Criada em `tracks.py` (`nova_pessoa_de_registro`). Lógica:
@@ -878,7 +885,7 @@ thread background em `app.py`, mesmo padrão de `adequar_bases` (flag `_limpeza_
 - `POST /tracks/api/registro/<reg_id>/mover` → move registro para outro id_unico
 - `POST /tracks/api/registro/<reg_id>/nova-pessoa` → cria nova pessoa a partir do registro
 - `POST /tracks/api/registro/<reg_id>/anomalia` → marca/desmarca Intruso/Indesejada (ver seção "Anomalias de facial")
-- `POST /tracks/api/registros/excluir` → exclui várias coletas (body `{ids}`; Tela Anomalias, indesejadas em massa)
+- `POST /tracks/api/registros/excluir` → exclui várias coletas (body `{ids, origem?}`; Tela Anomalias, indesejadas em massa, e Histórico da Lista)
 - `POST /tracks/api/duplicatas/<principal>/tratar` → tratamento das duplicatas do grupo (ver "Tratamento das duplicatas")
 - `GET|POST|DELETE /tracks/api/pessoa/<id_unico>/duplicatas` → grupo de duplicatas / vincular / desvincular (ver seção "Duplicatas de pessoa")
 - `POST /tracks/api/pessoa/<id_unico>/principal` → torna a pessoa o principal do seu grupo de duplicatas

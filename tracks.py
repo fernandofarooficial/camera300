@@ -1406,7 +1406,8 @@ def excluir_registros():
         raise
     finally:
         release_faciais_conn(conn)
-    trace("SISTEMA", f"anomalias: {excluidos} coleta(s) excluída(s) em massa")
+    origem = "histórico" if data.get("origem") == "historico" else "anomalias"
+    trace("SISTEMA", f"{origem}: {excluidos} coleta(s) excluída(s) em massa")
     return jsonify({"success": True, "excluidos": excluidos})
 
 
