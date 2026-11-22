@@ -516,14 +516,15 @@ Cada ocorrência na faixa horizontal exibe três botões ao passar o mouse:
 
 A faixa de ocorrências do card mostra no máximo 15. Para ver todas, o botão "🕑 Histórico" (ciano,
 entre "Duplicatas" e "Excluir") abre um modal com **todos** os `detection_records` da pessoa, do mais
-recente pro mais antigo, 20 por página (`HISTORICO_POR_PAGINA`), carregados via
+recente pro mais antigo, 34 por página (`HISTORICO_POR_PAGINA`), carregados via
 `GET /tracks/api/pessoa/<id>/historico?pagina=N` (`historico_pessoa`; página fora do intervalo cai na
 última; ignora os filtros da Lista, inclusive `data`). Cada reconhecimento tem os mesmos 3 botões
 (Mover / + Novo / Excluir), que chamam as rotas já existentes. Mover reaproveita o modal de mover
 (aberto por cima do histórico, `z-index` maior); depois de qualquer ação o modal recarrega a página
 atual, e a Lista é recarregada ao fechar o histórico se algo mudou (se a pessoa sumiu porque ficou
-vazia, o modal fecha na hora). Clicar na foto abre a imagem numa aba nova (o lightbox depende do
-card). Os botões INTR/INDES também aparecem (mesma função `alternarAnomalia`, mesma rota
+vazia, o modal fecha na hora). Clicar na foto abre ela ampliada no centro da tela, por cima do
+histórico (`#hist-viewer`, com data/câmera/loja/scores; clique ou Esc fecha) — o lightbox da Lista
+não é usado porque depende do card. Fotos de 160px (116px no mobile). Os botões INTR/INDES também aparecem (mesma função `alternarAnomalia`, mesma rota
 `/anomalia`; marcar no histórico também faz a Lista recarregar ao fechar). Só na Lista desktop.
 
 Modal ocupa quase a tela toda (`96vw`). **Exclusão em massa:** checkbox "excluir" em cada
@@ -880,7 +881,7 @@ thread background em `app.py`, mesmo padrão de `adequar_bases` (flag `_limpeza_
 - `POST /tracks/api/pessoa/<id_unico>` → atualiza dados
 - `DELETE /tracks/api/pessoa/<id_unico>` → exclui pessoa e registros
 - `POST /tracks/api/pessoa/<id_unico>/base` → atualizar_base_pessoa
-- `GET /tracks/api/pessoa/<id_unico>/historico` → todos os reconhecimentos da pessoa, 20 por página (param `pagina`; ver "Histórico de reconhecimentos")
+- `GET /tracks/api/pessoa/<id_unico>/historico` → todos os reconhecimentos da pessoa, 34 por página (param `pagina`; ver "Histórico de reconhecimentos")
 - `DELETE /tracks/api/registro/<reg_id>` → exclui registro individual
 - `POST /tracks/api/registro/<reg_id>/mover` → move registro para outro id_unico
 - `POST /tracks/api/registro/<reg_id>/nova-pessoa` → cria nova pessoa a partir do registro

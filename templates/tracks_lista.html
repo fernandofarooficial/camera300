@@ -161,15 +161,49 @@
     .hist-sub { font-size: 0.78rem; color: #64748b; }
     .hist-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
-      gap: 0.9rem 0.6rem;
+      grid-template-columns: repeat(auto-fill, minmax(165px, 1fr));
+      gap: 1.1rem 0.7rem;
       justify-items: center;
-      min-height: 120px;
+      min-height: 160px;
     }
-    .hist-grid .occurrence { width: 88px; }
+    .hist-grid .occurrence { width: 160px; }
     .hist-grid .occurrence img,
-    .hist-grid .occurrence-placeholder { width: 88px; height: 88px; }
+    .hist-grid .occurrence-placeholder { width: 160px; height: 160px; border-radius: 8px; }
+    .hist-grid .occurrence-date { font-size: 0.7rem; }
     .hist-grid .oc-actions { opacity: 1; }
+    .hist-grid .oc-btn { width: 30px; height: 26px; font-size: 0.9rem; }
+    .hist-grid .oc-btn-anom { width: auto; padding: 0 0.45rem; font-size: 0.64rem; }
+
+    /* ---- Foto ampliada do histórico (por cima do histórico) ---- */
+    #hist-viewer {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: #000000cc;
+      z-index: 320;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 0.6rem;
+      cursor: zoom-out;
+    }
+    #hist-viewer.open { display: flex; }
+    #hist-viewer img {
+      max-width: 90vw;
+      max-height: 82vh;
+      object-fit: contain;
+      border-radius: 10px;
+      border: 1px solid #2d3148;
+      box-shadow: 0 24px 64px #000000aa;
+      background: #0f1117;
+    }
+    #hist-viewer-info { color: #cbd5e1; font-size: 0.85rem; text-align: center; }
+    @media (max-width: 600px) {
+      .hist-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+      .hist-grid .occurrence { width: 116px; }
+      .hist-grid .occurrence img,
+      .hist-grid .occurrence-placeholder { width: 116px; height: 116px; }
+    }
     .hist-msg { grid-column: 1 / -1; color: #64748b; font-size: 0.85rem; padding: 2rem 0; text-align: center; }
     .hist-pag { display: flex; justify-content: center; align-items: center; gap: 0.6rem; margin-top: 1rem; font-size: 0.82rem; color: #94a3b8; }
 
@@ -1187,6 +1221,12 @@
   </div>
 </div>
 
+<!-- Foto ampliada do histórico (clique em qualquer lugar fecha) -->
+<div id="hist-viewer" onclick="fecharHistAmpliar()">
+  <img id="hist-viewer-img" src="" alt="foto ampliada" />
+  <div id="hist-viewer-info"></div>
+</div>
+
 <!-- Modal de mover ocorrência -->
 <div id="modal-mover-overlay" class="modal-overlay">
   <div class="modal-box">
@@ -1734,7 +1774,7 @@
   }
 
   /* =========================================================
-     Histórico de reconhecimentos da pessoa (20 por página)
+     Histórico de reconhecimentos da pessoa (34 por página)
   ========================================================= */
   let _histPessoaId = null;
   let _histPagina = 1;
@@ -1792,7 +1832,7 @@
                   + (marcado ? ' hist-marcado' : '');
         const img = r.image_url
           ? `<img src="${_esc(r.image_url)}" alt="ocorrência" title="Track ${_esc(r.track_id)} — clique para ampliar"
-                  onclick="window.open(this.src, '_blank')"
+                  onclick="histAmpliar(this)"
                   onerror="this.outerHTML='<div class=occurrence-placeholder>N/A</div>'" />`
           : '<div class="occurrence-placeholder">N/A</div>';
         let scores = '';
@@ -1906,6 +1946,24 @@
     }
   }
 
+  function histAmpliar(imgEl) {
+    const oc = imgEl.closest('.occurrence');
+    const cam = oc.dataset.regCam;
+    const partes = [];
+    if (oc.dataset.regDate) partes.push(oc.dataset.regDate);
+    if (cam) partes.push(CAMERAS_MAP[parseInt(cam)] || ('Câm. ' + cam));
+    if (cam && CAMERA_STORE_MAP[parseInt(cam)]) partes.push(CAMERA_STORE_MAP[parseInt(cam)]);
+    if (oc.dataset.regScore) partes.push('D:' + oc.dataset.regScore);
+    if (oc.dataset.regRecgnScore) partes.push('R:' + oc.dataset.regRecgnScore);
+    document.getElementById('hist-viewer-img').src = imgEl.src;
+    document.getElementById('hist-viewer-info').textContent = partes.join(' · ');
+    document.getElementById('hist-viewer').classList.add('open');
+  }
+
+  function fecharHistAmpliar() {
+    document.getElementById('hist-viewer').classList.remove('open');
+  }
+
   async function histExcluir(btn) {
     const oc = btn.closest('.occurrence');
     const date = oc.dataset.regDate || 'data desconhecida';
@@ -1958,6 +2016,10 @@
   // Fecha os modais com Escape (só o de mover, se estiver aberto por cima do histórico)
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
+      if (document.getElementById('hist-viewer').classList.contains('open')) {
+        fecharHistAmpliar();
+        return;
+      }
       if (document.getElementById('modal-mover-overlay').classList.contains('open')) {
         fecharModalMover();
         return;

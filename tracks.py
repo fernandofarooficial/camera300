@@ -954,7 +954,7 @@ def buscar_pessoa(id_unico):
     return jsonify(pessoa)
 
 
-HISTORICO_POR_PAGINA = 20
+HISTORICO_POR_PAGINA = 34
 
 
 @tracks_bp.route("/tracks/api/pessoa/<int:id_unico>/historico", methods=["GET"])
