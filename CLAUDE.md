@@ -523,7 +523,8 @@ recente pro mais antigo, 20 por página (`HISTORICO_POR_PAGINA`), carregados via
 (aberto por cima do histórico, `z-index` maior); depois de qualquer ação o modal recarrega a página
 atual, e a Lista é recarregada ao fechar o histórico se algo mudou (se a pessoa sumiu porque ficou
 vazia, o modal fecha na hora). Clicar na foto abre a imagem numa aba nova (o lightbox depende do
-card). Botões INTR/INDES não aparecem no histórico, só os badges. Só na Lista desktop.
+card). Os botões INTR/INDES também aparecem (mesma função `alternarAnomalia`, mesma rota
+`/anomalia`; marcar no histórico também faz a Lista recarregar ao fechar). Só na Lista desktop.
 
 ### Rota `POST /tracks/api/registro/<reg_id>/nova-pessoa`
 

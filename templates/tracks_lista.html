@@ -1358,6 +1358,7 @@
       if (data.success) {
         oc.classList.toggle('oc-intruso', data.intruso);
         oc.classList.toggle('oc-indesejada', data.indesejada);
+        if (oc.closest('#hist-grid')) _histAlterado = true;  // reflete na faixa do card ao fechar
       } else {
         alert('Erro ao marcar anomalia: ' + (data.error || 'desconhecido'));
       }
@@ -1797,6 +1798,14 @@
                     onclick="histNovaPessoa(this)">&#10133;</button>
             <button class="oc-btn oc-btn-del" title="Excluir ocorrência"
                     onclick="histExcluir(this)">&#128465;</button>
+          </div>
+          <div class="oc-actions">
+            <button class="oc-btn oc-btn-anom oc-btn-intr"
+                    title="Intruso: rosto vinculado a uma pessoa que não é a dele"
+                    onclick="alternarAnomalia(this, 'intruso')">INTR</button>
+            <button class="oc-btn oc-btn-anom oc-btn-indes"
+                    title="Indesejada: foto ruim pra reconhecimento (de costas, obstáculo, escura/clara, sem resolução, chapéu...)"
+                    onclick="alternarAnomalia(this, 'indesejada')">INDES</button>
           </div>
         </div>`;
       }).join('');
