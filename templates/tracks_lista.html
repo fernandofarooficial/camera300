@@ -147,7 +147,8 @@
     /* ---- Modal Histórico ---- */
     #modal-hist-overlay { z-index: 250; }
     #modal-mover-overlay { z-index: 260; } /* mover pode ser aberto por cima do histórico */
-    .hist-box { width: 96vw; max-width: 96vw; max-height: 94vh; }
+    /* .modal-box.hist-box: mais específico que .modal-box (max-width 480px, declarada depois) */
+    .modal-box.hist-box { width: 96vw; max-width: 96vw; max-height: 94vh; }
     .hist-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 0.9rem; font-size: 0.8rem; color: #94a3b8; }
     .hist-toolbar .btn-delete:disabled { opacity: 0.4; cursor: not-allowed; }
     .hist-sel { display: flex; align-items: center; gap: 0.25rem; font-size: 0.62rem; color: #94a3b8; cursor: pointer; user-select: none; }
