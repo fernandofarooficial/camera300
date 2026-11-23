@@ -368,6 +368,13 @@ def tracks_resumo():
     return render_template("tracks_resumo.html", results=results)
 
 
+# Expressão SQL que normaliza um texto pra busca: minúsculas e sem acentos (o banco não tem a
+# extensão unaccent). Uso: _SQL_SEM_ACENTO.format("p.full_name") ou .format("%s").
+_SQL_SEM_ACENTO = (
+    "translate(lower({}), 'áàâãäéèêëíìîïóòôõöúùûüçñ', 'aaaaaeeeeiiiiooooouuuucn')"
+)
+
+
 @tracks_bp.route("/tracks/lista")
 @tracks_bp.route("/m/tracks/lista")
 def tracks_lista():
@@ -377,12 +384,18 @@ def tracks_lista():
         page = 1
 
     ids_raw = request.args.get('ids', '').strip()
+    # O mesmo campo aceita IDs e trechos de nome/apelido, separados por vírgula/ponto e vírgula:
+    # termo só com dígitos = ID; qualquer outro = busca em nome/apelido (sem diferenciar
+    # maiúsculas nem acentos). A pessoa aparece se casar com QUALQUER termo informado.
     ids_filter = []
+    nomes_filter = []
     if ids_raw:
         for part in ids_raw.replace('\n', ',').replace(';', ',').split(','):
             part = part.strip()
             if part.isdigit():
                 ids_filter.append(int(part))
+            elif part:
+                nomes_filter.append(part)
 
     flag_filter  = request.args.get('flag',  '').strip().upper()
     store_filter = request.args.get('store', 0, type=int)
@@ -399,10 +412,19 @@ def tracks_lista():
     # Monta condições WHERE dinamicamente
     conditions = ["r.person_id IS NOT NULL"]
     count_params: list = []
+    termos_cond = []
     if ids_filter:
-        ph = ",".join(["%s"] * len(ids_filter))
-        conditions.append(f"r.person_id IN ({ph})")
-        count_params.extend(ids_filter)
+        termos_cond.append("r.person_id = ANY(%s)")
+        count_params.append(ids_filter)
+    for nome in nomes_filter:
+        termos_cond.append(
+            f"({_SQL_SEM_ACENTO.format('p.full_name')} LIKE {_SQL_SEM_ACENTO.format('%s')}"
+            f" OR {_SQL_SEM_ACENTO.format('p.nickname')} LIKE {_SQL_SEM_ACENTO.format('%s')})"
+        )
+        padrao = "%" + nome.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        count_params.extend([padrao, padrao])
+    if termos_cond:
+        conditions.append("(" + " OR ".join(termos_cond) + ")")
     if flag_filter:
         conditions.append("p.person_type_id = %s")
         count_params.append(flag_filter)

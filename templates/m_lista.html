@@ -160,7 +160,7 @@
 
 <div class="filter">
   <form method="get" action="" style="display:contents">
-    <input type="text" name="ids" value="{{ ids_raw }}" placeholder="Filtrar por IDs…" />
+    <input type="text" name="ids" value="{{ ids_raw }}" placeholder="IDs ou nome…" />
     <a href="?flag=C" class="{{ 'act' if flag_filter == 'C' else '' }}">Clientes</a>
     <button type="submit">&#128269;</button>
   </form>
@@ -214,7 +214,7 @@
     {% endfor %}
 
     {% if total_pages > 1 %}
-      {% set ids_param = ('&ids=' ~ ids_raw) if ids_raw else '' %}
+      {% set ids_param = ('&ids=' ~ ids_raw|urlencode) if ids_raw else '' %}
       <div class="pag">
         {% if page > 1 %}
           <a href="?page={{ page - 1 }}{{ ids_param }}">&laquo;</a>

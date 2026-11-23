@@ -879,20 +879,20 @@
 <main>
 
   {%- set _qs_base -%}
-    {%- if ids_raw %}ids={{ ids_raw }}&{% endif -%}
+    {%- if ids_raw %}ids={{ ids_raw|urlencode }}&{% endif -%}
     {%- if flag_filter %}flag={{ flag_filter }}&{% endif -%}
     {%- if store_filter %}store={{ store_filter }}&{% endif -%}
   {%- endset -%}
   {%- set _qs_no_store -%}
-    {%- if ids_raw %}ids={{ ids_raw }}&{% endif -%}
+    {%- if ids_raw %}ids={{ ids_raw|urlencode }}&{% endif -%}
     {%- if flag_filter %}flag={{ flag_filter }}&{% endif -%}
   {%- endset -%}
   <form class="filter-bar" method="get" action="">
     <div>
-      <label for="ids-input">Filtrar por IDs</label>
+      <label for="ids-input">Filtrar por ID, nome ou apelido</label>
       <input type="text" id="ids-input" name="ids"
              value="{{ ids_raw }}"
-             placeholder="ex: 1, 5, 12, 30" />
+             placeholder="ex: 1, 5, Maria, Zé" />
     </div>
     {% if stores_list %}
     <div>
@@ -914,9 +914,9 @@
     {% if flag_filter %}<input type="hidden" name="flag" value="{{ flag_filter }}" />{% endif %}
     <button type="submit" class="btn-filter">&#128269; Filtrar</button>
     {% if flag_filter == 'C' %}
-      <a href="?{% if ids_raw %}ids={{ ids_raw }}&{% endif %}{% if store_filter %}store={{ store_filter }}&{% endif %}{% if data_filter %}data={{ data_filter }}&{% endif %}" class="btn-clientes active">&#10003; Clientes</a>
+      <a href="?{% if ids_raw %}ids={{ ids_raw|urlencode }}&{% endif %}{% if store_filter %}store={{ store_filter }}&{% endif %}{% if data_filter %}data={{ data_filter }}&{% endif %}" class="btn-clientes active">&#10003; Clientes</a>
     {% else %}
-      <a href="?flag=C&{% if ids_raw %}ids={{ ids_raw }}&{% endif %}{% if store_filter %}store={{ store_filter }}&{% endif %}{% if data_filter %}data={{ data_filter }}&{% endif %}" class="btn-clientes">Clientes</a>
+      <a href="?flag=C&{% if ids_raw %}ids={{ ids_raw|urlencode }}&{% endif %}{% if store_filter %}store={{ store_filter }}&{% endif %}{% if data_filter %}data={{ data_filter }}&{% endif %}" class="btn-clientes">Clientes</a>
     {% endif %}
     {% if ids_raw or flag_filter or store_filter or data_filter %}
       <a href="?" class="btn-filter-clear">&#10005; Limpar</a>
@@ -1080,7 +1080,7 @@
 
   {% if total_pages > 1 %}
     {%- set pg_qs -%}
-      {%- if ids_raw %}&ids={{ ids_raw }}{% endif -%}
+      {%- if ids_raw %}&ids={{ ids_raw|urlencode }}{% endif -%}
       {%- if flag_filter %}&flag={{ flag_filter }}{% endif -%}
       {%- if store_filter %}&store={{ store_filter }}{% endif -%}
       {%- if data_filter %}&data={{ data_filter }}{% endif -%}

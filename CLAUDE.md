@@ -498,7 +498,10 @@ Retorna `{company_id, company_name, background_color}` de `faciais.companies` LE
 
 ## Tela Lista — ações sobre ocorrências (`/tracks/lista`)
 
-**Filtros** (query string, todos combináveis e preservados na paginação): `ids`, `store`, `flag`
+**Filtros** (query string, todos combináveis e preservados na paginação): `ids` (desde 2026-11-23
+aceita também nome/apelido: termos separados por vírgula/`;`, só dígitos = ID, o resto = trecho de
+`full_name`/`nickname` sem diferenciar maiúsculas nem acentos via `_SQL_SEM_ACENTO` (`translate`, o
+banco não tem `unaccent`); a pessoa aparece se casar com qualquer termo), `store`, `flag`
 (botão "Clientes") e `data` (`YYYY-MM-DD`, campo "Data da coleta", desde 2026-10-24). O filtro de
 `data` restringe **também as ocorrências exibidas** de cada pessoa (só as coletadas naquele dia,
 via `created_at >= data AND < data+1`, aproveitando o índice) — diferente de `store`, que só decide
